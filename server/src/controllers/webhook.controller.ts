@@ -22,7 +22,8 @@ export const appsheetBadgesWebhook = async (req: Request, res: Response): Promis
     
     if (webhookSecret && receivedSecret !== webhookSecret) {
       console.warn('[Webhook] Invalid secret received')
-      return res.status(401).json({ error: 'Invalid webhook secret' })
+      res.status(401).json({ error: 'Invalid webhook secret' })
+      return
     }
 
     console.log('[Webhook] Received badges webhook:', {
@@ -47,11 +48,13 @@ export const appsheetBadgesWebhook = async (req: Request, res: Response): Promis
       badges = req.body.Rows
     } else {
       console.error('[Webhook] Invalid payload format:', req.body)
-      return res.status(400).json({ error: 'Invalid payload format. Expected array or {badges: [...]}' })
+      res.status(400).json({ error: 'Invalid payload format. Expected array or {badges: [...]}' })
+      return
     }
 
     if (badges.length === 0) {
-      return res.status(400).json({ error: 'Empty badges array' })
+      res.status(400).json({ error: 'Empty badges array' })
+      return
     }
 
     console.log(`[Webhook] Processing ${badges.length} badges`)
@@ -94,7 +97,8 @@ export const appsheetVehiclesWebhook = async (req: Request, res: Response): Prom
     const receivedSecret = req.headers['x-appsheet-secret'] || req.headers['x-webhook-secret']
     
     if (webhookSecret && receivedSecret !== webhookSecret) {
-      return res.status(401).json({ error: 'Invalid webhook secret' })
+      res.status(401).json({ error: 'Invalid webhook secret' })
+      return
     }
 
     let vehicles = []
@@ -107,7 +111,8 @@ export const appsheetVehiclesWebhook = async (req: Request, res: Response): Prom
     } else if (req.body?.Rows && Array.isArray(req.body.Rows)) {
       vehicles = req.body.Rows
     } else {
-      return res.status(400).json({ error: 'Invalid payload format' })
+      res.status(400).json({ error: 'Invalid payload format' })
+      return
     }
 
     console.log(`[Webhook] Processing ${vehicles.length} vehicles`)
@@ -142,7 +147,8 @@ export const appsheetRoutesWebhook = async (req: Request, res: Response): Promis
     const receivedSecret = req.headers['x-appsheet-secret'] || req.headers['x-webhook-secret']
     
     if (webhookSecret && receivedSecret !== webhookSecret) {
-      return res.status(401).json({ error: 'Invalid webhook secret' })
+      res.status(401).json({ error: 'Invalid webhook secret' })
+      return
     }
 
     let routes = []
@@ -155,7 +161,8 @@ export const appsheetRoutesWebhook = async (req: Request, res: Response): Promis
     } else if (req.body?.Rows && Array.isArray(req.body.Rows)) {
       routes = req.body.Rows
     } else {
-      return res.status(400).json({ error: 'Invalid payload format' })
+      res.status(400).json({ error: 'Invalid payload format' })
+      return
     }
 
     console.log(`[Webhook] Processing ${routes.length} routes`)
@@ -190,7 +197,8 @@ export const appsheetOperatorsWebhook = async (req: Request, res: Response): Pro
     const receivedSecret = req.headers['x-appsheet-secret'] || req.headers['x-webhook-secret']
     
     if (webhookSecret && receivedSecret !== webhookSecret) {
-      return res.status(401).json({ error: 'Invalid webhook secret' })
+      res.status(401).json({ error: 'Invalid webhook secret' })
+      return
     }
 
     let operators = []
@@ -203,7 +211,8 @@ export const appsheetOperatorsWebhook = async (req: Request, res: Response): Pro
     } else if (req.body?.Rows && Array.isArray(req.body.Rows)) {
       operators = req.body.Rows
     } else {
-      return res.status(400).json({ error: 'Invalid payload format' })
+      res.status(400).json({ error: 'Invalid payload format' })
+      return
     }
 
     console.log(`[Webhook] Processing ${operators.length} operators`)
