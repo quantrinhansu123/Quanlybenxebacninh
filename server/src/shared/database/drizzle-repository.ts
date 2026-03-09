@@ -8,7 +8,7 @@
 import { db } from '../../db/drizzle.js'
 import { eq, sql, and, or, gte, lte, like, desc, asc } from 'drizzle-orm'
 import { PgTable, PgColumn } from 'drizzle-orm/pg-core'
-import { DatabaseError, NotFoundError } from '../errors/app-error'
+import { DatabaseError, NotFoundError } from '../errors/app-error.js'
 
 export interface DrizzleQueryOptions<T> {
   where?: Partial<T>
