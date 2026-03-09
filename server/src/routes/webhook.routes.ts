@@ -5,7 +5,7 @@
  * Lưu ý: Webhook endpoints KHÔNG cần authentication (AppSheet gọi từ bên ngoài)
  * Nhưng cần verify webhook secret để bảo mật
  */
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import {
   appsheetBadgesWebhook,
   appsheetVehiclesWebhook,
@@ -24,7 +24,7 @@ router.post('/appsheet/routes', appsheetRoutesWebhook)
 router.post('/appsheet/operators', appsheetOperatorsWebhook)
 
 // Health check cho webhook
-router.get('/health', (_req, res) => {
+router.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'webhook' })
 })
 

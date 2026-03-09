@@ -14,7 +14,7 @@ import { syncOperatorsFromAppSheet } from '../modules/fleet/controllers/operator
  * 
  * Endpoint: POST /api/webhooks/appsheet/badges
  */
-export const appsheetBadgesWebhook = async (req: Request, res: Response) => {
+export const appsheetBadgesWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
     // Verify webhook secret (nếu có cấu hình)
     const webhookSecret = process.env.APPSHEET_WEBHOOK_SECRET
@@ -61,11 +61,9 @@ export const appsheetBadgesWebhook = async (req: Request, res: Response) => {
       body: { badges },
     } as Request
 
-    let syncResponse: any = null
     const syncRes = {
       status: (code: number) => ({
         json: (data: any) => {
-          syncResponse = { code, data }
           if (code >= 400) {
             console.error('[Webhook] Sync failed:', data)
           } else {
@@ -79,16 +77,18 @@ export const appsheetBadgesWebhook = async (req: Request, res: Response) => {
     await syncBadgesFromAppSheet(syncReq, syncRes)
 
     // Response đã được gửi trong syncRes
+    return
   } catch (error) {
     console.error('[Webhook] Error processing badges webhook:', error)
     res.status(500).json({ error: 'Webhook processing failed', details: error instanceof Error ? error.message : 'Unknown error' })
+    return
   }
 }
 
 /**
  * Webhook endpoint cho AppSheet Vehicles (XE)
  */
-export const appsheetVehiclesWebhook = async (req: Request, res: Response) => {
+export const appsheetVehiclesWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
     const webhookSecret = process.env.APPSHEET_WEBHOOK_SECRET
     const receivedSecret = req.headers['x-appsheet-secret'] || req.headers['x-webhook-secret']
@@ -125,16 +125,18 @@ export const appsheetVehiclesWebhook = async (req: Request, res: Response) => {
     } as Response
 
     await syncVehiclesFromAppSheet(syncReq, syncRes)
+    return
   } catch (error) {
     console.error('[Webhook] Error processing vehicles webhook:', error)
     res.status(500).json({ error: 'Webhook processing failed' })
+    return
   }
 }
 
 /**
  * Webhook endpoint cho AppSheet Routes (TUYEN)
  */
-export const appsheetRoutesWebhook = async (req: Request, res: Response) => {
+export const appsheetRoutesWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
     const webhookSecret = process.env.APPSHEET_WEBHOOK_SECRET
     const receivedSecret = req.headers['x-appsheet-secret'] || req.headers['x-webhook-secret']
@@ -171,16 +173,18 @@ export const appsheetRoutesWebhook = async (req: Request, res: Response) => {
     } as Response
 
     await syncRoutesFromAppSheet(syncReq, syncRes)
+    return
   } catch (error) {
     console.error('[Webhook] Error processing routes webhook:', error)
     res.status(500).json({ error: 'Webhook processing failed' })
+    return
   }
 }
 
 /**
  * Webhook endpoint cho AppSheet Operators (DONVIVANTAI)
  */
-export const appsheetOperatorsWebhook = async (req: Request, res: Response) => {
+export const appsheetOperatorsWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
     const webhookSecret = process.env.APPSHEET_WEBHOOK_SECRET
     const receivedSecret = req.headers['x-appsheet-secret'] || req.headers['x-webhook-secret']
@@ -217,8 +221,10 @@ export const appsheetOperatorsWebhook = async (req: Request, res: Response) => {
     } as Response
 
     await syncOperatorsFromAppSheet(syncReq, syncRes)
+    return
   } catch (error) {
     console.error('[Webhook] Error processing operators webhook:', error)
     res.status(500).json({ error: 'Webhook processing failed' })
+    return
   }
 }

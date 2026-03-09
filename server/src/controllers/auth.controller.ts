@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import jwt, { SignOptions } from 'jsonwebtoken'
 import { db } from '../db/drizzle.js'
 import { users } from '../db/schema/users.js'
-import { eq, sql, ilike } from 'drizzle-orm'
+import { eq, ilike } from 'drizzle-orm'
 import { loginSchema, registerSchema } from '../utils/validation.js'
 
 export const login = async (req: Request, res: Response): Promise<void> => {
