@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/**/*.test.ts", "src/db/migrations/etl/**", "src/scripts/**"]
+  "exclude": ["node_modules", "dist", "api", "src/**/__tests__/**", "src/**/*.test.ts", "src/db/migrations/etl/**", "src/scripts/**"]
 }
