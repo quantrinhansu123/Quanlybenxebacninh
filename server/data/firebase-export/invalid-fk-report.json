@@ -1,0 +1,426 @@
+[
+  {
+    "timestamp": "2026-01-12T04:27:34.334Z",
+    "collection": "dispatch_records",
+    "recordId": "mjbgk9j7-15afqh8stiz",
+    "fkField": "vehicle_id",
+    "fkValue": "mjbgk631-jxo57s2rgw",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:35.668Z",
+    "collection": "dispatch_records",
+    "recordId": "mjbgk9j7-5qmqhp955zv",
+    "fkField": "vehicle_id",
+    "fkValue": "mjbgk631-rj32kqs994",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:35.669Z",
+    "collection": "dispatch_records",
+    "recordId": "mjbgk9j7-5qmqhp955zv",
+    "fkField": "route_id",
+    "fkValue": "861",
+    "targetCollection": "routes"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:36.943Z",
+    "collection": "dispatch_records",
+    "recordId": "mjbgk9j7-e12qxi0s8oc",
+    "fkField": "vehicle_id",
+    "fkValue": "mjbgk631-uykjbaacz7l",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:38.200Z",
+    "collection": "dispatch_records",
+    "recordId": "mjbjun1k-fwopb9akb3b",
+    "fkField": "vehicle_id",
+    "fkValue": "mjbjpfid-fxe29zw5n2t",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:39.502Z",
+    "collection": "dispatch_records",
+    "recordId": "mjd2n4hf-gn1t6z95rxm",
+    "fkField": "vehicle_id",
+    "fkValue": "mjcwg2fs-f7cd94ehknt",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:40.506Z",
+    "collection": "dispatch_records",
+    "recordId": "mjdt2aph-h2o03aqju7c",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_17",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:40.507Z",
+    "collection": "dispatch_records",
+    "recordId": "mjdt2aph-h2o03aqju7c",
+    "fkField": "route_id",
+    "fkValue": "117",
+    "targetCollection": "routes"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:41.523Z",
+    "collection": "dispatch_records",
+    "recordId": "mjid7oj1-0g0sxxqf3m",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_45cc5d86",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:42.638Z",
+    "collection": "dispatch_records",
+    "recordId": "mjidnig7-b1e5dnmct2b",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_0ef691f9",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:43.640Z",
+    "collection": "dispatch_records",
+    "recordId": "mjido3gl-zl6vaz293eq",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_37374244",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:44.642Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio364l-z5x3451fq8",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_014cdca5",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:45.917Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio3agl-nylcb0i1v7k",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_9a0c42ab",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:46.682Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio3gf2-w6rwyxidw3",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6410a66a",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:47.436Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio3knc-pzviktqhi8g",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_65d838a1",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:48.769Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio3ny4-uwxyfv8xqu9",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_e6fba7c9",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:50.047Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio3r3r-3e138pqkxal",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6433b093",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:51.048Z",
+    "collection": "dispatch_records",
+    "recordId": "mjio3v78-ar4rl3fox4",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_4b8482f6",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:52.110Z",
+    "collection": "dispatch_records",
+    "recordId": "mjl9vmrw-4paqtg8hyf",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_c09fe0d5",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:52.859Z",
+    "collection": "dispatch_records",
+    "recordId": "mjlon39i-4vy4diz4mh5",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_45cc5d86",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:53.614Z",
+    "collection": "dispatch_records",
+    "recordId": "mjlv6lhj-vl0bs6aw1e9",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6e4fd0cb",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:54.367Z",
+    "collection": "dispatch_records",
+    "recordId": "mjqrqp6v-gezeclqz8c",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_878eafc2",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:55.146Z",
+    "collection": "dispatch_records",
+    "recordId": "mjqrqvu2-h7gniairbh8",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_bbc77652",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:55.965Z",
+    "collection": "dispatch_records",
+    "recordId": "mjqrr0y3-63rth6oyu1l",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_76bd686d",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:56.885Z",
+    "collection": "dispatch_records",
+    "recordId": "mjqrr60j-tcspup72ijm",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_434c64c3",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:57.637Z",
+    "collection": "dispatch_records",
+    "recordId": "mjqww6oc-nn6dx08ysq",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_fdc458cb",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:58.523Z",
+    "collection": "dispatch_records",
+    "recordId": "mjra6z12-ydtq0y1rwus",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_fb41de5e",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:27:59.533Z",
+    "collection": "dispatch_records",
+    "recordId": "mjrct1pz-ypadps6qaz",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_5615e47f",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:00.534Z",
+    "collection": "dispatch_records",
+    "recordId": "mjwwp127-dsr5qerz9gf",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_9a0c42ab",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:01.858Z",
+    "collection": "dispatch_records",
+    "recordId": "mjwws32i-y00xchrqqkd",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_c1b7cb8f",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:03.115Z",
+    "collection": "dispatch_records",
+    "recordId": "mjwx5xik-tcofpglpk8h",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6410a66a",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:04.118Z",
+    "collection": "dispatch_records",
+    "recordId": "mjy7uzt4-zw7ol0fzo4p",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6410a66a",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:05.186Z",
+    "collection": "dispatch_records",
+    "recordId": "mjy7wmc5-ikyc8v7u7fg",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_9a0c42ab",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:06.190Z",
+    "collection": "dispatch_records",
+    "recordId": "mjy85vjq-yg4jf9euxg",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_014cdca5",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:07.192Z",
+    "collection": "dispatch_records",
+    "recordId": "mjy9x120-ohz0smak6qo",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6410a66a",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:08.271Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyampn9-t8a5sgl6kr",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6433b093",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:09.280Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyaso0m-vn0f32mr3x",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_fb41de5e",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:10.287Z",
+    "collection": "dispatch_records",
+    "recordId": "mjybkm6v-ahvu51el3s",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_5615e47f",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:11.350Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyblor8-xhsizcblceo",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_46349715",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:12.352Z",
+    "collection": "dispatch_records",
+    "recordId": "mjybwkgz-s9o2ps3xqo8",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_3b151340",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:13.356Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyelcjx-trb3yh7llr",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_4b8482f6",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:14.424Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyeor65-l6l5xl11yg8",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6410a66a",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:15.187Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyepui0-rsnmgnuxvdb",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_4b8482f6",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:16.550Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyeqfy6-azdkr8nw64d",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_4b8482f6",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:17.627Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyf763i-5oalyyn1niv",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_6433b093",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:18.635Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyf8xe3-0o94lak3rsm",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_fb41de5e",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:19.642Z",
+    "collection": "dispatch_records",
+    "recordId": "mjygb2m9-mq7n6qg9b3m",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_46349715",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:20.746Z",
+    "collection": "dispatch_records",
+    "recordId": "mjygnlrt-ksd40e9ff7s",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_3856f2d7",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:21.749Z",
+    "collection": "dispatch_records",
+    "recordId": "mjygon45-1s3yy0mxlt5",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_878eafc2",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:22.752Z",
+    "collection": "dispatch_records",
+    "recordId": "mjygtuze-797d6yxhq9w",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_3856f2d7",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:23.821Z",
+    "collection": "dispatch_records",
+    "recordId": "mjygv6l5-xf19czpnui",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_434c64c3",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:24.827Z",
+    "collection": "dispatch_records",
+    "recordId": "mjyhc7zs-acgaxmlqag",
+    "fkField": "vehicle_id",
+    "fkValue": "legacy_014cdca5",
+    "targetCollection": "vehicles"
+  },
+  {
+    "timestamp": "2026-01-12T04:28:25.844Z",
+    "collection": "dispatch_records",
+    "recordId": "mjynumh6-jarwdagtgt",
+    "fkField": "vehicle_id",
+    "fkValue": "11H00803",
+    "targetCollection": "vehicles"
+  }
+]

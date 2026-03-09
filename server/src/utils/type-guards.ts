@@ -1,0 +1,4 @@
+/** Type guard: checks if value is a plain object (not null, not array) */
+export const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+)

@@ -1,0 +1,60 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".indexOn": ["username", "email", "role", "created_at"]
+    },
+    "operators": {
+      ".indexOn": ["code", "name", "is_active", "created_at"]
+    },
+    "vehicles": {
+      ".indexOn": ["plate_number", "operator_id", "vehicle_type_id", "is_active", "created_at"]
+    },
+    "drivers": {
+      ".indexOn": ["operator_id", "full_name", "license_number", "is_active", "created_at"]
+    },
+    "routes": {
+      ".indexOn": ["route_code", "route_name", "origin_id", "destination_id", "is_active", "created_at"]
+    },
+    "route_stops": {
+      ".indexOn": ["route_id", "stop_order"]
+    },
+    "locations": {
+      ".indexOn": ["code", "name", "province", "is_active", "created_at"]
+    },
+    "schedules": {
+      ".indexOn": ["route_id", "operator_id", "schedule_code", "is_active", "created_at"]
+    },
+    "dispatch_records": {
+      ".indexOn": ["vehicle_id", "driver_id", "route_id", "operator_id", "current_status", "entry_time", "exit_time", "created_at"]
+    },
+    "invoices": {
+      ".indexOn": ["operator_id", "dispatch_record_id", "payment_status", "issue_date", "created_at"]
+    },
+    "services": {
+      ".indexOn": ["code", "is_active", "created_at"]
+    },
+    "shifts": {
+      ".indexOn": ["name", "is_active", "created_at"]
+    },
+    "vehicle_types": {
+      ".indexOn": ["name", "created_at"]
+    },
+    "vehicle_documents": {
+      ".indexOn": ["vehicle_id", "document_type", "expiry_date"]
+    },
+    "violations": {
+      ".indexOn": ["dispatch_record_id", "vehicle_id", "driver_id", "created_at"]
+    },
+    "service_charges": {
+      ".indexOn": ["dispatch_record_id", "service_id", "created_at"]
+    },
+    "driver_operators": {
+      ".indexOn": ["driver_id", "operator_id", "is_primary"]
+    },
+    "audit_logs": {
+      ".indexOn": ["entity_type", "entity_id", "user_id", "created_at"]
+    }
+  }
+}

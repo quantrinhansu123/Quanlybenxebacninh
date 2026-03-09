@@ -1,0 +1,89 @@
+[
+  {
+    "_firebase_id": "mjbgk6an-d8tu6dybwj",
+    "created_at": "2025-12-18T13:10:17.568Z",
+    "document_number": "DK-12345",
+    "document_type": "registration",
+    "expiry_date": "2026-12-18",
+    "id": "mjbgk6an-d8tu6dybwj",
+    "issue_date": "2024-12-18",
+    "issuing_authority": "Cục Đăng kiểm Việt Nam",
+    "updated_at": "2025-12-18T13:10:17.568Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjbgk631-jxo57s2rgw"
+  },
+  {
+    "_firebase_id": "mjbgk6ao-dthvj4y1xrk",
+    "created_at": "2025-12-18T13:10:17.568Z",
+    "document_number": "BH-12345",
+    "document_type": "insurance",
+    "expiry_date": "2026-06-16",
+    "id": "mjbgk6ao-dthvj4y1xrk",
+    "issue_date": "2025-06-21",
+    "issuing_authority": "Bảo Việt",
+    "updated_at": "2025-12-18T13:10:17.568Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjbgk631-jxo57s2rgw"
+  },
+  {
+    "_firebase_id": "mjbgk6ao-m9csam7gb2",
+    "created_at": "2025-12-18T13:10:17.568Z",
+    "document_number": "DK-12345-2024",
+    "document_type": "inspection",
+    "expiry_date": "2026-03-18",
+    "id": "mjbgk6ao-m9csam7gb2",
+    "issue_date": "2025-09-19",
+    "issuing_authority": "Trung tâm Đăng kiểm",
+    "updated_at": "2025-12-18T13:10:17.568Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjbgk631-jxo57s2rgw"
+  },
+  {
+    "_firebase_id": "mjd5bcau-k0um8wey77f",
+    "created_at": "2025-12-19T17:31:02.022Z",
+    "document_number": "AUTO-registration-98H07480",
+    "document_type": "registration",
+    "expiry_date": "2025-12-26",
+    "id": "mjd5bcau-k0um8wey77f",
+    "issue_date": "2025-12-19",
+    "updated_at": "2025-12-19T17:31:22.910Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjcwg2fs-f7cd94ehknt"
+  },
+  {
+    "_firebase_id": "mjd5bcb5-8hd23u6vk8w",
+    "created_at": "2025-12-19T17:31:02.033Z",
+    "document_number": "AUTO-inspection-98H07480",
+    "document_type": "inspection",
+    "expiry_date": "2026-01-01",
+    "id": "mjd5bcb5-8hd23u6vk8w",
+    "issue_date": "2025-12-19",
+    "updated_at": "2025-12-19T17:31:22.924Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjcwg2fs-f7cd94ehknt"
+  },
+  {
+    "_firebase_id": "mjd5bcbc-oo30w252v9",
+    "created_at": "2025-12-19T17:31:02.040Z",
+    "document_number": "AUTO-insurance-98H07480",
+    "document_type": "insurance",
+    "expiry_date": "2026-01-01",
+    "id": "mjd5bcbc-oo30w252v9",
+    "issue_date": "2025-12-19",
+    "updated_at": "2025-12-19T17:31:22.937Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjcwg2fs-f7cd94ehknt"
+  },
+  {
+    "_firebase_id": "mjd5bcbk-1k7mhgvounq",
+    "created_at": "2025-12-19T17:31:02.049Z",
+    "document_number": "AUTO-operation_permit-98H07480",
+    "document_type": "operation_permit",
+    "expiry_date": "2025-12-31",
+    "id": "mjd5bcbk-1k7mhgvounq",
+    "issue_date": "2025-12-19",
+    "updated_at": "2025-12-19T17:31:22.948Z",
+    "updated_by": "mjbgk5pl-cdj0zugj29a",
+    "vehicle_id": "mjcwg2fs-f7cd94ehknt"
+  }
+]

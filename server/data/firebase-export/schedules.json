@@ -1,0 +1,28 @@
+[
+  {
+    "_firebase_id": "mjbgk979-bds03d6hoi6",
+    "created_at": "2025-12-18T13:10:21.333Z",
+    "departure_time": "09:00:00",
+    "effective_from": "2025-12-18",
+    "frequency_type": "daily",
+    "id": "mjbgk979-bds03d6hoi6",
+    "is_active": true,
+    "operator_id": "mjbgk5ww-9x9ajuvml6i",
+    "route_id": "mjbgk88n-kzo1at10yzp",
+    "schedule_code": "TB-HCM-DL-09:00",
+    "updated_at": "2025-12-18T13:10:21.333Z"
+  },
+  {
+    "_firebase_id": "mjbgk979-qwjdq3k8lh8",
+    "created_at": "2025-12-18T13:10:21.333Z",
+    "departure_time": "08:00:00",
+    "effective_from": "2025-12-18",
+    "frequency_type": "daily",
+    "id": "mjbgk979-qwjdq3k8lh8",
+    "is_active": true,
+    "operator_id": "mjbgk5ww-lhxc4119q5h",
+    "route_id": "mjbgk88n-kzo1at10yzp",
+    "schedule_code": "FUTA-HCM-DL-08:00",
+    "updated_at": "2025-12-18T13:10:21.333Z"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "_firebase_id": "mjbgk8rq-197glyortqd",
+    "created_at": "2025-12-18T13:10:20.774Z",
+    "end_time": "06:00:00",
+    "id": "mjbgk8rq-197glyortqd",
+    "is_active": true,
+    "name": "Ca 3",
+    "start_time": "22:00:00",
+    "updated_at": "2025-12-18T13:10:20.774Z"
+  },
+  {
+    "_firebase_id": "mjbgk8rq-905cj829qwr",
+    "created_at": "2025-12-18T13:10:20.774Z",
+    "end_time": "17:00:00",
+    "id": "mjbgk8rq-905cj829qwr",
+    "is_active": true,
+    "name": "Hành chính",
+    "start_time": "07:30:00",
+    "updated_at": "2025-12-18T13:10:20.774Z"
+  },
+  {
+    "_firebase_id": "mjbgk8rq-frkuzzav2ld",
+    "created_at": "2025-12-18T13:10:20.774Z",
+    "end_time": "14:00:00",
+    "id": "mjbgk8rq-frkuzzav2ld",
+    "is_active": true,
+    "name": "Ca 1",
+    "start_time": "06:00:00",
+    "updated_at": "2026-01-02T15:07:08.043Z"
+  },
+  {
+    "_firebase_id": "mjbgk8rq-v4u2c6zkn2k",
+    "created_at": "2025-12-18T13:10:20.774Z",
+    "end_time": "22:00:00",
+    "id": "mjbgk8rq-v4u2c6zkn2k",
+    "is_active": true,
+    "name": "Ca 2",
+    "start_time": "14:00:00",
+    "updated_at": "2025-12-18T13:10:20.774Z"
+  },
+  {
+    "_firebase_id": "mjr23iwa-t8tpf4sx9rj",
+    "created_at": "2025-12-29T11:09:44.938Z",
+    "end_time": "19:10:00",
+    "id": "mjr23iwa-t8tpf4sx9rj",
+    "is_active": false,
+    "name": "Test",
+    "start_time": "07:00:00",
+    "updated_at": "2025-12-29T11:09:49.289Z"
+  },
+  {
+    "_firebase_id": "mjx0c26v-suteavoiapr",
+    "created_at": "2026-01-02T15:07:01.015Z",
+    "end_time": "04:16:00",
+    "id": "mjx0c26v-suteavoiapr",
+    "is_active": true,
+    "name": "CA KHUYA",
+    "start_time": "22:00:00",
+    "updated_at": "2026-01-02T15:07:17.007Z"
+  }
+]

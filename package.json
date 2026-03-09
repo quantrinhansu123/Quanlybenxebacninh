@@ -1,0 +1,41 @@
+{
+    "name": "benxe-management",
+    "version": "1.0.0",
+    "description": "Bus Station Management System - Full Stack Application",
+    "private": true,
+    "workspaces": [
+        "client",
+        "server"
+    ],
+    "scripts": {
+        "dev": "concurrently -n BE,FE -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+        "dev:client": "npm run dev --workspace=client",
+        "dev:server": "npm run dev --workspace=server",
+        "build": "npm run build --workspaces",
+        "build:client": "npm run build --workspace=client",
+        "build:server": "npm run build --workspace=server",
+        "start": "npm run start --workspace=server",
+        "install:all": "npm install",
+        "clean": "rimraf node_modules client/node_modules server/node_modules",
+        "seed": "npm run seed --workspace=server",
+        "create-admin": "npm run create-admin --workspace=server",
+        "deploy:server": "npm run deploy --workspace=server",
+        "deploy:client": "npm run deploy --workspace=client"
+    },
+    "keywords": [
+        "bus-station",
+        "management",
+        "react",
+        "express",
+        "firebase",
+        "fullstack"
+    ],
+    "author": "",
+    "license": "ISC",
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1"
+    }
+}

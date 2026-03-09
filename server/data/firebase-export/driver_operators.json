@@ -1,0 +1,38 @@
+[
+  {
+    "_firebase_id": "mjypri0c-rsbjea26we",
+    "created_at": "2026-01-03T19:46:37.932Z",
+    "driver_id": "mjbgk6zs-fj0x22xt4yc",
+    "id": "mjypri0c-rsbjea26we",
+    "is_primary": true,
+    "operator_id": "mjd6f6ne-6ty549nj173",
+    "updated_at": "2026-01-03T19:46:37.932Z"
+  },
+  {
+    "_firebase_id": "mjypri2f-g333xroouq",
+    "created_at": "2026-01-03T19:46:38.007Z",
+    "driver_id": "mjbgk6zs-fj0x22xt4yc",
+    "id": "mjypri2f-g333xroouq",
+    "is_primary": false,
+    "operator_id": "4592d43b",
+    "updated_at": "2026-01-03T19:46:38.007Z"
+  },
+  {
+    "_firebase_id": "mjyrzfhw-2lazzzq7p6e",
+    "created_at": "2026-01-03T20:48:47.156Z",
+    "driver_id": "mjbgk6zt-aa9b9rzbv0a",
+    "id": "mjyrzfhw-2lazzzq7p6e",
+    "is_primary": true,
+    "operator_id": "mjd6f6ne-6ty549nj173",
+    "updated_at": "2026-01-03T20:48:47.156Z"
+  },
+  {
+    "_firebase_id": "mjzlsadu-l4asg9l4ukb",
+    "created_at": "2026-01-04T10:43:02.418Z",
+    "driver_id": "mjbgk6zt-xf2b40jlyk",
+    "id": "mjzlsadu-l4asg9l4ukb",
+    "is_primary": true,
+    "operator_id": "acc349e7",
+    "updated_at": "2026-01-04T10:43:02.418Z"
+  }
+]

@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: ben-xe-backend
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: cd server && npm install --include=dev && npm run build
+    startCommand: cd server && npm start
+    healthCheckPath: /health
+    envVars:
+      # Server config
+      - key: NODE_ENV
+        value: production
+      - key: APP_PORT
+        fromService:
+          type: web
+          name: ben-xe-backend
+          property: port
+      # Database (Supabase PostgreSQL)
+      - key: DATABASE_URL
+        sync: false
+      # Authentication
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # CORS - Update with your Vercel URL
+      - key: CORS_ORIGIN
+        sync: false
+      # Cloudinary (image uploads)
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # Supabase Storage (optional)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # AI Chat (optional)
+      - key: GEMINI_API_KEY
+        sync: false
+

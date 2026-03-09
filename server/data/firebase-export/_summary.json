@@ -1,0 +1,79 @@
+{
+  "parsedAt": "2026-01-12T04:06:41.039Z",
+  "totalCollections": 18,
+  "totalRecords": 28774,
+  "results": [
+    {
+      "collection": "datasheet.DONVIVANTAI",
+      "recordCount": 2943
+    },
+    {
+      "collection": "datasheet.Xe",
+      "recordCount": 14098
+    },
+    {
+      "collection": "datasheet.PHUHIEUXE",
+      "recordCount": 10734
+    },
+    {
+      "collection": "datasheet.DANHMUCTUYENCODINH",
+      "recordCount": 877
+    },
+    {
+      "collection": "operators",
+      "recordCount": 6
+    },
+    {
+      "collection": "vehicles",
+      "recordCount": 7
+    },
+    {
+      "collection": "drivers",
+      "recordCount": 3
+    },
+    {
+      "collection": "routes",
+      "recordCount": 3
+    },
+    {
+      "collection": "shifts",
+      "recordCount": 6
+    },
+    {
+      "collection": "vehicle_types",
+      "recordCount": 4
+    },
+    {
+      "collection": "vehicle_documents",
+      "recordCount": 7
+    },
+    {
+      "collection": "dispatch_records",
+      "recordCount": 51
+    },
+    {
+      "collection": "users",
+      "recordCount": 5
+    },
+    {
+      "collection": "invoices",
+      "recordCount": 1
+    },
+    {
+      "collection": "schedules",
+      "recordCount": 2
+    },
+    {
+      "collection": "services",
+      "recordCount": 5
+    },
+    {
+      "collection": "service_charges",
+      "recordCount": 18
+    },
+    {
+      "collection": "driver_operators",
+      "recordCount": 4
+    }
+  ]
+}

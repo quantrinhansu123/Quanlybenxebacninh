@@ -1,0 +1,98 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+.next/
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDE & Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*.sw?
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.local
+
+# Uploads (keep folder but ignore contents)
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+firebase-debug.*.log
+*-debug.log
+firebase-service-account.json
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.cache/
+*.pid
+*.seed
+*.pid.lock
+
+# Windows artifacts
+nul
+NUL
+
+# Plans folder (internal planning docs)
+plans/
+docs/
+.claude/
+.factory/
+client/docs/archived/
+server/docs/archived/
+project-memory.md
+
+# Claude temp files
+tmpclaude-*
+**/tmpclaude-*
+package-lock.json
+repomix-output.xml
+
+.mcp.json

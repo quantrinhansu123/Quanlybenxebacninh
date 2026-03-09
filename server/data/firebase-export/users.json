@@ -1,0 +1,61 @@
+[
+  {
+    "_firebase_id": "mjbgk5pl-7lrvnqwbbd5",
+    "created_at": "2025-12-18T13:10:16.809Z",
+    "email": "dieudo@benxe.com",
+    "full_name": "Nguyễn Văn Điều Độ",
+    "id": "mjbgk5pl-7lrvnqwbbd5",
+    "is_active": true,
+    "password_hash": "$2a$10$uq/rnNITBT9CfKmUIfcI2ekxIdt4e./GecMD3BgjzODmu4gLNyT26",
+    "role": "dispatcher",
+    "updated_at": "2025-12-18T13:10:16.809Z",
+    "username": "dieudo"
+  },
+  {
+    "_firebase_id": "mjbgk5pl-cdj0zugj29a",
+    "created_at": "2025-12-18T13:10:16.809Z",
+    "email": "admin@benxe.com",
+    "full_name": "System Administrator",
+    "id": "mjbgk5pl-cdj0zugj29a",
+    "is_active": true,
+    "password_hash": "$2a$10$UspPTEc7My.89Xf8LPEKeePuvD2b6R3TNUbIrxNDVB7NyDgcEgO6e",
+    "role": "admin",
+    "updated_at": "2025-12-18T19:56:14.278Z",
+    "username": "admin"
+  },
+  {
+    "_firebase_id": "mjbgk5pl-g0mgzjnt15",
+    "created_at": "2025-12-18T13:10:16.809Z",
+    "email": "baocao@benxe.com",
+    "full_name": "Lê Văn Báo Cáo",
+    "id": "mjbgk5pl-g0mgzjnt15",
+    "is_active": true,
+    "password_hash": "$2a$10$uq/rnNITBT9CfKmUIfcI2ekxIdt4e./GecMD3BgjzODmu4gLNyT26",
+    "role": "reporter",
+    "updated_at": "2025-12-18T13:10:16.809Z",
+    "username": "baocao"
+  },
+  {
+    "_firebase_id": "mjbgk5pl-vdox8pc7xqn",
+    "created_at": "2025-12-18T13:10:16.809Z",
+    "email": "ketoan@benxe.com",
+    "full_name": "Trần Thị Kế Toán",
+    "id": "mjbgk5pl-vdox8pc7xqn",
+    "is_active": true,
+    "password_hash": "$2a$10$uq/rnNITBT9CfKmUIfcI2ekxIdt4e./GecMD3BgjzODmu4gLNyT26",
+    "role": "accountant",
+    "updated_at": "2025-12-18T13:10:16.809Z",
+    "username": "ketoan"
+  },
+  {
+    "_firebase_id": "mjvoehos-xfb84bnjfw",
+    "created_at": "2026-01-01T16:45:12.844Z",
+    "full_name": "Lan Anh",
+    "id": "mjvoehos-xfb84bnjfw",
+    "is_active": true,
+    "password_hash": "$2a$10$YRfu.f1ZXS2ZZzGSMj0tZ.eP0ySQCdXpFM0Ny4EmQBivArbaAUcsi",
+    "role": "admin",
+    "updated_at": "2026-01-01T16:45:12.844Z",
+    "username": "lananh"
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "_firebase_id": "mjbgk4s1-8ajhdolf89x",
+    "created_at": "2025-12-18T13:10:15.601Z",
+    "default_bed_capacity": 0,
+    "default_seat_capacity": 16,
+    "description": "Xe khách loại nhỏ",
+    "id": "mjbgk4s1-8ajhdolf89x",
+    "name": "Xe khách 16 chỗ"
+  },
+  {
+    "_firebase_id": "mjbgk4s4-24chawljobk",
+    "created_at": "2025-12-18T13:10:15.604Z",
+    "default_bed_capacity": 40,
+    "default_seat_capacity": 0,
+    "description": "Xe khách giường nằm",
+    "id": "mjbgk4s4-24chawljobk",
+    "name": "Xe giường nằm"
+  },
+  {
+    "_firebase_id": "mjbgk4s4-3trra1e1ff",
+    "created_at": "2025-12-18T13:10:15.604Z",
+    "default_bed_capacity": 0,
+    "default_seat_capacity": 29,
+    "description": "Xe khách trung bình",
+    "id": "mjbgk4s4-3trra1e1ff",
+    "name": "Xe khách 29 chỗ"
+  },
+  {
+    "_firebase_id": "mjbgk4s4-kjcroccb0a",
+    "created_at": "2025-12-18T13:10:15.604Z",
+    "default_bed_capacity": 0,
+    "default_seat_capacity": 45,
+    "description": "Xe khách lớn",
+    "id": "mjbgk4s4-kjcroccb0a",
+    "name": "Xe khách 45 chỗ"
+  }
+]

@@ -1,0 +1,197 @@
+[
+  {
+    "_firebase_id": "mjbgk9nl-54plzotvvfm",
+    "created_at": "2025-12-18T13:10:21.921Z",
+    "dispatch_record_id": "mjbgk9j7-15afqh8stiz",
+    "id": "mjbgk9nl-54plzotvvfm",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-ssarxto9pzi",
+    "total_amount": 30000,
+    "unit_price": 30000
+  },
+  {
+    "_firebase_id": "mjbgk9nl-8gx075hyjfb",
+    "created_at": "2025-12-18T13:10:21.921Z",
+    "dispatch_record_id": "mjbgk9j7-15afqh8stiz",
+    "id": "mjbgk9nl-8gx075hyjfb",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 50000,
+    "unit_price": 50000
+  },
+  {
+    "_firebase_id": "mjbgk9nl-xqgvmb65jh",
+    "created_at": "2025-12-18T13:10:21.921Z",
+    "dispatch_record_id": "mjbgk9j7-15afqh8stiz",
+    "id": "mjbgk9nl-xqgvmb65jh",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 20000,
+    "unit_price": 20000
+  },
+  {
+    "_firebase_id": "mjd5ckn4-bkhhw2xiyqu",
+    "created_at": "2025-12-19T17:31:59.488Z",
+    "dispatch_record_id": "mjd2n4hf-gn1t6z95rxm",
+    "id": "mjd5ckn4-bkhhw2xiyqu",
+    "quantity": 100,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 5000000,
+    "unit_price": 50000,
+    "updated_at": "2025-12-19T17:31:59.488Z"
+  },
+  {
+    "_firebase_id": "mjdltmak-l2vihnnee6",
+    "created_at": "2025-12-20T01:13:08.637Z",
+    "dispatch_record_id": "mjbgk9j7-e12qxi0s8oc",
+    "id": "mjdltmak-l2vihnnee6",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 50000,
+    "unit_price": 50000,
+    "updated_at": "2025-12-20T01:13:08.637Z"
+  },
+  {
+    "_firebase_id": "mjeic3h5-mdjfxb6ieyo",
+    "created_at": "2025-12-20T16:23:18.425Z",
+    "dispatch_record_id": "mjbgk9j7-5qmqhp955zv",
+    "id": "mjeic3h5-mdjfxb6ieyo",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 5000000,
+    "unit_price": 5000000,
+    "updated_at": "2025-12-20T16:23:18.425Z"
+  },
+  {
+    "_firebase_id": "mjekah29-a3zvn54mq4i",
+    "created_at": "2025-12-20T17:18:01.953Z",
+    "dispatch_record_id": "mjbjun1k-fwopb9akb3b",
+    "id": "mjekah29-a3zvn54mq4i",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 500000,
+    "unit_price": 500000,
+    "updated_at": "2025-12-20T17:18:01.953Z"
+  },
+  {
+    "_firebase_id": "mjgxaf4v-jr0ngopunol",
+    "created_at": "2025-12-22T08:57:26.815Z",
+    "dispatch_record_id": "mjdt2aph-h2o03aqju7c",
+    "id": "mjgxaf4v-jr0ngopunol",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 500000,
+    "unit_price": 500000,
+    "updated_at": "2025-12-22T08:57:26.815Z"
+  },
+  {
+    "_firebase_id": "mjrbn1zg-tmn5zkdc0b",
+    "created_at": "2025-12-29T15:36:52.684Z",
+    "dispatch_record_id": "mjidnig7-b1e5dnmct2b",
+    "id": "mjrbn1zg-tmn5zkdc0b",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 50000,
+    "unit_price": 50000,
+    "updated_at": "2025-12-29T15:36:52.684Z"
+  },
+  {
+    "_firebase_id": "mjrc8d79-ovni04pkxf9",
+    "created_at": "2025-12-29T15:53:26.997Z",
+    "dispatch_record_id": "mjido3gl-zl6vaz293eq",
+    "id": "mjrc8d79-ovni04pkxf9",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 50000,
+    "unit_price": 50000,
+    "updated_at": "2025-12-29T15:53:26.997Z"
+  },
+  {
+    "_firebase_id": "mjrcgd00-qtw4skin8lh",
+    "created_at": "2025-12-29T15:59:39.984Z",
+    "dispatch_record_id": "mjio364l-z5x3451fq8",
+    "id": "mjrcgd00-qtw4skin8lh",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 20000,
+    "unit_price": 20000,
+    "updated_at": "2025-12-29T15:59:39.984Z"
+  },
+  {
+    "_firebase_id": "mjvph9te-13a5129wmeh",
+    "created_at": "2026-01-01T17:15:22.226Z",
+    "dispatch_record_id": "mjio3ny4-uwxyfv8xqu9",
+    "id": "mjvph9te-13a5129wmeh",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 200000,
+    "unit_price": 200000,
+    "updated_at": "2026-01-01T17:15:22.226Z"
+  },
+  {
+    "_firebase_id": "mjvq30wb-0x4vcjlv22ls",
+    "created_at": "2026-01-01T17:32:17.099Z",
+    "dispatch_record_id": "mjio3r3r-3e138pqkxal",
+    "id": "mjvq30wb-0x4vcjlv22ls",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 200000,
+    "unit_price": 200000,
+    "updated_at": "2026-01-01T17:32:17.099Z"
+  },
+  {
+    "_firebase_id": "mjwwzjpq-3brdr7wecvm",
+    "created_at": "2026-01-02T13:33:18.350Z",
+    "dispatch_record_id": "mjwws32i-y00xchrqqkd",
+    "id": "mjwwzjpq-3brdr7wecvm",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 100000,
+    "unit_price": 100000,
+    "updated_at": "2026-01-02T13:33:18.350Z"
+  },
+  {
+    "_firebase_id": "mjwx9jil-0qzcy6xq0zcr",
+    "created_at": "2026-01-02T13:41:04.653Z",
+    "dispatch_record_id": "mjwx5xik-tcofpglpk8h",
+    "id": "mjwx9jil-0qzcy6xq0zcr",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 100000,
+    "unit_price": 100000,
+    "updated_at": "2026-01-02T13:41:04.653Z"
+  },
+  {
+    "_firebase_id": "mjwxdrrp-l1dc0adeck",
+    "created_at": "2026-01-02T13:44:21.973Z",
+    "dispatch_record_id": "mjwx5xik-tcofpglpk8h",
+    "id": "mjwxdrrp-l1dc0adeck",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-kws7c4uuoq9",
+    "total_amount": 50000,
+    "unit_price": 50000,
+    "updated_at": "2026-01-02T13:44:21.973Z"
+  },
+  {
+    "_firebase_id": "mjy7et0q-40ql5ezx5gn",
+    "created_at": "2026-01-03T11:12:52.586Z",
+    "dispatch_record_id": "mjl9vmrw-4paqtg8hyf",
+    "id": "mjy7et0q-40ql5ezx5gn",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 230000,
+    "unit_price": 230000,
+    "updated_at": "2026-01-03T11:12:52.586Z"
+  },
+  {
+    "_firebase_id": "mjygrlqk-zquh3gkgrjr",
+    "created_at": "2026-01-03T15:34:46.220Z",
+    "dispatch_record_id": "mjyf8xe3-0o94lak3rsm",
+    "id": "mjygrlqk-zquh3gkgrjr",
+    "quantity": 1,
+    "service_id": "mjbgk8xq-lmlccnzg59h",
+    "total_amount": 12333,
+    "unit_price": 12333,
+    "updated_at": "2026-01-03T15:34:46.220Z"
+  }
+]
