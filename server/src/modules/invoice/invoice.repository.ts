@@ -3,7 +3,7 @@
  * Handles all PostgreSQL operations for invoice records via Supabase
  */
 import { invoices, operators } from '../../db/schema/index.js'
-import { DrizzleRepository, eq, desc, and, gte, lte } from '../../shared/database/drizzle-repository'
+import { DrizzleRepository, eq, desc, and, gte, lte } from '../../shared/database/drizzle-repository.js'
 
 // Infer types from schema
 type Invoice = typeof invoices.$inferSelect

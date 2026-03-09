@@ -5,7 +5,7 @@
  */
 import { db, withTransaction } from '../../db/drizzle.js'
 import { dispatchRecords } from '../../db/schema/index.js'
-import { DrizzleRepository, eq, and, gte, lte, desc, sql } from '../../shared/database/drizzle-repository'
+import { DrizzleRepository, eq, and, gte, lte, desc, sql } from '../../shared/database/drizzle-repository.js'
 import type { DispatchFilters } from './dispatch-types'
 
 // Infer types from schema

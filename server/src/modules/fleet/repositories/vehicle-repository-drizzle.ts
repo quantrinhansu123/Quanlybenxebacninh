@@ -3,8 +3,8 @@
  * Handles all PostgreSQL operations for vehicle records via Supabase
  */
 import { vehicles, operators, vehicleTypes } from '../../../db/schema/index.js'
-import { DrizzleRepository, eq, and, desc, sql } from '../../../shared/database/drizzle-repository'
-import { VehicleAPI, mapVehicle } from '../../../shared/mappers/entity-mappers'
+import { DrizzleRepository, eq, and, desc, sql } from '../../../shared/database/drizzle-repository.js'
+import { VehicleAPI, mapVehicle } from '../../../shared/mappers/entity-mappers.js'
 
 // Infer types from schema
 type Vehicle = typeof vehicles.$inferSelect
