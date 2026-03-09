@@ -2,7 +2,7 @@
  * Import Vehicle Badges from Firebase Export
  * Level 3: Depends on vehicles
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { vehicleBadges, vehicles } from '../../schema/index.js'
 import { eq } from 'drizzle-orm'
 import { readFileSync } from 'fs'

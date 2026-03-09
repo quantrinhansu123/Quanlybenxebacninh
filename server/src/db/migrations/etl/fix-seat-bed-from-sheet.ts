@@ -10,7 +10,7 @@
  * Usage: npx tsx fix-seat-bed-from-sheet.ts [--dry-run]
  */
 import 'dotenv/config'
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { vehicles } from '../../schema/index.js'
 import { sql } from 'drizzle-orm'
 

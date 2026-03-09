@@ -5,7 +5,7 @@
  * Note: Using @ts-ignore for Drizzle ORM generic type complexity
  * This is a known issue with Drizzle when using abstract base classes
  */
-import { db } from '../../db/drizzle'
+import { db } from '../../db/drizzle.js'
 import { eq, sql, and, or, gte, lte, like, desc, asc } from 'drizzle-orm'
 import { PgTable, PgColumn } from 'drizzle-orm/pg-core'
 import { DatabaseError, NotFoundError } from '../errors/app-error'

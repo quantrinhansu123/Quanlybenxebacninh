@@ -5,7 +5,7 @@
  * Usage: npm run etl:validate [export-dir]
  */
 import 'dotenv/config'
-import { db, closeDrizzleConnection } from '../../drizzle'
+import { db, closeDrizzleConnection } from '../../drizzle.js'
 import { sql } from 'drizzle-orm'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'

@@ -2,7 +2,7 @@
  * Import Invoices from Firebase Export
  * Level 4: Depends on dispatch_records, operators
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { invoices } from '../../schema/index.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'

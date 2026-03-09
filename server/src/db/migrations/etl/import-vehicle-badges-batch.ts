@@ -2,7 +2,7 @@
  * Batch Import Vehicle Badges from Firebase Export
  * OPTIMIZED VERSION: Pre-load mappings, batch insert
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { vehicleBadges, vehicles, idMappings, routes } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'

@@ -2,7 +2,7 @@
  * Import Vehicle Types from Firebase Export
  * Level 1: No dependencies
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { vehicleTypes } from '../../schema/index.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'

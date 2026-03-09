@@ -2,7 +2,7 @@
  * Import Dispatch Records from Firebase Export
  * Level 3: Depends on vehicles, drivers, routes, users, operators
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { dispatchRecords } from '../../schema/index.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'

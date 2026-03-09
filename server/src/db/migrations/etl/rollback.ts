@@ -5,7 +5,7 @@
  * Usage: npm run etl:rollback -- --confirm
  */
 import 'dotenv/config'
-import { db, closeDrizzleConnection } from '../../drizzle'
+import { db, closeDrizzleConnection } from '../../drizzle.js'
 import { sql } from 'drizzle-orm'
 import { ensureDbInitialized } from './etl-helpers'
 

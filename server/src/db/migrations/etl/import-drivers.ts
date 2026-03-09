@@ -2,7 +2,7 @@
  * Import Drivers from Firebase Export
  * Level 2: Depends on operators
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { drivers } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'

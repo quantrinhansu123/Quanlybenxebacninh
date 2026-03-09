@@ -8,7 +8,7 @@
  * 3. Batch insert (100 records per batch)
  * 4. Batch store ID mappings
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { vehicles, idMappings } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'

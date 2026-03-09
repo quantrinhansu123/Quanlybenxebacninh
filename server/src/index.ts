@@ -64,9 +64,9 @@ app.use(cors({
 
     // In development, allow localhost
     if (!isProduction) {
-      if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
-        return callback(null, true)
-      }
+    if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
+      return callback(null, true)
+    }
       // Check dev allowed origins
       if (DEV_ALLOWED_ORIGINS.includes(normalizedOrigin)) {
         return callback(null, true)

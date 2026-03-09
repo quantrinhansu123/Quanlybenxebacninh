@@ -3,7 +3,7 @@
  * Handles all PostgreSQL operations for dispatch records via Supabase
  * Includes in-memory caching for fast reads
  */
-import { db, withTransaction } from '../../db/drizzle'
+import { db, withTransaction } from '../../db/drizzle.js'
 import { dispatchRecords } from '../../db/schema/index.js'
 import { DrizzleRepository, eq, and, gte, lte, desc, sql } from '../../shared/database/drizzle-repository'
 import type { DispatchFilters } from './dispatch-types'

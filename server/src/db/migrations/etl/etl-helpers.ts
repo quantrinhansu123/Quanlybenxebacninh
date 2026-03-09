@@ -2,7 +2,7 @@
  * ETL Helper Utilities
  * Shared functions for Firebase to Supabase migration
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { idMappings } from '../../schema/index.js'
 import { eq, and } from 'drizzle-orm'
 import { promises as fs } from 'fs'

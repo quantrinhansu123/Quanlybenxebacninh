@@ -2,7 +2,7 @@
  * Import Operators from Firebase Export
  * Level 1: No dependencies
  */
-import { db } from '../../drizzle'
+import { db } from '../../drizzle.js'
 import { operators } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
