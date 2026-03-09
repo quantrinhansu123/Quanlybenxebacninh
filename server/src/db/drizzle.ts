@@ -5,7 +5,7 @@
 import 'dotenv/config' // Load env vars before anything else
 import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
-import * as schema from './schema'
+import * as schema from './schema/index.js'
 
 // Connection string from environment
 const connectionString = process.env.DATABASE_URL

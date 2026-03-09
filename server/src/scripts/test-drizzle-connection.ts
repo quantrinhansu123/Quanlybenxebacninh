@@ -4,7 +4,7 @@
  */
 import 'dotenv/config'
 import { testDrizzleConnection, closeDrizzleConnection, db } from '../db/drizzle'
-import { operators } from '../db/schema'
+import { operators } from '../db/schema/index.js'
 import { sql } from 'drizzle-orm'
 
 async function main() {

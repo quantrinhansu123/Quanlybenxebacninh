@@ -6,7 +6,7 @@ import { eq, desc, asc, and, or, inArray } from 'drizzle-orm'
 import type { PgTable } from 'drizzle-orm/pg-core'
 import type { SQL } from 'drizzle-orm'
 import { db } from '../drizzle'
-import * as schema from '../schema'
+import * as schema from '../schema/index.js'
 
 // Re-export db and operators for convenience
 export { db }

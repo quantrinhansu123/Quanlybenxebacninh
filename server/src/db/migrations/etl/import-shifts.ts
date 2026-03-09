@@ -3,7 +3,7 @@
  * Level 1: No dependencies
  */
 import { db } from '../../drizzle'
-import { shifts } from '../../schema'
+import { shifts } from '../../schema/index.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import {

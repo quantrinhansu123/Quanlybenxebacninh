@@ -4,7 +4,7 @@
  * Includes in-memory caching for fast reads
  */
 import { db, withTransaction } from '../../db/drizzle'
-import { dispatchRecords } from '../../db/schema'
+import { dispatchRecords } from '../../db/schema/index.js'
 import { DrizzleRepository, eq, and, gte, lte, desc, sql } from '../../shared/database/drizzle-repository'
 import type { DispatchFilters } from './dispatch-types'
 

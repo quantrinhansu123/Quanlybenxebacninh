@@ -3,7 +3,7 @@
  * Shared functions for Firebase to Supabase migration
  */
 import { db } from '../../drizzle'
-import { idMappings } from '../../schema'
+import { idMappings } from '../../schema/index.js'
 import { eq, and } from 'drizzle-orm'
 import { promises as fs } from 'fs'
 import * as path from 'path'

@@ -9,7 +9,7 @@
  * 4. Batch store ID mappings
  */
 import { db } from '../../drizzle'
-import { vehicles, idMappings } from '../../schema'
+import { vehicles, idMappings } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { eq } from 'drizzle-orm'

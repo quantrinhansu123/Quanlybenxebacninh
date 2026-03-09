@@ -3,7 +3,7 @@
  * Level 1: No dependencies
  */
 import { db } from '../../drizzle'
-import { operators } from '../../schema'
+import { operators } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import {

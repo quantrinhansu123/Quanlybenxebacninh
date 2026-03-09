@@ -11,7 +11,7 @@
  */
 import 'dotenv/config'
 import { db } from '../../drizzle'
-import { vehicles } from '../../schema'
+import { vehicles } from '../../schema/index.js'
 import { sql } from 'drizzle-orm'
 
 const SHEET_CSV_URL =

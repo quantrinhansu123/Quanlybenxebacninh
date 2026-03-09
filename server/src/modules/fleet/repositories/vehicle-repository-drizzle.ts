@@ -2,7 +2,7 @@
  * Vehicle Repository - Drizzle ORM Version
  * Handles all PostgreSQL operations for vehicle records via Supabase
  */
-import { vehicles, operators, vehicleTypes } from '../../../db/schema'
+import { vehicles, operators, vehicleTypes } from '../../../db/schema/index.js'
 import { DrizzleRepository, eq, and, desc, sql } from '../../../shared/database/drizzle-repository'
 import { VehicleAPI, mapVehicle } from '../../../shared/mappers/entity-mappers'
 

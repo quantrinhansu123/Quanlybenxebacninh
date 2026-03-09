@@ -3,7 +3,7 @@
  * Level 3: Depends on vehicles, drivers, routes, users, operators
  */
 import { db } from '../../drizzle'
-import { dispatchRecords } from '../../schema'
+import { dispatchRecords } from '../../schema/index.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import {

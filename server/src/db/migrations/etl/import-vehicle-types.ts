@@ -3,7 +3,7 @@
  * Level 1: No dependencies
  */
 import { db } from '../../drizzle'
-import { vehicleTypes } from '../../schema'
+import { vehicleTypes } from '../../schema/index.js'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import {

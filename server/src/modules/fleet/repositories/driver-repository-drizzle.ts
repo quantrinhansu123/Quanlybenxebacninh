@@ -2,7 +2,7 @@
  * Driver Repository - Drizzle ORM Version
  * Handles all PostgreSQL operations for driver records via Supabase
  */
-import { drivers, operators } from '../../../db/schema'
+import { drivers, operators } from '../../../db/schema/index.js'
 import { DrizzleRepository, eq, desc } from '../../../shared/database/drizzle-repository'
 import { DriverAPI } from '../../../shared/mappers/entity-mappers'
 

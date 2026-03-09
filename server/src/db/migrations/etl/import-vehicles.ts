@@ -3,7 +3,7 @@
  * Level 2: Depends on operators, vehicle_types
  */
 import { db } from '../../drizzle'
-import { vehicles } from '../../schema'
+import { vehicles } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import {

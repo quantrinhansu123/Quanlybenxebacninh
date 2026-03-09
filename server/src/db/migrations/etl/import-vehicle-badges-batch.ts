@@ -3,7 +3,7 @@
  * OPTIMIZED VERSION: Pre-load mappings, batch insert
  */
 import { db } from '../../drizzle'
-import { vehicleBadges, vehicles, idMappings, routes } from '../../schema'
+import { vehicleBadges, vehicles, idMappings, routes } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { eq } from 'drizzle-orm'

@@ -3,7 +3,7 @@
  * Level 1: No dependencies
  */
 import { db } from '../../drizzle'
-import { routes } from '../../schema'
+import { routes } from '../../schema/index.js'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { storeIdMapping, parseBoolean, parseDate, logProgress, ensureDbInitialized } from './etl-helpers'
