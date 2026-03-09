@@ -2,7 +2,18 @@
 const cache = new Map<string, string>()
 const pending = new Map<string, Promise<string>>()
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+// Auto-detect API URL (same logic as api.ts)
+const getApiUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
+  }
+  if (import.meta.env.PROD) {
+    return 'https://quanlybenxebacninh-server.vercel.app/api'
+  }
+  return 'http://localhost:3000/api'
+}
+
+const API_BASE = getApiUrl()
 
 /** Build proxy URL to bypass CORS for external PDF files */
 function getProxyUrl(fileUrl: string): string {
