@@ -4,10 +4,10 @@
  */
 import { pgTable, uuid, varchar, text, timestamp, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
-import { vehicles } from './vehicles'
-import { drivers } from './drivers'
-import { dispatchRecords } from './dispatch-records'
-import { users } from './users'
+import { vehicles } from './vehicles.js'
+import { drivers } from './drivers.js'
+import { dispatchRecords } from './dispatch-records.js'
+import { users } from './users.js'
 
 export const violationTypes = pgTable('violation_types', {
   id: uuid('id').primaryKey().defaultRandom(),

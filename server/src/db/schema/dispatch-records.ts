@@ -5,12 +5,12 @@
  */
 import { pgTable, uuid, varchar, integer, decimal, text, boolean, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
-import { vehicles } from './vehicles'
-import { drivers } from './drivers'
-import { routes } from './routes'
-import { operators } from './operators'
-import { users } from './users'
-import { shifts } from './shifts'
+import { vehicles } from './vehicles.js'
+import { drivers } from './drivers.js'
+import { routes } from './routes.js'
+import { operators } from './operators.js'
+import { users } from './users.js'
+import { shifts } from './shifts.js'
 
 export const dispatchRecords = pgTable('dispatch_records', {
   id: uuid('id').primaryKey().defaultRandom(),

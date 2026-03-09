@@ -4,8 +4,8 @@
  */
 import { pgTable, uuid, varchar, date, text, timestamp, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
-import { vehicles } from './vehicles'
-import { users } from './users'
+import { vehicles } from './vehicles.js'
+import { users } from './users.js'
 
 export const vehicleDocuments = pgTable('vehicle_documents', {
   id: uuid('id').primaryKey().defaultRandom(),

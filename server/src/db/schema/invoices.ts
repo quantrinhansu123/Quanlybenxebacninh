@@ -4,8 +4,8 @@
  */
 import { pgTable, uuid, varchar, decimal, text, boolean, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
-import { dispatchRecords } from './dispatch-records'
-import { operators } from './operators'
+import { dispatchRecords } from './dispatch-records.js'
+import { operators } from './operators.js'
 
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey().defaultRandom(),

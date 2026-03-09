@@ -51,7 +51,7 @@ const DEV_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5173',
 ]
 
-// Middleware
+// CORS middleware - MUST be first to handle preflight requests
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl, or server-to-server)
@@ -76,11 +76,13 @@ app.use(cors({
     // In production, check CORS_ORIGIN env var first (most specific)
     const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(o => o.trim()).filter(o => o)
     if (envOrigins.length > 0 && envOrigins.includes(normalizedOrigin)) {
+      console.log(`[CORS] Allowed origin from CORS_ORIGIN: ${normalizedOrigin}`)
       return callback(null, true)
     }
 
     // Allow Vercel domains (both client and server) - useful for preview deployments
     if (normalizedOrigin.includes('.vercel.app')) {
+      console.log(`[CORS] Allowed Vercel domain: ${normalizedOrigin}`)
       return callback(null, true)
     }
 
@@ -98,16 +100,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Length', 'Content-Type'],
   maxAge: 86400, // 24 hours
-  preflightContinue: false,
   optionsSuccessStatus: 204,
 }))
+
+// Body parsing middleware
 app.use(bodyParser.json({ limit: '5mb' }))
 app.use(express.urlencoded({ extended: true }))
-
-// Handle preflight OPTIONS requests explicitly
-app.options('*', (_req: Request, res: Response) => {
-  res.status(204).end()
-})
 
 // Health check
 app.get('/health', (_req: Request, res: Response) => {

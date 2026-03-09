@@ -4,7 +4,7 @@
  */
 import { pgTable, uuid, varchar, boolean, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
-import { operators } from './operators'
+import { operators } from './operators.js'
 
 export const drivers = pgTable('drivers', {
   id: uuid('id').primaryKey().defaultRandom(),

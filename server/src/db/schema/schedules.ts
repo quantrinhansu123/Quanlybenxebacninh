@@ -3,8 +3,8 @@
  * Operating schedules for routes by operators
  */
 import { pgTable, uuid, varchar, time, jsonb, boolean, timestamp, index } from 'drizzle-orm/pg-core'
-import { routes } from './routes'
-import { operators } from './operators'
+import { routes } from './routes.js'
+import { operators } from './operators.js'
 
 export const schedules = pgTable('schedules', {
   id: uuid('id').primaryKey().defaultRandom(),
