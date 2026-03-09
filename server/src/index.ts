@@ -39,16 +39,16 @@ const app = express()
 // Use APP_PORT instead of PORT (reserved in Firebase Functions)
 const PORT = Number(process.env.APP_PORT) || 3000
 
-// CORS Configuration - Allow common domains
-const ALLOWED_ORIGINS = [
+// CORS Configuration
+// In production, use CORS_ORIGIN env var
+// In development, allow localhost and common dev domains
+const isProduction = process.env.NODE_ENV === 'production'
+
+// Only include localhost origins for development
+const DEV_ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
-  // Firebase Hosting (legacy)
-  'https://benxe-management-20251218.web.app',
-  'https://benxe-management-20251218.firebaseapp.com',
-  // Vercel client domains
-  'https://quanlybenxebacninhclient.vercel.app',
 ]
 
 // Middleware
@@ -62,29 +62,30 @@ app.use(cors({
     // Normalize request origin (remove trailing slash)
     const normalizedOrigin = origin.replace(/\/$/, '')
 
-    // Allow localhost in any environment
-    if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
+    // In development, allow localhost
+    if (!isProduction) {
+      if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
+        return callback(null, true)
+      }
+      // Check dev allowed origins
+      if (DEV_ALLOWED_ORIGINS.includes(normalizedOrigin)) {
+        return callback(null, true)
+      }
+    }
+
+    // In production, check CORS_ORIGIN env var first (most specific)
+    const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(o => o.trim()).filter(o => o)
+    if (envOrigins.length > 0 && envOrigins.includes(normalizedOrigin)) {
       return callback(null, true)
     }
 
-    // Allow Firebase Hosting domains
-    if (normalizedOrigin.includes('.web.app') || normalizedOrigin.includes('.firebaseapp.com')) {
-      return callback(null, true)
-    }
-
-    // Allow Vercel domains (both client and server)
+    // Allow Vercel domains (both client and server) - useful for preview deployments
     if (normalizedOrigin.includes('.vercel.app')) {
       return callback(null, true)
     }
 
-    // Check explicit allowed origins
-    if (ALLOWED_ORIGINS.includes(normalizedOrigin)) {
-      return callback(null, true)
-    }
-
-    // Allow any origin from env CORS_ORIGIN
-    const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(o => o.trim()).filter(o => o)
-    if (envOrigins.length > 0 && envOrigins.includes(normalizedOrigin)) {
+    // Allow Firebase Hosting domains (legacy support)
+    if (normalizedOrigin.includes('.web.app') || normalizedOrigin.includes('.firebaseapp.com')) {
       return callback(null, true)
     }
 
