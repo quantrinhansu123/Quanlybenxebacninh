@@ -121,19 +121,19 @@ export default function ThanhToan() {
           case 'lien-tinh':
             // Matches: "Liên tỉnh", "Tuyến vận tải liên tỉnh", "Intercity"
             return tripTypeLower.includes('liên tỉnh') ||
-                   tripTypeLower.includes('lien tinh') ||
-                   tripTypeLower.includes('intercity');
+              tripTypeLower.includes('lien tinh') ||
+              tripTypeLower.includes('intercity');
           case 'noi-tinh':
             // Matches: "Tuyến vận tải nội tỉnh", "Nội tỉnh"
             return tripTypeLower.includes('nội tỉnh') ||
-                   tripTypeLower.includes('noi tinh');
+              tripTypeLower.includes('noi tinh');
           case 'khac':
             // Other types: "Đã công bố", "Tuyến mới", etc.
             return !tripTypeLower.includes('liên tỉnh') &&
-                   !tripTypeLower.includes('lien tinh') &&
-                   !tripTypeLower.includes('intercity') &&
-                   !tripTypeLower.includes('nội tỉnh') &&
-                   !tripTypeLower.includes('noi tinh');
+              !tripTypeLower.includes('lien tinh') &&
+              !tripTypeLower.includes('intercity') &&
+              !tripTypeLower.includes('nội tỉnh') &&
+              !tripTypeLower.includes('noi tinh');
           default:
             return true;
         }
@@ -304,9 +304,10 @@ export default function ThanhToan() {
       invalidateCache('thanhtoan-dispatch-list');
       toast.success("Thanh toán thành công!");
       navigate("/thanh-toan");
-    } catch (error) {
+    } catch (error: any) {
       console.error("[ThanhToan] Failed to process payment:", error);
-      toast.error("Không thể xử lý thanh toán");
+      const serverError = error.response?.data?.error || "Không thể xử lý thanh toán";
+      toast.error(serverError);
     } finally {
       setIsProcessing(false);
     }

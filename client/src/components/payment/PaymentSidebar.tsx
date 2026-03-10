@@ -149,12 +149,20 @@ export function PaymentSidebar({
           <Button
             className="w-full gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 h-12 text-lg"
             onClick={onPayment}
-            disabled={isProcessing}
+            disabled={
+              isProcessing ||
+              record.currentStatus !== 'permit_issued'
+            }
           >
             {isProcessing ? (
               <>
                 <RefreshCw className="w-5 h-5 animate-spin" />
                 Đang xử lý...
+              </>
+            ) : (record.currentStatus === 'paid' || record.currentStatus === 'departure_ordered' || record.currentStatus === 'departed') ? (
+              <>
+                <CheckCircle2 className="w-5 h-5" />
+                Đã thanh toán
               </>
             ) : (
               <>
@@ -163,6 +171,20 @@ export function PaymentSidebar({
               </>
             )}
           </Button>
+          {record.currentStatus !== 'permit_issued' &&
+            record.currentStatus !== 'paid' &&
+            record.currentStatus !== 'departure_ordered' &&
+            record.currentStatus !== 'departed' &&
+            record.currentStatus !== 'cancelled' && (
+              <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1 mt-2">
+                <Banknote className="w-3 h-3" /> Cần được cấp lệnh trước khi thanh toán
+              </p>
+            )}
+          {record.currentStatus === 'cancelled' && (
+            <p className="text-xs text-red-600 text-center font-medium mt-2">
+              Đơn hàng này đã bị hủy bỏ
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

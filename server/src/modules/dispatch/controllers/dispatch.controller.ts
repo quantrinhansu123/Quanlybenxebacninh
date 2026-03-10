@@ -74,7 +74,7 @@ export const getAllDispatchRecords = async (req: Request, res: Response) => {
     return res.json(mapDispatchListToAPI(records))
   } catch (error) {
     console.error('Error fetching dispatch records:', error)
-    return res.status(500).json({ error: 'Failed to fetch dispatch records' })
+    return res.status(500).json({ error: 'Không thể tải danh sách đơn điều độ' })
   }
 }
 
@@ -87,13 +87,13 @@ export const getDispatchRecordById = async (req: Request, res: Response) => {
     const record = await dispatchRepository.findById(id)
 
     if (!record) {
-      return res.status(404).json({ error: 'Dispatch record not found' })
+      return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
     }
 
     return res.json(mapDispatchToAPI(record))
   } catch (error) {
     console.error('Error fetching dispatch record:', error)
-    return res.status(500).json({ error: 'Failed to fetch dispatch record' })
+    return res.status(500).json({ error: 'Không thể tải thông tin đơn điều độ' })
   }
 }
 
@@ -157,7 +157,7 @@ export const createDispatchRecord = async (req: AuthRequest, res: Response) => {
     if (isValidationError(error)) {
       return res.status(400).json({ error: getErrorMessage(error) })
     }
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to create dispatch record') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể tạo đơn điều độ') })
   }
 }
 
@@ -173,7 +173,7 @@ export const recordPassengerDrop = async (req: AuthRequest, res: Response) => {
 
     // Fetch current record to validate status transition
     const currentRecord = await dispatchRepository.findById(id)
-    if (!currentRecord) return res.status(404).json({ error: 'Dispatch record not found' })
+    if (!currentRecord) return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
 
     // Validate status transition
     validateStatusTransition(currentRecord.status, DISPATCH_STATUS.PASSENGERS_DROPPED)
@@ -195,11 +195,11 @@ export const recordPassengerDrop = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Passenger drop recorded', dispatch: record })
+    return res.json({ message: 'Đã ghi nhận trả khách', dispatch: record })
   } catch (error: unknown) {
     console.error('Error recording passenger drop:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to record passenger drop') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể ghi nhận trả khách') })
   }
 }
 
@@ -214,7 +214,7 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
     const userName = await fetchUserName(userId)
 
     const currentRecord = await dispatchRepository.findById(id)
-    if (!currentRecord) return res.status(404).json({ error: 'Dispatch record not found' })
+    if (!currentRecord) return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
 
     // Validate status transition based on permit decision
     const targetStatus = input.permitStatus === 'approved' ? DISPATCH_STATUS.PERMIT_ISSUED : DISPATCH_STATUS.PERMIT_REJECTED
@@ -283,11 +283,11 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
 
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
-    return res.json({ message: 'Permit processed', dispatch: record })
+    return res.json({ message: 'Đã xử lý cấp phép', dispatch: record })
   } catch (error: unknown) {
     console.error('Error issuing permit:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to issue permit') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể cấp phép') })
   }
 }
 
@@ -304,7 +304,7 @@ export const processPayment = async (req: AuthRequest, res: Response) => {
     // Check if record exists and validate status transition
     const currentRecord = await dispatchRepository.findById(id)
     if (!currentRecord) {
-      return res.status(404).json({ error: 'Dispatch record not found' })
+      return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
     }
 
     // Validate invoice number uniqueness
@@ -335,11 +335,18 @@ export const processPayment = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Payment processed', dispatch: record })
+    return res.json({ message: 'Đã xử lý thanh toán', dispatch: record })
   } catch (error: unknown) {
     console.error('Error processing payment:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to process payment') })
+
+    // Check if it's a domain logic error (like invalid status transition)
+    const errorMessage = getErrorMessage(error)
+    if (errorMessage.includes('Invalid status transition') || errorMessage.includes('Invalid current status')) {
+      return res.status(400).json({ error: errorMessage })
+    }
+
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể xử lý thanh toán') })
   }
 }
 
@@ -355,7 +362,7 @@ export const issueDepartureOrder = async (req: AuthRequest, res: Response) => {
 
     // Fetch current record to validate status transition
     const currentRecord = await dispatchRepository.findById(id)
-    if (!currentRecord) return res.status(404).json({ error: 'Dispatch record not found' })
+    if (!currentRecord) return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
 
     // Validate status transition
     validateStatusTransition(currentRecord.status, DISPATCH_STATUS.DEPARTURE_ORDERED)
@@ -372,11 +379,11 @@ export const issueDepartureOrder = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Departure order issued', dispatch: record })
+    return res.json({ message: 'Đã điều lệnh xuất bến', dispatch: record })
   } catch (error: unknown) {
     console.error('Error issuing departure order:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to issue departure order') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể điều lệnh xuất bến') })
   }
 }
 
@@ -392,7 +399,7 @@ export const recordExit = async (req: AuthRequest, res: Response) => {
 
     // Fetch current record to validate status transition
     const currentRecord = await dispatchRepository.findById(id)
-    if (!currentRecord) return res.status(404).json({ error: 'Dispatch record not found' })
+    if (!currentRecord) return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
 
     // Validate status transition
     validateStatusTransition(currentRecord.status, DISPATCH_STATUS.DEPARTED)
@@ -412,11 +419,11 @@ export const recordExit = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Exit recorded', dispatch: record })
+    return res.json({ message: 'Đã ghi nhận xuất bến', dispatch: record })
   } catch (error: unknown) {
     console.error('Error recording exit:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to record exit') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể ghi nhận xuất bến') })
   }
 }
 
@@ -430,20 +437,20 @@ export const updateEntryImage = async (req: AuthRequest, res: Response) => {
 
     // Allow null to remove image, or string to set image
     if (entryImageUrl !== null && typeof entryImageUrl !== 'string') {
-      return res.status(400).json({ error: 'entryImageUrl must be a string or null' })
+      return res.status(400).json({ error: 'entryImageUrl phải là chuỗi hoặc null' })
     }
 
     const record = await dispatchRepository.update(id, {
       entryImageUrl: entryImageUrl,
     })
 
-    if (!record) return res.status(404).json({ error: 'Dispatch record not found' })
+    if (!record) return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
 
-    const message = entryImageUrl ? 'Entry image updated' : 'Entry image removed'
+    const message = entryImageUrl ? 'Đã cập nhật ảnh vào bến' : 'Đã xóa ảnh vào bến'
     return res.json({ message, dispatch: mapDispatchToAPI(record) })
   } catch (error: unknown) {
     console.error('Error updating entry image:', error)
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to update entry image') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể cập nhật ảnh vào bến') })
   }
 }
 
@@ -456,7 +463,7 @@ export const deleteDispatchRecord = async (req: AuthRequest, res: Response) => {
 
     const existingRecord = await dispatchRepository.findById(id)
     if (!existingRecord) {
-      return res.status(404).json({ error: 'Dispatch record not found' })
+      return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
     }
 
     // Only allow deletion of records that haven't departed yet
@@ -465,10 +472,10 @@ export const deleteDispatchRecord = async (req: AuthRequest, res: Response) => {
     }
 
     await dispatchRepository.delete(id)
-    return res.json({ message: 'Dispatch record deleted successfully' })
+    return res.json({ message: 'Đã xóa đơn điều độ thành công' })
   } catch (error: unknown) {
     console.error('Error deleting dispatch record:', error)
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to delete dispatch record') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể xóa đơn điều độ') })
   }
 }
 
@@ -484,7 +491,7 @@ export const cancelDispatchRecord = async (req: AuthRequest, res: Response) => {
 
     const existingRecord = await dispatchRepository.findById(id)
     if (!existingRecord) {
-      return res.status(404).json({ error: 'Dispatch record not found' })
+      return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
     }
 
     // Already cancelled
@@ -508,7 +515,7 @@ export const cancelDispatchRecord = async (req: AuthRequest, res: Response) => {
     })
 
     if (!updatedRecord) {
-      return res.status(500).json({ error: 'Failed to update record' })
+      return res.status(500).json({ error: 'Không thể cập nhật record' })
     }
 
     return res.json({
@@ -517,7 +524,7 @@ export const cancelDispatchRecord = async (req: AuthRequest, res: Response) => {
     })
   } catch (error: unknown) {
     console.error('Error cancelling dispatch record:', error)
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to cancel dispatch record') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể hủy bỏ đơn điều độ') })
   }
 }
 
@@ -533,14 +540,14 @@ export const updateDispatchRecord = async (req: AuthRequest, res: Response) => {
     // Check if record exists
     const existingRecord = await dispatchRepository.findById(id)
     if (!existingRecord) {
-      return res.status(404).json({ error: 'Dispatch record not found' })
+      return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
     }
 
     // Only allow editing of records in early stages
     const editableStatuses = ['entered', 'passengers_dropped']
     if (!editableStatuses.includes(existingRecord.status)) {
       return res.status(400).json({
-        error: 'Cannot edit a record that has already been permitted or paid'
+        error: 'Không thể chỉnh sửa record đã được cấp phép hoặc thanh toán'
       })
     }
 
@@ -596,13 +603,13 @@ export const updateDispatchRecord = async (req: AuthRequest, res: Response) => {
     // Perform update
     const updatedRecord = await dispatchRepository.update(id, updateData)
     if (!updatedRecord) {
-      return res.status(500).json({ error: 'Failed to update dispatch record' })
+      return res.status(500).json({ error: 'Không thể cập nhật đơn điều độ' })
     }
 
     return res.json(mapDispatchToAPI(updatedRecord))
   } catch (error: unknown) {
     console.error('Error updating dispatch record:', error)
-    return res.status(500).json({ error: getErrorMessage(error, 'Failed to update dispatch record') })
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể cập nhật đơn điều độ') })
   }
 }
 

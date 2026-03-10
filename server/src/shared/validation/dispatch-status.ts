@@ -86,13 +86,19 @@ export function canTransitionStatus(from: DispatchStatusType, to: DispatchStatus
  */
 export function validateStatusTransition(from: string, to: string): void {
   if (!isValidStatus(from)) {
-    throw new Error(`Invalid current status: ${from}`)
+    throw new Error(`Trạng thái hiện tại không hợp lệ: ${from}`)
   }
   if (!isValidStatus(to)) {
-    throw new Error(`Invalid target status: ${to}`)
+    throw new Error(`Trạng thái mục tiêu không hợp lệ: ${to}`)
   }
   if (!canTransitionStatus(from, to)) {
-    throw new Error(`Invalid status transition: ${from} -> ${to}. Valid transitions from ${from}: ${getNextValidStatuses(from).join(', ') || 'none'}`)
+    const fromName = getStatusDisplayName(from as DispatchStatusType)
+    const toName = getStatusDisplayName(to as DispatchStatusType)
+    const validNextNames = getNextValidStatuses(from as DispatchStatusType)
+      .map(s => getStatusDisplayName(s))
+      .join(', ') || 'không có'
+
+    throw new Error(`Không thể chuyển trạng thái từ "${fromName}" sang "${toName}". Các bước tiếp theo hợp lệ: ${validNextNames}`)
   }
 }
 

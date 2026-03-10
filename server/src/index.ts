@@ -54,58 +54,42 @@ const DEV_ALLOWED_ORIGINS = [
 // CORS middleware - MUST be first to handle preflight requests
 app.use(cors({
   origin: (origin, callback) => {
-    // Log all CORS requests for debugging
-    console.log(`[CORS] Request from origin: ${origin || 'no origin'}`)
-    console.log(`[CORS] CORS_ORIGIN env var: ${process.env.CORS_ORIGIN || 'not set'}`)
-    console.log(`[CORS] NODE_ENV: ${process.env.NODE_ENV || 'not set'}`)
-    
     // Allow requests with no origin (like mobile apps, curl, or server-to-server)
     if (!origin) {
-      console.log(`[CORS] Allowed: no origin (server-to-server)`)
       return callback(null, true)
     }
 
     // Normalize request origin (remove trailing slash)
     const normalizedOrigin = origin.replace(/\/$/, '')
-    console.log(`[CORS] Normalized origin: ${normalizedOrigin}`)
 
     // In development, allow localhost
     if (!isProduction) {
       if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
-        console.log(`[CORS] Allowed: localhost (development)`)
         return callback(null, true)
       }
       // Check dev allowed origins
       if (DEV_ALLOWED_ORIGINS.includes(normalizedOrigin)) {
-        console.log(`[CORS] Allowed: dev origin ${normalizedOrigin}`)
         return callback(null, true)
       }
     }
 
     // Check CORS_ORIGIN env var (works in both dev and production)
     const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(o => o.trim()).filter(o => o)
-    console.log(`[CORS] Parsed CORS_ORIGIN origins:`, envOrigins)
-    
+
     if (envOrigins.length > 0 && envOrigins.includes(normalizedOrigin)) {
-      console.log(`[CORS] ✅ Allowed origin from CORS_ORIGIN: ${normalizedOrigin}`)
       return callback(null, true)
     }
 
     // Allow Vercel domains (both client and server) - useful for preview deployments
     if (normalizedOrigin.includes('.vercel.app')) {
-      console.log(`[CORS] ✅ Allowed Vercel domain: ${normalizedOrigin}`)
       return callback(null, true)
     }
 
     // Allow Firebase Hosting domains (legacy support)
     if (normalizedOrigin.includes('.web.app') || normalizedOrigin.includes('.firebaseapp.com')) {
-      console.log(`[CORS] ✅ Allowed Firebase domain: ${normalizedOrigin}`)
       return callback(null, true)
     }
 
-    // Log rejected origin for debugging
-    console.error(`[CORS] ❌ Rejected origin: ${normalizedOrigin}`)
-    console.error(`[CORS] Available origins:`, envOrigins.length > 0 ? envOrigins : 'none (using pattern matching)')
     callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
@@ -167,10 +151,10 @@ export { app }
 // Start server only when running directly (not as Cloud Function or being analyzed)
 // Check multiple environment variables that indicate we're in a Cloud Function context
 const isCloudFunction = process.env.FUNCTION_TARGET ||
-                        process.env.K_SERVICE ||
-                        process.env.FUNCTIONS_EMULATOR ||
-                        process.env.GCLOUD_PROJECT ||
-                        process.env.FIREBASE_CONFIG
+  process.env.K_SERVICE ||
+  process.env.FUNCTIONS_EMULATOR ||
+  process.env.GCLOUD_PROJECT ||
+  process.env.FIREBASE_CONFIG
 
 // Also check if this module is being required/imported (not run directly)
 const isMainModule = process.argv[1]?.includes('index.js') || process.argv[1]?.includes('index.ts')
