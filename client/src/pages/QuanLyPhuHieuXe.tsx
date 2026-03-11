@@ -895,7 +895,6 @@ export default function QuanLyPhuHieuXe() {
                 <TableHead className="text-center text-base">Số phù hiệu</TableHead>
                 <TableHead className="text-center text-base">Biển số xe</TableHead>
                 <TableHead className="text-center text-base">Loại phù hiệu</TableHead>
-                <TableHead className="text-center text-base">Màu phù hiệu</TableHead>
                 <TableHead className="text-center text-base">Ngày cấp</TableHead>
                 <TableHead className="text-center text-base">Ngày hết hạn</TableHead>
                 <TableHead className="text-center text-base">Trạng thái</TableHead>
@@ -905,13 +904,13 @@ export default function QuanLyPhuHieuXe() {
             <TableBody>
               {effectiveLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     Đang tải...
                   </TableCell>
                 </TableRow>
               ) : filteredBadges.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                     Không có dữ liệu
                   </TableCell>
                 </TableRow>
@@ -926,9 +925,6 @@ export default function QuanLyPhuHieuXe() {
                     </TableCell>
                     <TableCell className="text-center text-base">
                       {badge.badge_type || "N/A"}
-                    </TableCell>
-                    <TableCell className="text-center text-base">
-                      {badge.badge_color || "N/A"}
                     </TableCell>
                     <TableCell className="text-center text-base">
                       {formatDate(badge.issue_date)}
