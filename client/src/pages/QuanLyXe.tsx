@@ -38,6 +38,7 @@ import { normalizeFixedRouteRows } from "@/services/appsheet-normalize-fixed-rou
 import { normalizeBusRouteRows } from "@/services/appsheet-normalize-bus-routes"
 import type { Vehicle } from "@/types"
 import { useUIStore } from "@/store/ui.store"
+import { useAuthStore } from "@/store/auth.store"
 import { format, isValid, parseISO } from "date-fns"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 
@@ -81,8 +82,8 @@ const QuickFilter = ({ label, count, active, onClick }: {
   <button
     onClick={onClick}
     className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${active
-        ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
-        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+      ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
+      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
       }`}
   >
     {label}
@@ -115,6 +116,7 @@ export default function QuanLyXe() {
   const [displayMode, setDisplayMode] = useState<"table" | "grid">("table")
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const setTitle = useUIStore((state) => state.setTitle)
+  const currentUser = useAuthStore((state) => state.user)
 
   // Handle browser back button for dialog
   const { handleDialogOpenChange } = useDialogHistory(dialogOpen, setDialogOpen, "vehicleDialogOpen")
@@ -212,26 +214,62 @@ export default function QuanLyXe() {
   useEffect(() => {
     setTitle("Quản lý xe")
     loadData()
-  }, [setTitle])
+  }, [setTitle, currentUser?.benPhuTrachName])
 
   const loadData = async (forceRefresh = false) => {
     setIsLoading(true)
     try {
       // Use optimized unified endpoint - single request for all data
-      const data = await quanlyDataService.getAll(['vehicles', 'operators', 'badges'], forceRefresh)
+      const data = await quanlyDataService.getAll(['vehicles', 'operators', 'badges', 'routes'], forceRefresh)
+
+      const routeLocMap = new Map<string, { start: string, end: string }>();
+      if (data.routes) {
+        for (const r of data.routes) {
+          routeLocMap.set(r.code, {
+            start: (r.startPoint || '').trim().toLowerCase(),
+            end: (r.endPoint || '').trim().toLowerCase()
+          });
+        }
+      }
+
+      const validPlates = new Set<string>();
+      const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
+
+      if (data.badges) {
+        for (const b of data.badges) {
+          const plate = b.license_plate_sheet?.trim().toUpperCase();
+          if (!plate) continue;
+
+          if (userLoc) {
+            const rData = routeLocMap.get(b.route_code) || { start: '', end: '' };
+            if (rData.start === userLoc || rData.end === userLoc) {
+              validPlates.add(plate);
+            }
+          } else {
+            validPlates.add(plate);
+          }
+        }
+      }
 
       // Convert to expected formats
-      const vehicleData: Vehicle[] = (data.vehicles || []).map(v => ({
-        id: v.id,
-        plateNumber: v.plateNumber,
-        seatCapacity: v.seatCapacity,
-        operatorName: v.operatorName || '',
-        vehicleTypeName: v.vehicleType || '',
-        vehicleCategory: v.vehicleCategory || '',
-        inspectionExpiryDate: v.inspectionExpiryDate,
-        isActive: v.isActive,
-        hasBadge: v.hasBadge,
-      } as any))
+      const vehicleData: Vehicle[] = (data.vehicles || [])
+        .filter(v => {
+          if (userLoc) {
+            return validPlates.has(v.plateNumber?.trim().toUpperCase());
+          }
+          return true;
+        })
+        .map(v => ({
+          id: v.id,
+          plateNumber: v.plateNumber,
+          seatCapacity: v.seatCapacity,
+          operatorName: v.operatorName || '',
+          vehicleTypeName: v.vehicleType || '',
+          vehicleCategory: v.vehicleCategory || '',
+          inspectionExpiryDate: v.inspectionExpiryDate,
+          isActive: v.isActive,
+          hasBadge: v.hasBadge,
+        } as any))
 
       setVehicles(vehicleData)
 
@@ -555,8 +593,8 @@ export default function QuanLyXe() {
               <button
                 onClick={() => setDisplayMode("table")}
                 className={`p-2.5 rounded-lg transition-all ${displayMode === "table"
-                    ? "bg-white text-sky-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white text-sky-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
                   }`}
               >
                 <List className="h-4 w-4" />
@@ -564,8 +602,8 @@ export default function QuanLyXe() {
               <button
                 onClick={() => setDisplayMode("grid")}
                 className={`p-2.5 rounded-lg transition-all ${displayMode === "grid"
-                    ? "bg-white text-sky-600 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
+                  ? "bg-white text-sky-600 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
                   }`}
               >
                 <LayoutGrid className="h-4 w-4" />
@@ -575,8 +613,8 @@ export default function QuanLyXe() {
             <Button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               className={`px-4 py-2.5 rounded-xl border transition-all ${showAdvancedFilters || hasActiveFilters
-                  ? "bg-sky-50 border-sky-200 text-sky-600"
-                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                ? "bg-sky-50 border-sky-200 text-sky-600"
+                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
             >
               <SlidersHorizontal className="h-4 w-4 mr-2" />
@@ -756,8 +794,8 @@ export default function QuanLyXe() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${vehicle.isActive
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-100 text-slate-600"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-100 text-slate-600"
                             }`}>
                             <span className={`w-2 h-2 rounded-full ${vehicle.isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
                               }`} />
@@ -837,8 +875,8 @@ export default function QuanLyXe() {
                       </div>
                     </div>
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${vehicle.isActive
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-slate-100 text-slate-600"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-slate-100 text-slate-600"
                       }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${vehicle.isActive ? "bg-emerald-500" : "bg-slate-400"
                         }`} />
@@ -914,8 +952,8 @@ export default function QuanLyXe() {
                         <button
                           onClick={() => setCurrentPage(page)}
                           className={`min-w-[40px] h-10 rounded-xl text-sm font-medium transition-all ${currentPage === page
-                              ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
-                              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                            ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                             }`}
                         >
                           {page}
