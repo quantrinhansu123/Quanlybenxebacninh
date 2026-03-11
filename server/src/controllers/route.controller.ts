@@ -437,11 +437,11 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
         eq(routes.departureStation, stationName),
         eq(routes.arrivalStation, stationName)
       )
-      
+
       if (stationCondition) {
         whereCondition = and(baseCondition, stationCondition) || baseCondition
       }
-      
+
       console.log(`[Routes] Filtering by station: ${stationName}`)
     }
 
@@ -451,7 +451,7 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
       .from(routes)
       .where(whereCondition)
       .orderBy(asc(routes.routeCode))
-    
+
     console.log(`[Routes] Found ${routesData.length} routes`)
 
     const routesFormatted = routesData.map((route) => ({
@@ -501,6 +501,30 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching legacy routes:', error)
     return res.status(500).json({ error: 'Failed to fetch legacy routes' })
+  }
+}
+
+export const getUniqueDepartureStations = async (_req: Request, res: Response) => {
+  try {
+    if (!db) throw new Error('Database not initialized')
+
+    const data = await db
+      .select({ departureStation: routes.departureStation })
+      .from(routes)
+      .groupBy(routes.departureStation)
+      .orderBy(asc(routes.departureStation))
+
+    const stations = data
+      .map((item) => (item.departureStation || '').trim())
+      .filter((station) => !!station)
+
+    // Ensure uniqueness after trimming
+    const uniqueStations = [...new Set(stations)]
+
+    return res.json(uniqueStations)
+  } catch (error) {
+    console.error('Error fetching unique departure stations:', error)
+    return res.status(500).json({ error: 'Failed to fetch unique departure stations' })
   }
 }
 

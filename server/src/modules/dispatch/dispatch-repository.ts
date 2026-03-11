@@ -86,6 +86,9 @@ class DrizzleDispatchRepository extends DrizzleRepository<
     if (filters?.endDate) {
       conditions.push(lte(dispatchRecords.entryTime, new Date(filters.endDate)))
     }
+    if (filters?.entryBy) {
+      conditions.push(eq(dispatchRecords.entryBy, filters.entryBy))
+    }
 
     let query = database.select().from(dispatchRecords)
 

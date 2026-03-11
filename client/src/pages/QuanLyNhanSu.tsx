@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { ActionMenu } from "@/components/ui/ActionMenu"
 import { userService, type User, type CreateUserData, type UpdateUserData } from "@/services/user.service"
 import { locationService } from "@/services/location.service"
+import { routeService } from "@/services/route.service"
 import type { Location } from "@/types"
 
 const ITEMS_PER_PAGE = 50
@@ -49,7 +50,7 @@ export default function QuanLyNhanSu() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
-  
+
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
@@ -75,8 +76,18 @@ export default function QuanLyNhanSu() {
 
   const loadLocations = async () => {
     try {
-      const data = await locationService.getAll(true) // Only active locations
-      setLocations(data)
+      const [locationData, routeStations] = await Promise.all([
+        locationService.getAll(true),
+        routeService.getDepartureStations()
+      ])
+
+      // Only include locations that are present in the routes' departure_station column
+      const filteredLocations = locationData.filter(loc => {
+        const trimmedLocName = loc.name.trim().toLowerCase()
+        return routeStations.some(station => station.trim().toLowerCase() === trimmedLocName)
+      })
+
+      setLocations(filteredLocations)
     } catch (error) {
       console.error("Failed to load locations:", error)
     }
@@ -206,7 +217,7 @@ export default function QuanLyNhanSu() {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Button
               onClick={loadUsers}
@@ -387,11 +398,10 @@ export default function QuanLyNhanSu() {
                         )}
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap inline-block ${
-                          user.isActive 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-rose-100 text-rose-700'
-                        }`}>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap inline-block ${user.isActive
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-rose-100 text-rose-700'
+                          }`}>
                           {user.isActive ? 'Hoạt động' : 'Ngừng hoạt động'}
                         </span>
                       </td>

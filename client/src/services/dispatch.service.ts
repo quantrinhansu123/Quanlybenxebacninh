@@ -6,7 +6,8 @@ export const dispatchService = {
     status?: DispatchStatus,
     vehicleId?: string,
     driverId?: string,
-    routeId?: string
+    routeId?: string,
+    entryBy?: string
   ): Promise<DispatchRecord[]> => {
     try {
       const params = new URLSearchParams()
@@ -14,6 +15,7 @@ export const dispatchService = {
       if (vehicleId) params.append('vehicleId', vehicleId)
       if (driverId) params.append('driverId', driverId)
       if (routeId) params.append('routeId', routeId)
+      if (entryBy) params.append('entryBy', entryBy)
 
       const queryString = params.toString()
       const url = queryString ? `/dispatch?${queryString}` : '/dispatch'

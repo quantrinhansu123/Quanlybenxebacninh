@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { dispatchService } from "@/services/dispatch.service";
 import { useUIStore } from "@/store/ui.store";
+import { useAuthStore } from "@/store/auth.store";
 import { DatePickerRange } from "@/components/DatePickerRange";
 import { formatVietnamDateTime } from "@/lib/vietnam-time";
 
@@ -34,6 +35,7 @@ interface VehicleLogData {
 
 export default function BaoCaoNhatTrinhXe() {
   const setTitle = useUIStore((state) => state.setTitle);
+  const { user } = useAuthStore();
   const [data, setData] = useState<VehicleLogData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -53,9 +55,15 @@ export default function BaoCaoNhatTrinhXe() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Load dispatch records
-      const dispatchRecords = await dispatchService.getAll();
-      
+      // Load dispatch records filtered by user from backend
+      const dispatchRecords = await dispatchService.getAll(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        user?.id
+      );
+
       // Filter by date range if provided
       let filteredRecords = dispatchRecords;
       if (dateRange?.from && dateRange?.to) {
@@ -63,7 +71,7 @@ export default function BaoCaoNhatTrinhXe() {
         fromDate.setHours(0, 0, 0, 0);
         const toDate = new Date(dateRange.to);
         toDate.setHours(23, 59, 59, 999);
-        
+
         filteredRecords = dispatchRecords.filter((record) => {
           if (record.entryTime) {
             const recordDate = new Date(record.entryTime);
@@ -96,7 +104,7 @@ export default function BaoCaoNhatTrinhXe() {
 
   const getPermitStatusLabel = (permitStatus?: string): string => {
     if (!permitStatus) return "Chưa ký";
-    
+
     switch (permitStatus) {
       case "approved":
         return "Đã ký";
@@ -115,23 +123,23 @@ export default function BaoCaoNhatTrinhXe() {
     if (record.metadata?.synced === true) {
       return "Đã đồng bộ";
     }
-    
+
     // If record has transport order code and permit status, consider it synced
     if (record.transportOrderCode && record.permitStatus === "approved") {
       return "Đã đồng bộ";
     }
-    
+
     // If record has been updated recently (within last hour), consider it syncing
     if (record.updatedAt) {
       const updatedTime = new Date(record.updatedAt).getTime();
       const now = new Date().getTime();
       const diffHours = (now - updatedTime) / (1000 * 60 * 60);
-      
+
       if (diffHours < 1) {
         return "Đang đồng bộ";
       }
     }
-    
+
     return "Chưa đồng bộ";
   };
 
@@ -278,7 +286,7 @@ export default function BaoCaoNhatTrinhXe() {
 
       // Write file
       XLSX.writeFile(wb, filename);
-      
+
       toast.success(`Đã xuất Excel thành công: ${filename}`);
     } catch (error) {
       console.error("Failed to export Excel:", error);

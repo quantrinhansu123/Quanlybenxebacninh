@@ -64,12 +64,13 @@ async function updateWithStatusCheck(
  */
 export const getAllDispatchRecords = async (req: Request, res: Response) => {
   try {
-    const { status, vehicleId, driverId, routeId } = req.query
+    const { status, vehicleId, driverId, routeId, entryBy } = req.query
     const records = await dispatchRepository.findAllWithFilters({
       status: status as string,
       vehicleId: vehicleId as string,
       driverId: driverId as string,
       routeId: routeId as string,
+      entryBy: entryBy as string,
     })
     return res.json(mapDispatchListToAPI(records))
   } catch (error) {

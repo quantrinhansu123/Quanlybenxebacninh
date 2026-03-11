@@ -86,6 +86,7 @@ export interface DispatchFilters {
   routeId?: string
   startDate?: string
   endDate?: string
+  entryBy?: string
 }
 
 // Note: Input types are defined in dispatch-validation.ts via Zod schemas

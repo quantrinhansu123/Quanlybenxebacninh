@@ -62,10 +62,10 @@ export const routeService = {
 
       const url = forceRefresh ? '/routes/legacy?refresh=true' : '/routes/legacy'
       const response = await api.get<LegacyRoute[]>(url)
-      
+
       // Update cache
       legacyRoutesCache = { data: response.data, timestamp: Date.now() }
-      
+
       return response.data
     } catch (error) {
       console.error('Error fetching legacy routes:', error)
@@ -93,5 +93,14 @@ export const routeService = {
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/routes/${id}`)
+  },
+  getDepartureStations: async (): Promise<string[]> => {
+    try {
+      const response = await api.get<string[]>('/routes/departure-stations')
+      return response.data
+    } catch (error) {
+      console.error('Error fetching departure stations:', error)
+      return []
+    }
   },
 }
