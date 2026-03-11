@@ -7,6 +7,7 @@ import { quanlyDataService } from "@/services/quanly-data.service";
 import { useUIStore } from "@/store/ui.store";
 import type { DispatchRecord, DispatchStatus, Vehicle } from "@/types";
 import type { DisplayStatus } from "@/components/dispatch/common";
+import { useAuthStore } from "@/store/auth.store";
 
 export type DialogType =
   | "entry"
@@ -30,6 +31,7 @@ export function useDieuDo() {
   const [dialogType, setDialogType] = useState<DialogType>("entry");
   const [isReadOnly, setIsReadOnly] = useState(false);
   const setTitle = useUIStore((state) => state.setTitle);
+  const currentUser = useAuthStore((state) => state.user);
 
   // Restore dialog state from URL params
   // FIX: Require BOTH dispatchId AND action to prevent fallback to "permit"
@@ -57,24 +59,60 @@ export function useDieuDo() {
     loadRecords(true); // Initial load with loading state
     const interval = setInterval(() => loadRecords(false), 30000); // Polling without loading state
     return () => clearInterval(interval);
-  }, [setTitle]);
+  }, [setTitle, currentUser?.benPhuTrachName]);
 
   const loadVehicles = async () => {
     try {
-      // Use cached quanlyDataService (5 min FE cache + 30 min BE cache)
-      const data = await quanlyDataService.getVehicles();
+      // Fetch vehicles, badges and routes to pre-filter vehicles based on user location
+      const data = await quanlyDataService.getAll(['vehicles', 'badges', 'routes']);
+
+      const routeLocMap = new Map<string, { start: string, end: string }>();
+      if (data.routes) {
+        for (const r of data.routes) {
+          routeLocMap.set(r.code, {
+            start: (r.startPoint || '').trim().toLowerCase(),
+            end: (r.endPoint || '').trim().toLowerCase()
+          });
+        }
+      }
+
+      const validPlates = new Set<string>();
+      const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
+
+      if (data.badges) {
+        for (const b of data.badges) {
+          const plate = b.license_plate_sheet?.trim().toUpperCase();
+          if (!plate) continue;
+
+          if (userLoc) {
+            const rData = routeLocMap.get(b.route_code) || { start: '', end: '' };
+            if (rData.start === userLoc || rData.end === userLoc) {
+              validPlates.add(plate);
+            }
+          } else {
+            validPlates.add(plate);
+          }
+        }
+      }
 
       // Map to Vehicle type (only need id + plateNumber + hasBadge for vehicleOptions)
-      const vehicles: Vehicle[] = data.map((v) => ({
-        id: v.id,
-        plateNumber: v.plateNumber,
-        seatCapacity: v.seatCapacity,
-        operatorId: '',
-        operatorName: v.operatorName,
-        isActive: v.isActive,
-        hasBadge: v.hasBadge,
-        hasValidBadge: v.hasValidBadge,
-      }));
+      const vehicles: Vehicle[] = (data.vehicles || [])
+        .filter(v => {
+          if (userLoc) {
+            return validPlates.has(v.plateNumber?.trim().toUpperCase());
+          }
+          return true;
+        })
+        .map((v) => ({
+          id: v.id,
+          plateNumber: v.plateNumber,
+          seatCapacity: v.seatCapacity,
+          operatorId: '',
+          operatorName: v.operatorName,
+          isActive: v.isActive,
+          hasBadge: v.hasBadge,
+          hasValidBadge: v.hasValidBadge,
+        }));
       setVehicles(vehicles);
     } catch (error) {
       console.error("[useDieuDo] Failed to load vehicles:", error);
@@ -123,7 +161,7 @@ export function useDieuDo() {
       params.set("action", type);
       if (readonly) params.set("readonly", "true");
       // Push to history stack so Back button closes dialog instead of navigating away
-    setSearchParams(params);
+      setSearchParams(params);
     } else {
       setSearchParams({}, { replace: true });
     }
@@ -266,7 +304,7 @@ export function useDieuDo() {
         });
       }
     }
-    
+
     return options;
   }, [vehicles, activePlateNumbers, dialogType, selectedRecord]);
 

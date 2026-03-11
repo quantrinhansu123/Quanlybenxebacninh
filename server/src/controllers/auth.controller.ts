@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import jwt, { SignOptions } from 'jsonwebtoken'
 import { db } from '../db/drizzle.js'
 import { users } from '../db/schema/users.js'
+import { locations } from '../db/schema/locations.js'
 import { eq, ilike } from 'drizzle-orm'
 import { loginSchema, registerSchema } from '../utils/validation.js'
 
@@ -27,9 +28,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       validated = loginSchema.parse(req.body)
     } catch (error: any) {
       console.error('❌ Validation error:', error.errors || error.message)
-      res.status(400).json({ 
+      res.status(400).json({
         error: 'Validation failed',
-        details: error.errors || error.message 
+        details: error.errors || error.message
       })
       return
     }
@@ -46,8 +47,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     try {
       // Use ilike for case-insensitive exact match (no wildcards = exact match)
       userResult = await db
-        .select()
+        .select({
+          user: users,
+          locationName: locations.name
+        })
         .from(users)
+        .leftJoin(locations, eq(users.benPhuTrach, locations.id))
         .where(ilike(users.email, normalizedLogin))
         .limit(1)
     } catch (dbError: any) {
@@ -60,8 +65,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       const errorCode = dbError?.code || 'UNKNOWN'
       throw new Error(`Database query failed [${errorCode}]: ${errorMessage}`)
     }
-    
-    const user = userResult[0]
+
+    const userRow = userResult[0]
+    const user = userRow?.user
+    const benPhuTrachName = userRow?.locationName
 
     if (!user) {
       console.error(`❌ User not found: ${normalizedLogin}`)
@@ -92,7 +99,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     console.log(`🔐 Comparing password with password_hash (bcrypt)...`)
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
-    
+
     if (!isPasswordValid) {
       console.error(`❌ Invalid password: ${user.email}`)
       res.status(401).json({ error: 'Invalid credentials' })
@@ -137,60 +144,62 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         fullName: user.name,
         role: user.role,
         isActive: user.isActive,
+        benPhuTrach: user.benPhuTrach,
+        benPhuTrachName: benPhuTrachName,
       },
     })
   } catch (error) {
     console.error('❌ Login error:', error)
-    
+
     // Check if response was already sent
     if (res.headersSent) {
       console.error('❌ Response already sent, cannot send error response')
       return
     }
-    
+
     if (error instanceof Error) {
       // Check if it's a Zod validation error
       if (error.name === 'ZodError' || (error as any).issues) {
-        res.status(400).json({ 
+        res.status(400).json({
           error: 'Validation failed',
-          details: (error as any).issues || error.message 
+          details: (error as any).issues || error.message
         })
         return
       }
-      
+
       // Check for database connection errors
-      if (error.message?.includes('Database') || 
-          error.message?.includes('connection') ||
-          error.message?.includes('DATABASE_URL') ||
-          (error as any).code?.startsWith?.('ECONNREFUSED') ||
-          (error as any).code?.startsWith?.('ENOTFOUND')) {
+      if (error.message?.includes('Database') ||
+        error.message?.includes('connection') ||
+        error.message?.includes('DATABASE_URL') ||
+        (error as any).code?.startsWith?.('ECONNREFUSED') ||
+        (error as any).code?.startsWith?.('ENOTFOUND')) {
         console.error('❌ Database connection error:', error.message)
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'Database connection failed',
           details: process.env.NODE_ENV === 'production' ? undefined : error.message
         })
         return
       }
-      
+
       // Check for PostgreSQL errors
       if ((error as any).code && typeof (error as any).code === 'string') {
         console.error('❌ PostgreSQL error:', (error as any).code, error.message)
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'Database error',
           details: process.env.NODE_ENV === 'production' ? undefined : error.message
         })
         return
       }
-      
+
       // For other errors, return 500 (not 400)
       console.error('❌ Unexpected error:', error.message)
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Login failed',
         details: process.env.NODE_ENV === 'production' ? undefined : error.message
       })
       return
     }
-    
+
     // Unknown error type
     console.error('❌ Unknown error type:', error)
     res.status(500).json({ error: 'Login failed' })
@@ -263,6 +272,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         email: newUser.email,
         phone: newUser.phone,
         role: newUser.role,
+        benPhuTrach: newUser.benPhuTrach,
+        benPhuTrachName: null,
       },
     })
   } catch (error) {
@@ -290,8 +301,19 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       return
     }
 
-    // Query user by ID
-    const [user] = await db.select().from(users).where(eq(users.id, userId))
+    // Query user by ID with location join
+    const [userRow] = await db
+      .select({
+        user: users,
+        locationName: locations.name
+      })
+      .from(users)
+      .leftJoin(locations, eq(users.benPhuTrach, locations.id))
+      .where(eq(users.id, userId))
+      .limit(1)
+
+    const user = userRow?.user
+    const benPhuTrachName = userRow?.locationName
 
     if (!user) {
       res.status(404).json({ error: 'User not found' })
@@ -304,6 +326,8 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       fullName: user.name,
       email: user.email,
       role: user.role,
+      benPhuTrach: user.benPhuTrach,
+      benPhuTrachName: benPhuTrachName,
     })
   } catch (error) {
     console.error('Get current user error:', error)
@@ -372,6 +396,17 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       .where(eq(users.id, userId))
       .returning()
 
+    // Re-query to get the latest benPhuTrachName just in case
+    const [refreshedUserRow] = await db
+      .select({
+        user: users,
+        locationName: locations.name
+      })
+      .from(users)
+      .leftJoin(locations, eq(users.benPhuTrach, locations.id))
+      .where(eq(users.id, userId))
+      .limit(1)
+
     res.json({
       id: updatedUser.id,
       username: updatedUser.email,
@@ -379,6 +414,8 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       email: updatedUser.email,
       phone: updatedUser.phone,
       role: updatedUser.role,
+      benPhuTrach: updatedUser.benPhuTrach,
+      benPhuTrachName: refreshedUserRow?.locationName || null,
     })
   } catch (error) {
     console.error('Update profile error:', error)

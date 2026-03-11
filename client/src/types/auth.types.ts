@@ -7,6 +7,8 @@ export interface User {
   role: 'admin' | 'dispatcher' | 'accountant' | 'reporter'
   email?: string
   phone?: string
+  benPhuTrach?: string | null
+  benPhuTrachName?: string | null
 }
 
 export interface LoginCredentials {

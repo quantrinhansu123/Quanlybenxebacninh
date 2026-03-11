@@ -75,22 +75,20 @@ const SkeletonRow = () => (
 )
 
 // Quick Filter Chip
-const QuickFilter = ({ label, count, active, onClick }: { 
-  label: string; count?: number; active?: boolean; onClick: () => void 
+const QuickFilter = ({ label, count, active, onClick }: {
+  label: string; count?: number; active?: boolean; onClick: () => void
 }) => (
   <button
     onClick={onClick}
-    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-      active 
-        ? "bg-sky-500 text-white shadow-md shadow-sky-500/25" 
+    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${active
+        ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
         : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-    }`}
+      }`}
   >
     {label}
     {count !== undefined && (
-      <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
-        active ? "bg-white/20 text-white" : "bg-slate-200 text-slate-500"
-      }`}>
+      <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${active ? "bg-white/20 text-white" : "bg-slate-200 text-slate-500"
+        }`}>
         {count.toLocaleString()}
       </span>
     )}
@@ -196,7 +194,7 @@ export default function QuanLyXe() {
   useAppSheetPolling({
     endpointKey: 'fixedRoutes',
     normalize: normalizeFixedRouteRows,
-    onData: () => {},
+    onData: () => { },
     onSyncToDb: (data) => routeService.syncFromAppSheet(data),
     getKey: (r) => (r as any).routeCode,
     enabled: true,
@@ -205,7 +203,7 @@ export default function QuanLyXe() {
   useAppSheetPolling({
     endpointKey: 'busRoutes',
     normalize: normalizeBusRouteRows,
-    onData: () => {},
+    onData: () => { },
     onSyncToDb: (data) => routeService.syncFromAppSheet(data),
     getKey: (r) => (r as any).firebaseId,
     enabled: true,
@@ -407,7 +405,7 @@ export default function QuanLyXe() {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Button
               onClick={() => loadData(true)}
@@ -461,7 +459,7 @@ export default function QuanLyXe() {
               <p className="text-3xl font-bold text-slate-800">{stats.active.toLocaleString()}</p>
               <p className="text-sm text-slate-500 mt-1">Đang hoạt động</p>
               <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-500"
                   style={{ width: `${stats.total > 0 ? (stats.active / stats.total) * 100 : 0}%` }}
                 />
@@ -481,7 +479,7 @@ export default function QuanLyXe() {
               <p className="text-3xl font-bold text-slate-800">{stats.inactive.toLocaleString()}</p>
               <p className="text-sm text-slate-500 mt-1">Ngừng hoạt động</p>
               <div className="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-gradient-to-r from-rose-400 to-rose-500 rounded-full transition-all duration-500"
                   style={{ width: `${stats.total > 0 ? (stats.inactive / stats.total) * 100 : 0}%` }}
                 />
@@ -514,7 +512,7 @@ export default function QuanLyXe() {
           {/* Search Input */}
           <div className="flex-1 flex items-center gap-3 px-4 py-2 bg-slate-50 rounded-xl">
             <Search className="w-5 h-5 text-slate-400" />
-            <input 
+            <input
               type="text"
               placeholder="Tìm kiếm biển số, đơn vị vận tải..."
               className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder-slate-400"
@@ -522,29 +520,29 @@ export default function QuanLyXe() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          
+
           {/* Divider */}
           <div className="hidden lg:block w-px h-10 bg-slate-200" />
-          
+
           {/* Quick Filters */}
           <div className="flex items-center gap-2 px-2">
-            <QuickFilter 
-              label="Tất cả" 
-              count={stats.total} 
-              active={quickFilter === "all"} 
-              onClick={() => setQuickFilter("all")} 
+            <QuickFilter
+              label="Tất cả"
+              count={stats.total}
+              active={quickFilter === "all"}
+              onClick={() => setQuickFilter("all")}
             />
-            <QuickFilter 
-              label="Hoạt động" 
-              count={stats.active} 
-              active={quickFilter === "active"} 
-              onClick={() => setQuickFilter("active")} 
+            <QuickFilter
+              label="Hoạt động"
+              count={stats.active}
+              active={quickFilter === "active"}
+              onClick={() => setQuickFilter("active")}
             />
-            <QuickFilter 
-              label="Ngừng" 
-              count={stats.inactive} 
-              active={quickFilter === "inactive"} 
-              onClick={() => setQuickFilter("inactive")} 
+            <QuickFilter
+              label="Ngừng"
+              count={stats.inactive}
+              active={quickFilter === "inactive"}
+              onClick={() => setQuickFilter("inactive")}
             />
           </div>
 
@@ -556,21 +554,19 @@ export default function QuanLyXe() {
             <div className="flex items-center bg-slate-100 rounded-xl p-1">
               <button
                 onClick={() => setDisplayMode("table")}
-                className={`p-2.5 rounded-lg transition-all ${
-                  displayMode === "table" 
-                    ? "bg-white text-sky-600 shadow-sm" 
+                className={`p-2.5 rounded-lg transition-all ${displayMode === "table"
+                    ? "bg-white text-sky-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setDisplayMode("grid")}
-                className={`p-2.5 rounded-lg transition-all ${
-                  displayMode === "grid" 
-                    ? "bg-white text-sky-600 shadow-sm" 
+                className={`p-2.5 rounded-lg transition-all ${displayMode === "grid"
+                    ? "bg-white text-sky-600 shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
-                }`}
+                  }`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -578,11 +574,10 @@ export default function QuanLyXe() {
 
             <Button
               onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              className={`px-4 py-2.5 rounded-xl border transition-all ${
-                showAdvancedFilters || hasActiveFilters
+              className={`px-4 py-2.5 rounded-xl border transition-all ${showAdvancedFilters || hasActiveFilters
                   ? "bg-sky-50 border-sky-200 text-sky-600"
                   : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
+                }`}
             >
               <SlidersHorizontal className="h-4 w-4 mr-2" />
               Nâng cao
@@ -723,10 +718,10 @@ export default function QuanLyXe() {
                     </tr>
                   ) : (
                     paginatedVehicles.map((vehicle: any, index) => (
-                      <tr 
-                        key={vehicle.id} 
-                        className="group hover:bg-sky-50/50 transition-colors"
-                        style={{ 
+                      <tr
+                        key={vehicle.id}
+                        className="group hover:bg-sky-50/50 transition-colors relative hover:z-50"
+                        style={{
                           animation: 'fadeInUp 0.3s ease forwards',
                           animationDelay: `${index * 30}ms`,
                           opacity: 0
@@ -760,19 +755,17 @@ export default function QuanLyXe() {
                           </div>
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${
-                            vehicle.isActive 
-                              ? "bg-emerald-100 text-emerald-700" 
+                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${vehicle.isActive
+                              ? "bg-emerald-100 text-emerald-700"
                               : "bg-slate-100 text-slate-600"
-                          }`}>
-                            <span className={`w-2 h-2 rounded-full ${
-                              vehicle.isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
-                            }`} />
+                            }`}>
+                            <span className={`w-2 h-2 rounded-full ${vehicle.isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
+                              }`} />
                             {vehicle.isActive ? "Hoạt động" : "Ngừng"}
                           </span>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex items-center justify-center opacity-60 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-center group-hover:opacity-100 transition-opacity">
                             <ActionMenu
                               items={[
                                 {
@@ -824,10 +817,10 @@ export default function QuanLyXe() {
               </div>
             ) : (
               paginatedVehicles.map((vehicle: any, index) => (
-                <div 
-                  key={vehicle.id} 
+                <div
+                  key={vehicle.id}
                   className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-lg hover:border-sky-200 transition-all group hover:-translate-y-1"
-                  style={{ 
+                  style={{
                     animation: 'fadeInUp 0.3s ease forwards',
                     animationDelay: `${index * 50}ms`,
                     opacity: 0
@@ -843,14 +836,12 @@ export default function QuanLyXe() {
                         <p className="text-sm text-slate-500">{getVehicleTypeName(vehicle) || "N/A"}</p>
                       </div>
                     </div>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                      vehicle.isActive 
-                        ? "bg-emerald-100 text-emerald-700" 
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${vehicle.isActive
+                        ? "bg-emerald-100 text-emerald-700"
                         : "bg-slate-100 text-slate-600"
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${
-                        vehicle.isActive ? "bg-emerald-500" : "bg-slate-400"
-                      }`} />
+                      }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${vehicle.isActive ? "bg-emerald-500" : "bg-slate-400"
+                        }`} />
                       {vehicle.isActive ? "Hoạt động" : "Ngừng"}
                     </span>
                   </div>
@@ -907,12 +898,12 @@ export default function QuanLyXe() {
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                
+
                 <div className="flex items-center gap-1">
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((page) => 
-                      page === 1 || 
-                      page === totalPages || 
+                    .filter((page) =>
+                      page === 1 ||
+                      page === totalPages ||
                       (page >= currentPage - 1 && page <= currentPage + 1)
                     )
                     .map((page, index, array) => (
@@ -922,11 +913,10 @@ export default function QuanLyXe() {
                         )}
                         <button
                           onClick={() => setCurrentPage(page)}
-                          className={`min-w-[40px] h-10 rounded-xl text-sm font-medium transition-all ${
-                            currentPage === page
+                          className={`min-w-[40px] h-10 rounded-xl text-sm font-medium transition-all ${currentPage === page
                               ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
                               : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>

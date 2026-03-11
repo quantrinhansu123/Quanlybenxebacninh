@@ -33,6 +33,7 @@ import BadgeDetailDialog from "./badge-detail-dialog"
 import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
 import { normalizeBadgeRows, type NormalizedAppSheetBadge } from "@/services/appsheet-normalize-badges"
 import { vehicleBadgeService as vehicleBadgeFeatService } from "@/features/fleet/vehicle-badges"
+import { useAuthStore } from "@/store/auth.store"
 
 // Helper function to convert Date to ISO string (YYYY-MM-DD)
 const formatDateToISO = (date: Date | null): string => {
@@ -94,6 +95,9 @@ export default function QuanLyPhuHieuXe() {
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Current User for Role-Based Filtering
+  const currentUser = useAuthStore((state) => state.user)
+
   // Form state with Date objects for date fields
   const [formData, setFormData] = useState<Omit<CreateVehicleBadgeInput, 'issue_date' | 'expiry_date'> & {
     issue_date: Date | null
@@ -129,17 +133,29 @@ export default function QuanLyPhuHieuXe() {
     enabled: true,
   })
 
-  // Backend enrichment data (itinerary from routes JOIN - not available in AppSheet)
-  const [enrichmentMap, setEnrichmentMap] = useState<Map<string, { itinerary: string }>>(new Map())
+  // Backend enrichment data (itinerary and destination from routes JOIN - not available in AppSheet)
+  const [enrichmentMap, setEnrichmentMap] = useState<Map<string, { itinerary: string, endPoint: string, startPoint: string }>>(new Map())
 
   useEffect(() => {
     async function fetchEnrichment() {
       try {
-        const data = await quanlyDataService.getBadges()
-        const map = new Map<string, { itinerary: string }>()
-        for (const b of data) {
-          if (b.itinerary) {
-            map.set(b.badge_number, { itinerary: b.itinerary })
+        const data = await quanlyDataService.getAll(['badges', 'routes'])
+        const map = new Map<string, { itinerary: string, endPoint: string, startPoint: string }>()
+
+        // Build map of route Code -> Route Destination (endPoint and startPoint)
+        const routeDestinationMap = new Map<string, { endPoint: string, startPoint: string }>()
+        if (data.routes) {
+          for (const r of data.routes) {
+            routeDestinationMap.set(r.code, { endPoint: r.endPoint, startPoint: r.startPoint })
+          }
+        }
+
+        if (data.badges) {
+          for (const b of data.badges) {
+            const routeData = routeDestinationMap.get(b.route_code) || { endPoint: '', startPoint: '' }
+            if (b.itinerary || routeData.endPoint || routeData.startPoint) {
+              map.set(b.badge_number, { itinerary: b.itinerary, endPoint: routeData.endPoint, startPoint: routeData.startPoint })
+            }
           }
         }
         setEnrichmentMap(map)
@@ -181,9 +197,11 @@ export default function QuanLyPhuHieuXe() {
     setIsLoading(true)
     try {
       // Use optimized unified endpoint for faster loading
-      const data = await quanlyDataService.getBadges(forceRefresh)
+      const data = await quanlyDataService.getAll(['badges', 'routes'], forceRefresh)
+      const badgeDataRaw = data.badges || []
+
       // Convert to VehicleBadge format
-      const badgeData: VehicleBadge[] = data.map(b => ({
+      const badgeData: VehicleBadge[] = badgeDataRaw.map(b => ({
         ...b,
         vehicle_id: b.license_plate_sheet,
         operational_status: 'trong_ben' as const,
@@ -206,6 +224,8 @@ export default function QuanLyPhuHieuXe() {
         warn_duplicate_plate: false,
         // Keep itinerary from backend data
         itinerary: b.itinerary || '',
+        // Store route_code for enrichment map matching
+        route_code: b.route_code || '',
       } as VehicleBadge))
       setBadges(badgeData)
     } catch (error) {
@@ -261,7 +281,10 @@ export default function QuanLyPhuHieuXe() {
       route_name: b.routeName || '',
       vehicle_type: '',
       metadata: {},
-    } as VehicleBadge))
+      // Custom field to pass endpoint to filter
+      _endPoint: enrichmentMap.get(b.badgeNumber)?.endPoint || '',
+      _startPoint: enrichmentMap.get(b.badgeNumber)?.startPoint || '',
+    } as VehicleBadge & { _endPoint?: string, _startPoint?: string }))
   }, [appSheetBadges, badges, enrichmentMap])
 
   // Show loading until EITHER AppSheet data OR backend data loads
@@ -274,13 +297,13 @@ export default function QuanLyPhuHieuXe() {
 
   // Only show "Buýt" and "Tuyến cố định" badge types
   const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
-  
+
   const filteredBadges = mergedBadges.filter((badge) => {
     // Filter by allowed badge types (Buýt and Tuyến cố định only)
     if (!allowedBadgeTypes.includes(badge.badge_type || "")) {
       return false
     }
-    
+
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -305,6 +328,29 @@ export default function QuanLyPhuHieuXe() {
     // Badge color filter
     if (filterBadgeColor && badge.badge_color !== filterBadgeColor) {
       return false
+    }
+
+    // Role-based Location filter
+    // Apply if user has a benPhuTrachName assigned (regardless of role)
+    if (currentUser && currentUser.benPhuTrachName) {
+      const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
+
+      // Find the destination station (endPoint) and departure station (startPoint) for this badge
+      let endPoint = (badge as any)._endPoint || ''
+      let startPoint = (badge as any)._startPoint || ''
+
+      if (!endPoint && !startPoint && badge.route_code) {
+        endPoint = enrichmentMap.get(badge.badge_number)?.endPoint || ''
+        startPoint = enrichmentMap.get(badge.badge_number)?.startPoint || ''
+      }
+
+      endPoint = endPoint.trim().toLowerCase()
+      startPoint = startPoint.trim().toLowerCase()
+
+      // If the user's managed station is neither the start nor the end point, hide it
+      if (endPoint !== userLoc && startPoint !== userLoc) {
+        return false
+      }
     }
 
     return true
@@ -437,7 +483,7 @@ export default function QuanLyPhuHieuXe() {
 
         // Get headers from first row
         const headers = jsonData[0].map((h) => h?.toString().toLowerCase().trim() || "")
-        
+
         // Map Vietnamese headers to field names
         const headerMap: Record<string, string> = {
           "số phù hiệu": "badge_number",
@@ -525,7 +571,7 @@ export default function QuanLyPhuHieuXe() {
       }
     }
     reader.readAsBinaryString(file)
-    
+
     // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -570,11 +616,11 @@ export default function QuanLyPhuHieuXe() {
       ["Số phù hiệu", "Biển số xe", "Loại phù hiệu", "Màu phù hiệu", "Ngày cấp", "Ngày hết hạn", "Trạng thái", "Mã hồ sơ", "Loại cấp", "Tuyến đường", "Loại xe", "Ghi chú"],
       ["PH001", "51B-12345", "Xe khách cố định", "Xanh", "01/01/2024", "01/01/2029", "Còn hiệu lực", "HS001", "Cấp mới", "Sài Gòn - Nha Trang", "Xe khách 45 chỗ", "Ghi chú mẫu"],
     ]
-    
+
     const ws = XLSX.utils.aoa_to_sheet(templateData)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Template")
-    
+
     // Set column widths
     ws["!cols"] = [
       { wch: 15 }, // Số phù hiệu
@@ -590,7 +636,7 @@ export default function QuanLyPhuHieuXe() {
       { wch: 20 }, // Loại xe
       { wch: 20 }, // Ghi chú
     ]
-    
+
     XLSX.writeFile(wb, "template-phu-hieu-xe.xlsx")
     toast.success("Đã tải template Excel")
   }
@@ -771,461 +817,461 @@ export default function QuanLyPhuHieuXe() {
           </div>
         </div>
 
-      {/* Search and Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder="Tìm kiếm theo số phù hiệu, biển số, mã hồ sơ..."
-                className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="filterStatus" className="text-sm font-medium">
-                  Lọc theo trạng thái
-                </Label>
-                <Select
-                  id="filterStatus"
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                >
-                  <option value="">Tất cả trạng thái</option>
-                  {badgeStatuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="filterBadgeType" className="text-sm font-medium">
-                  Lọc theo loại phù hiệu
-                </Label>
-                <Select
-                  id="filterBadgeType"
-                  value={filterBadgeType}
-                  onChange={(e) => setFilterBadgeType(e.target.value)}
-                >
-                  <option value="">Tất cả loại</option>
-                  {badgeTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="filterBadgeColor" className="text-sm font-medium">
-                  Lọc theo màu phù hiệu
-                </Label>
-                <Select
-                  id="filterBadgeColor"
-                  value={filterBadgeColor}
-                  onChange={(e) => setFilterBadgeColor(e.target.value)}
-                >
-                  <option value="">Tất cả màu</option>
-                  {badgeColors.map((color) => (
-                    <option key={color} value={color}>
-                      {color}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Table */}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-center text-base">Số phù hiệu</TableHead>
-              <TableHead className="text-center text-base">Biển số xe</TableHead>
-              <TableHead className="text-center text-base">Loại phù hiệu</TableHead>
-              <TableHead className="text-center text-base">Màu phù hiệu</TableHead>
-              <TableHead className="text-center text-base">Ngày cấp</TableHead>
-              <TableHead className="text-center text-base">Ngày hết hạn</TableHead>
-              <TableHead className="text-center text-base">Trạng thái</TableHead>
-              <TableHead className="text-center text-base">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {effectiveLoading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
-                  Đang tải...
-                </TableCell>
-              </TableRow>
-            ) : filteredBadges.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                  Không có dữ liệu
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedBadges.map((badge) => (
-                <TableRow key={badge.id}>
-                  <TableCell className="font-medium text-center text-base">
-                    {badge.badge_number}
-                  </TableCell>
-                  <TableCell className="text-center text-base">
-                    {badge.license_plate_sheet || "N/A"}
-                  </TableCell>
-                  <TableCell className="text-center text-base">
-                    {badge.badge_type || "N/A"}
-                  </TableCell>
-                  <TableCell className="text-center text-base">
-                    {badge.badge_color || "N/A"}
-                  </TableCell>
-                  <TableCell className="text-center text-base">
-                    {formatDate(badge.issue_date)}
-                  </TableCell>
-                  <TableCell className="text-center text-base">
-                    {formatDate(badge.expiry_date)}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <StatusBadge
-                      status={getStatusVariant(badge.status)}
-                      label={badge.status || "N/A"}
-                    />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center">
-                      <ActionMenu
-                        items={[
-                          {
-                            label: "Xem chi tiết",
-                            onClick: () => handleView(badge),
-                            variant: "info",
-                          },
-                        ]}
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </Card>
-
-      {/* Pagination */}
-      {filteredBadges.length > 0 && (
+        {/* Search and Filters */}
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                Hiển thị {startIndex + 1}-{Math.min(endIndex, filteredBadges.length)} trong tổng số {filteredBadges.length.toLocaleString()} phù hiệu
+            <div className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  placeholder="Tìm kiếm theo số phù hiệu, biển số, mã hồ sơ..."
+                  className="pl-10"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Trang trước
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((page) => {
-                      // Show first page, last page, current page, and pages around current
-                      return (
-                        page === 1 ||
-                        page === totalPages ||
-                        (page >= currentPage - 1 && page <= currentPage + 1)
-                      )
-                    })
-                    .map((page, index, array) => (
-                      <div key={page} className="flex items-center">
-                        {index > 0 && array[index - 1] !== page - 1 && (
-                          <span className="px-2 text-gray-400">...</span>
-                        )}
-                        <Button
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                          className="min-w-[40px]"
-                        >
-                          {page}
-                        </Button>
-                      </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="filterStatus" className="text-sm font-medium">
+                    Lọc theo trạng thái
+                  </Label>
+                  <Select
+                    id="filterStatus"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                  >
+                    <option value="">Tất cả trạng thái</option>
+                    {badgeStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
                     ))}
+                  </Select>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  Trang sau
-                </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="filterBadgeType" className="text-sm font-medium">
+                    Lọc theo loại phù hiệu
+                  </Label>
+                  <Select
+                    id="filterBadgeType"
+                    value={filterBadgeType}
+                    onChange={(e) => setFilterBadgeType(e.target.value)}
+                  >
+                    <option value="">Tất cả loại</option>
+                    {badgeTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="filterBadgeColor" className="text-sm font-medium">
+                    Lọc theo màu phù hiệu
+                  </Label>
+                  <Select
+                    id="filterBadgeColor"
+                    value={filterBadgeColor}
+                    onChange={(e) => setFilterBadgeColor(e.target.value)}
+                  >
+                    <option value="">Tất cả màu</option>
+                    {badgeColors.map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* View Detail Dialog */}
-      <BadgeDetailDialog open={viewDialogOpen} onOpenChange={handleViewDialogChange} badge={selectedBadge} />
+        {/* Table */}
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-center text-base">Số phù hiệu</TableHead>
+                <TableHead className="text-center text-base">Biển số xe</TableHead>
+                <TableHead className="text-center text-base">Loại phù hiệu</TableHead>
+                <TableHead className="text-center text-base">Màu phù hiệu</TableHead>
+                <TableHead className="text-center text-base">Ngày cấp</TableHead>
+                <TableHead className="text-center text-base">Ngày hết hạn</TableHead>
+                <TableHead className="text-center text-base">Trạng thái</TableHead>
+                <TableHead className="text-center text-base">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {effectiveLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8">
+                    Đang tải...
+                  </TableCell>
+                </TableRow>
+              ) : filteredBadges.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    Không có dữ liệu
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedBadges.map((badge) => (
+                  <TableRow key={badge.id}>
+                    <TableCell className="font-medium text-center text-base">
+                      {badge.badge_number}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {badge.license_plate_sheet || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {badge.badge_type || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {badge.badge_color || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {formatDate(badge.issue_date)}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {formatDate(badge.expiry_date)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <StatusBadge
+                        status={getStatusVariant(badge.status)}
+                        label={badge.status || "N/A"}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center">
+                        <ActionMenu
+                          items={[
+                            {
+                              label: "Xem chi tiết",
+                              onClick: () => handleView(badge),
+                              variant: "info",
+                            },
+                          ]}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </Card>
 
-      {/* Form Dialog (Create/Edit) */}
-      <Dialog open={formDialogOpen} onOpenChange={handleFormDialogChange}>
-        <DialogContent className="max-w-2xl w-full max-h-[95vh] overflow-y-auto p-6">
-          <DialogClose onClose={() => handleFormDialogChange(false)} />
-          <DialogHeader>
-            <DialogTitle className="text-2xl">
-              {formMode === "create" ? "Thêm phù hiệu mới" : "Chỉnh sửa phù hiệu"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleFormSubmit} className="mt-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="badge_number">Số phù hiệu *</Label>
-                <Input
-                  id="badge_number"
-                  value={formData.badge_number}
-                  onChange={(e) => setFormData({ ...formData, badge_number: e.target.value })}
-                  placeholder="Nhập số phù hiệu"
-                  required
-                />
+        {/* Pagination */}
+        {filteredBadges.length > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Hiển thị {startIndex + 1}-{Math.min(endIndex, filteredBadges.length)} trong tổng số {filteredBadges.length.toLocaleString()} phù hiệu
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Trang trước
+                  </Button>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        return (
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1)
+                        )
+                      })
+                      .map((page, index, array) => (
+                        <div key={page} className="flex items-center">
+                          {index > 0 && array[index - 1] !== page - 1 && (
+                            <span className="px-2 text-gray-400">...</span>
+                          )}
+                          <Button
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            className="min-w-[40px]"
+                          >
+                            {page}
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Trang sau
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="license_plate_sheet">Biển số xe *</Label>
-                <Input
-                  id="license_plate_sheet"
-                  value={formData.license_plate_sheet}
-                  onChange={(e) => setFormData({ ...formData, license_plate_sheet: e.target.value })}
-                  placeholder="VD: 51B-12345"
-                  required
-                />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* View Detail Dialog */}
+        <BadgeDetailDialog open={viewDialogOpen} onOpenChange={handleViewDialogChange} badge={selectedBadge} />
+
+        {/* Form Dialog (Create/Edit) */}
+        <Dialog open={formDialogOpen} onOpenChange={handleFormDialogChange}>
+          <DialogContent className="max-w-2xl w-full max-h-[95vh] overflow-y-auto p-6">
+            <DialogClose onClose={() => handleFormDialogChange(false)} />
+            <DialogHeader>
+              <DialogTitle className="text-2xl">
+                {formMode === "create" ? "Thêm phù hiệu mới" : "Chỉnh sửa phù hiệu"}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleFormSubmit} className="mt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="badge_number">Số phù hiệu *</Label>
+                  <Input
+                    id="badge_number"
+                    value={formData.badge_number}
+                    onChange={(e) => setFormData({ ...formData, badge_number: e.target.value })}
+                    placeholder="Nhập số phù hiệu"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="license_plate_sheet">Biển số xe *</Label>
+                  <Input
+                    id="license_plate_sheet"
+                    value={formData.license_plate_sheet}
+                    onChange={(e) => setFormData({ ...formData, license_plate_sheet: e.target.value })}
+                    placeholder="VD: 51B-12345"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="badge_type">Loại phù hiệu</Label>
+                  <Select
+                    id="badge_type"
+                    value={formData.badge_type}
+                    onChange={(e) => setFormData({ ...formData, badge_type: e.target.value })}
+                  >
+                    <option value="">Chọn loại phù hiệu</option>
+                    {badgeTypes.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                    <option value="Xe khách cố định">Xe khách cố định</option>
+                    <option value="Xe hợp đồng">Xe hợp đồng</option>
+                    <option value="Xe du lịch">Xe du lịch</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="badge_color">Màu phù hiệu</Label>
+                  <Select
+                    id="badge_color"
+                    value={formData.badge_color}
+                    onChange={(e) => setFormData({ ...formData, badge_color: e.target.value })}
+                  >
+                    <option value="">Chọn màu phù hiệu</option>
+                    {badgeColors.map((color) => (
+                      <option key={color} value={color}>{color}</option>
+                    ))}
+                    <option value="Xanh">Xanh</option>
+                    <option value="Vàng">Vàng</option>
+                    <option value="Đỏ">Đỏ</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="issue_date">Ngày cấp</Label>
+                  <DatePicker
+                    date={formData.issue_date}
+                    onDateChange={(date: Date | undefined) => setFormData({ ...formData, issue_date: date || null })}
+                    placeholder="Chọn ngày cấp"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="expiry_date">Ngày hết hạn</Label>
+                  <DatePicker
+                    date={formData.expiry_date}
+                    onDateChange={(date: Date | undefined) => setFormData({ ...formData, expiry_date: date || null })}
+                    placeholder="Chọn ngày hết hạn"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="status">Trạng thái</Label>
+                  <Select
+                    id="status"
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  >
+                    <option value="Còn hiệu lực">Còn hiệu lực</option>
+                    <option value="Hết hạn">Hết hạn</option>
+                    <option value="Thu hồi">Thu hồi</option>
+                    <option value="Cấp mới">Cấp mới</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="issue_type">Loại cấp</Label>
+                  <Select
+                    id="issue_type"
+                    value={formData.issue_type}
+                    onChange={(e) => setFormData({ ...formData, issue_type: e.target.value })}
+                  >
+                    <option value="Cấp mới">Cấp mới</option>
+                    <option value="Cấp đổi">Cấp đổi</option>
+                    <option value="Cấp lại">Cấp lại</option>
+                    <option value="Gia hạn">Gia hạn</option>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="file_code">Mã hồ sơ</Label>
+                  <Input
+                    id="file_code"
+                    value={formData.file_code}
+                    onChange={(e) => setFormData({ ...formData, file_code: e.target.value })}
+                    placeholder="Nhập mã hồ sơ"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vehicle_type">Loại xe</Label>
+                  <Input
+                    id="vehicle_type"
+                    value={formData.vehicle_type}
+                    onChange={(e) => setFormData({ ...formData, vehicle_type: e.target.value })}
+                    placeholder="VD: Xe khách 45 chỗ"
+                  />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="bus_route_ref">Tuyến đường</Label>
+                  <Input
+                    id="bus_route_ref"
+                    value={formData.bus_route_ref}
+                    onChange={(e) => setFormData({ ...formData, bus_route_ref: e.target.value })}
+                    placeholder="VD: Sài Gòn - Nha Trang"
+                  />
+                </div>
+                <div className="space-y-2 col-span-2">
+                  <Label htmlFor="notes">Ghi chú</Label>
+                  <Input
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Nhập ghi chú (nếu có)"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="badge_type">Loại phù hiệu</Label>
-                <Select
-                  id="badge_type"
-                  value={formData.badge_type}
-                  onChange={(e) => setFormData({ ...formData, badge_type: e.target.value })}
-                >
-                  <option value="">Chọn loại phù hiệu</option>
-                  {badgeTypes.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                  <option value="Xe khách cố định">Xe khách cố định</option>
-                  <option value="Xe hợp đồng">Xe hợp đồng</option>
-                  <option value="Xe du lịch">Xe du lịch</option>
-                </Select>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => handleFormDialogChange(false)}>
+                  Hủy
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Đang lưu..." : formMode === "create" ? "Thêm mới" : "Cập nhật"}
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="badge_color">Màu phù hiệu</Label>
-                <Select
-                  id="badge_color"
-                  value={formData.badge_color}
-                  onChange={(e) => setFormData({ ...formData, badge_color: e.target.value })}
-                >
-                  <option value="">Chọn màu phù hiệu</option>
-                  {badgeColors.map((color) => (
-                    <option key={color} value={color}>{color}</option>
-                  ))}
-                  <option value="Xanh">Xanh</option>
-                  <option value="Vàng">Vàng</option>
-                  <option value="Đỏ">Đỏ</option>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="issue_date">Ngày cấp</Label>
-                <DatePicker
-                  date={formData.issue_date}
-                  onDateChange={(date: Date | undefined) => setFormData({ ...formData, issue_date: date || null })}
-                  placeholder="Chọn ngày cấp"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="expiry_date">Ngày hết hạn</Label>
-                <DatePicker
-                  date={formData.expiry_date}
-                  onDateChange={(date: Date | undefined) => setFormData({ ...formData, expiry_date: date || null })}
-                  placeholder="Chọn ngày hết hạn"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Trạng thái</Label>
-                <Select
-                  id="status"
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="Còn hiệu lực">Còn hiệu lực</option>
-                  <option value="Hết hạn">Hết hạn</option>
-                  <option value="Thu hồi">Thu hồi</option>
-                  <option value="Cấp mới">Cấp mới</option>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="issue_type">Loại cấp</Label>
-                <Select
-                  id="issue_type"
-                  value={formData.issue_type}
-                  onChange={(e) => setFormData({ ...formData, issue_type: e.target.value })}
-                >
-                  <option value="Cấp mới">Cấp mới</option>
-                  <option value="Cấp đổi">Cấp đổi</option>
-                  <option value="Cấp lại">Cấp lại</option>
-                  <option value="Gia hạn">Gia hạn</option>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="file_code">Mã hồ sơ</Label>
-                <Input
-                  id="file_code"
-                  value={formData.file_code}
-                  onChange={(e) => setFormData({ ...formData, file_code: e.target.value })}
-                  placeholder="Nhập mã hồ sơ"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vehicle_type">Loại xe</Label>
-                <Input
-                  id="vehicle_type"
-                  value={formData.vehicle_type}
-                  onChange={(e) => setFormData({ ...formData, vehicle_type: e.target.value })}
-                  placeholder="VD: Xe khách 45 chỗ"
-                />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="bus_route_ref">Tuyến đường</Label>
-                <Input
-                  id="bus_route_ref"
-                  value={formData.bus_route_ref}
-                  onChange={(e) => setFormData({ ...formData, bus_route_ref: e.target.value })}
-                  placeholder="VD: Sài Gòn - Nha Trang"
-                />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="notes">Ghi chú</Label>
-                <Input
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Nhập ghi chú (nếu có)"
-                />
-              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogChange}>
+          <DialogContent className="max-w-md">
+            <DialogClose onClose={() => handleDeleteDialogChange(false)} />
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p>Bạn có chắc chắn muốn xóa phù hiệu <strong>{badgeToDelete?.badge_number}</strong>?</p>
+              <p className="text-sm text-gray-500 mt-2">Biển số xe: {badgeToDelete?.license_plate_sheet}</p>
             </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button type="button" variant="outline" onClick={() => handleFormDialogChange(false)}>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => handleDeleteDialogChange(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Đang lưu..." : formMode === "create" ? "Thêm mới" : "Cập nhật"}
+              <Button variant="destructive" onClick={confirmDelete}>
+                Xóa
               </Button>
             </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogChange}>
-        <DialogContent className="max-w-md">
-          <DialogClose onClose={() => handleDeleteDialogChange(false)} />
-          <DialogHeader>
-            <DialogTitle>Xác nhận xóa</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p>Bạn có chắc chắn muốn xóa phù hiệu <strong>{badgeToDelete?.badge_number}</strong>?</p>
-            <p className="text-sm text-gray-500 mt-2">Biển số xe: {badgeToDelete?.license_plate_sheet}</p>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleDeleteDialogChange(false)}>
-              Hủy
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Xóa
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Import Preview Dialog */}
-      <Dialog open={importDialogOpen} onOpenChange={handleImportDialogChange}>
-        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogClose onClose={() => handleImportDialogChange(false)} />
-          <DialogHeader>
-            <DialogTitle className="text-xl">Xem trước dữ liệu import</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-auto">
-            <p className="text-sm text-gray-600 mb-4">
-              Tìm thấy <strong>{importData.length}</strong> phù hiệu sẽ được import. Vui lòng kiểm tra trước khi xác nhận.
-            </p>
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-center w-12">STT</TableHead>
-                    <TableHead className="text-center">Số phù hiệu</TableHead>
-                    <TableHead className="text-center">Biển số xe</TableHead>
-                    <TableHead className="text-center">Loại PH</TableHead>
-                    <TableHead className="text-center">Màu PH</TableHead>
-                    <TableHead className="text-center">Ngày cấp</TableHead>
-                    <TableHead className="text-center">Ngày hết hạn</TableHead>
-                    <TableHead className="text-center">Trạng thái</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {importData.slice(0, 100).map((badge, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="text-center">{index + 1}</TableCell>
-                      <TableCell className="text-center font-medium">{badge.badge_number}</TableCell>
-                      <TableCell className="text-center">{badge.license_plate_sheet}</TableCell>
-                      <TableCell className="text-center">{badge.badge_type || "-"}</TableCell>
-                      <TableCell className="text-center">{badge.badge_color || "-"}</TableCell>
-                      <TableCell className="text-center">{badge.issue_date || "-"}</TableCell>
-                      <TableCell className="text-center">{badge.expiry_date || "-"}</TableCell>
-                      <TableCell className="text-center">{badge.status || "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {importData.length > 100 && (
-              <p className="text-sm text-gray-500 mt-2 text-center">
-                ...và {importData.length - 100} phù hiệu khác
+        {/* Import Preview Dialog */}
+        <Dialog open={importDialogOpen} onOpenChange={handleImportDialogChange}>
+          <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogClose onClose={() => handleImportDialogChange(false)} />
+            <DialogHeader>
+              <DialogTitle className="text-xl">Xem trước dữ liệu import</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto">
+              <p className="text-sm text-gray-600 mb-4">
+                Tìm thấy <strong>{importData.length}</strong> phù hiệu sẽ được import. Vui lòng kiểm tra trước khi xác nhận.
               </p>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button 
-              variant="outline" 
-              onClick={() => {
-                handleImportDialogChange(false)
-                setImportData([])
-              }}
-              disabled={isImporting}
-            >
-              Hủy
-            </Button>
-            <Button onClick={handleImportConfirm} disabled={isImporting}>
-              {isImporting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Đang import...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import {importData.length} phù hiệu
-                </>
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-center w-12">STT</TableHead>
+                      <TableHead className="text-center">Số phù hiệu</TableHead>
+                      <TableHead className="text-center">Biển số xe</TableHead>
+                      <TableHead className="text-center">Loại PH</TableHead>
+                      <TableHead className="text-center">Màu PH</TableHead>
+                      <TableHead className="text-center">Ngày cấp</TableHead>
+                      <TableHead className="text-center">Ngày hết hạn</TableHead>
+                      <TableHead className="text-center">Trạng thái</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importData.slice(0, 100).map((badge, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="text-center">{index + 1}</TableCell>
+                        <TableCell className="text-center font-medium">{badge.badge_number}</TableCell>
+                        <TableCell className="text-center">{badge.license_plate_sheet}</TableCell>
+                        <TableCell className="text-center">{badge.badge_type || "-"}</TableCell>
+                        <TableCell className="text-center">{badge.badge_color || "-"}</TableCell>
+                        <TableCell className="text-center">{badge.issue_date || "-"}</TableCell>
+                        <TableCell className="text-center">{badge.expiry_date || "-"}</TableCell>
+                        <TableCell className="text-center">{badge.status || "-"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {importData.length > 100 && (
+                <p className="text-sm text-gray-500 mt-2 text-center">
+                  ...và {importData.length - 100} phù hiệu khác
+                </p>
               )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  handleImportDialogChange(false)
+                  setImportData([])
+                }}
+                disabled={isImporting}
+              >
+                Hủy
+              </Button>
+              <Button onClick={handleImportConfirm} disabled={isImporting}>
+                {isImporting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Đang import...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Import {importData.length} phù hiệu
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

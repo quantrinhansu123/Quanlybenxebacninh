@@ -77,9 +77,9 @@ export function ActionMenu({ items, className = "" }: ActionMenuProps) {
             className="fixed inset-0 z-10"
             onClick={() => setIsOpen(false)}
           />
-          
+
           {/* Menu */}
-          <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-20 py-1">
+          <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 z-[100] py-2">
             {items.map((item, index) => (
               <button
                 key={index}
@@ -96,11 +96,11 @@ export function ActionMenu({ items, className = "" }: ActionMenuProps) {
               >
                 {item.icon || (
                   item.label === "Xem" ? <Eye className="h-4 w-4" /> :
-                  item.label === "Sửa" ? <Edit className="h-4 w-4" /> :
-                  item.label === "Xóa" ? <Trash2 className="h-4 w-4" /> :
-                  item.label.includes("Vô hiệu") || item.label.includes("Kích hoạt") ? (
-                    item.label.includes("Vô hiệu") ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />
-                  ) : null
+                    item.label === "Sửa" ? <Edit className="h-4 w-4" /> :
+                      item.label === "Xóa" ? <Trash2 className="h-4 w-4" /> :
+                        item.label.includes("Vô hiệu") || item.label.includes("Kích hoạt") ? (
+                          item.label.includes("Vô hiệu") ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />
+                        ) : null
                 )}
                 <span>{item.label}</span>
               </button>
