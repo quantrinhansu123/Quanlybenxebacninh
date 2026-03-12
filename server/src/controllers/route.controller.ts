@@ -3,7 +3,7 @@ import { db } from '../db/drizzle.js'
 import { routes } from '../db/schema/index.js'
 import { users } from '../db/schema/users.js'
 import { locations } from '../db/schema/locations.js'
-import { eq, asc, and, or } from 'drizzle-orm'
+import { eq, asc, and, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AuthRequest } from '../middleware/auth.js'
 
@@ -388,7 +388,7 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
 
     const forceRefresh = req.query.refresh === 'true'
 
-    // Get user's benPhuTrach (assigned station)
+    // Resolve user's assigned station (benPhuTrach)
     let stationName: string | null = null
     let shouldFilterByStation = false
 
@@ -399,7 +399,6 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
         .where(eq(users.id, authReq.user.id))
         .limit(1)
 
-      // Only filter if user is not admin and has benPhuTrach assigned
       if (user && user.role !== 'admin' && user.benPhuTrach) {
         const [location] = await db
           .select({ name: locations.name })
@@ -408,13 +407,13 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
           .limit(1)
 
         if (location) {
-          stationName = location.name
+          stationName = location.name.trim()
           shouldFilterByStation = true
         }
       }
     }
 
-    // Check cache (but invalidate if filtering by station)
+    // Check cache only for unfiltered requests
     if (!forceRefresh && !shouldFilterByStation && legacyRoutesCache && Date.now() - legacyRoutesCache.timestamp < LEGACY_CACHE_TTL) {
       const remappedCachedData = legacyRoutesCache.data.map((route) => ({
         ...route,
@@ -431,17 +430,14 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
     const baseCondition = eq(routes.source, 'appsheet')
     let whereCondition = baseCondition
 
-    // Filter by station if user has benPhuTrach assigned
     if (shouldFilterByStation && stationName) {
       const stationCondition = or(
-        eq(routes.departureStation, stationName),
-        eq(routes.arrivalStation, stationName)
+        sql`TRIM(${routes.departureStation}) = ${stationName}`,
+        sql`TRIM(${routes.arrivalStation}) = ${stationName}`
       )
-
       if (stationCondition) {
         whereCondition = and(baseCondition, stationCondition) || baseCondition
       }
-
       console.log(`[Routes] Filtering by station: ${stationName}`)
     }
 
@@ -494,8 +490,10 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
       _source: 'drizzle',
     }))
 
-    // Update cache
-    legacyRoutesCache = { data: routesFormatted, timestamp: Date.now() }
+    // Update cache only for unfiltered results
+    if (!shouldFilterByStation) {
+      legacyRoutesCache = { data: routesFormatted, timestamp: Date.now() }
+    }
 
     return res.json(routesFormatted)
   } catch (error: any) {

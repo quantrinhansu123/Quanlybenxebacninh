@@ -1,6 +1,10 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
 import { vehicleBadges, vehicles as vehiclesTable, operators as operatorsTable, routes as routesTable, vehicleTypes as vehicleTypesTable } from '../db/schema/index.js'
+import { users } from '../db/schema/users.js'
+import { locations } from '../db/schema/locations.js'
+import { eq } from 'drizzle-orm'
+import type { AuthRequest } from '../middleware/auth.js'
 
 // Unified cache for all quanly data - pre-filtered for Buýt and Tuyến cố định
 interface QuanLyCache {
@@ -443,12 +447,57 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     }
     
     const data = await loadQuanLyData()
+
+    // Resolve station filter for non-admin users with benPhuTrach assigned
+    let stationName: string | null = null
+    const authReq = req as AuthRequest
+    if (authReq.user) {
+      const [user] = await db
+        .select({ benPhuTrach: users.benPhuTrach, role: users.role })
+        .from(users)
+        .where(eq(users.id, authReq.user.id))
+        .limit(1)
+
+      if (user && user.role !== 'admin' && user.benPhuTrach) {
+        const [location] = await db
+          .select({ name: locations.name })
+          .from(locations)
+          .where(eq(locations.id, user.benPhuTrach))
+          .limit(1)
+        if (location) {
+          stationName = location.name.trim()
+        }
+      }
+    }
     
     // Allow selective data loading
     const includes = include ? (include as string).split(',') : ['badges', 'vehicles', 'operators', 'routes']
     
     const response: Record<string, any> = {}
-    if (includes.includes('badges')) response.badges = data.badges
+    if (includes.includes('badges')) {
+      // Filter badges by station: only routes whose departureStation or arrivalStation matches user's station
+      // Station info comes from routes table joined via route_code on each badge
+      // Build a set of route codes that pass through user's station
+      let filteredBadges = data.badges
+      if (stationName) {
+        const stationLower = stationName.trim().toLowerCase()
+        // Build allowed route codes from routes data
+        const allowedRouteCodes = new Set<string>(
+          data.routes
+            .filter(r =>
+              r.startPoint.trim().toLowerCase() === stationLower ||
+              r.endPoint.trim().toLowerCase() === stationLower
+            )
+            .map(r => (r.code || '').trim().toUpperCase())
+        )
+        filteredBadges = data.badges.filter(b => {
+          const rc = (b.route_code || '').trim().toUpperCase()
+          return rc && allowedRouteCodes.has(rc)
+        })
+        console.log(`[QuanLyData] Station filter '${stationName}': ${allowedRouteCodes.size} matching routes, ${filteredBadges.length}/${data.badges.length} badges`)
+      }
+      response.badges = filteredBadges
+    }
     if (includes.includes('vehicles')) response.vehicles = data.vehicles
     if (includes.includes('operators')) response.operators = data.operators
     if (includes.includes('routes')) response.routes = data.routes

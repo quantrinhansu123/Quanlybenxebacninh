@@ -79,3 +79,29 @@ export const authorize = (...allowedRoles: string[]) => {
   }
 }
 
+/**
+ * Optional authentication — sets req.user if token is valid, continues without error if no token
+ */
+export const optionalAuthenticate = (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction
+) => {
+  try {
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return next()
+
+    const token = authHeader.substring(7)
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) return next()
+
+    const decoded = jwt.verify(token, jwtSecret) as { id: string; username: string; role: string }
+    if (decoded.id && decoded.username && decoded.role) {
+      req.user = decoded
+    }
+  } catch {
+    // Invalid/expired token — silently ignore, proceed unauthenticated
+  }
+  return next()
+}
+

@@ -135,18 +135,22 @@ export default function QuanLyPhuHieuXe() {
 
   // Backend enrichment data (itinerary and destination from routes JOIN - not available in AppSheet)
   const [enrichmentMap, setEnrichmentMap] = useState<Map<string, { itinerary: string, endPoint: string, startPoint: string }>>(new Map())
+  // Route code -> station endpoints (for filtering AppSheet badges by station)
+  const [routeStationMap, setRouteStationMap] = useState<Map<string, { endPoint: string, startPoint: string }>>(new Map())
 
   useEffect(() => {
     async function fetchEnrichment() {
       try {
         const data = await quanlyDataService.getAll(['badges', 'routes'])
         const map = new Map<string, { itinerary: string, endPoint: string, startPoint: string }>()
+        const routeMap = new Map<string, { endPoint: string, startPoint: string }>()
 
         // Build map of route Code -> Route Destination (endPoint and startPoint)
         const routeDestinationMap = new Map<string, { endPoint: string, startPoint: string }>()
         if (data.routes) {
           for (const r of data.routes) {
             routeDestinationMap.set(r.code, { endPoint: r.endPoint, startPoint: r.startPoint })
+            routeMap.set((r.code || '').trim().toUpperCase(), { endPoint: r.endPoint, startPoint: r.startPoint })
           }
         }
 
@@ -159,6 +163,7 @@ export default function QuanLyPhuHieuXe() {
           }
         }
         setEnrichmentMap(map)
+        setRouteStationMap(routeMap)
       } catch (error) {
         console.error("Failed to load badge enrichment:", error)
       }
@@ -330,27 +335,16 @@ export default function QuanLyPhuHieuXe() {
       return false
     }
 
-    // Role-based Location filter
-    // Apply if user has a benPhuTrachName assigned (regardless of role)
+    // Role-based Location filter for AppSheet badges (backend already filters DB badges)
+    // AppSheet badges are filtered here using routeCode -> station lookup
     if (currentUser && currentUser.benPhuTrachName) {
       const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
-
-      // Find the destination station (endPoint) and departure station (startPoint) for this badge
-      let endPoint = (badge as any)._endPoint || ''
-      let startPoint = (badge as any)._startPoint || ''
-
-      if (!endPoint && !startPoint && badge.route_code) {
-        endPoint = enrichmentMap.get(badge.badge_number)?.endPoint || ''
-        startPoint = enrichmentMap.get(badge.badge_number)?.startPoint || ''
-      }
-
-      endPoint = endPoint.trim().toLowerCase()
-      startPoint = startPoint.trim().toLowerCase()
-
-      // If the user's managed station is neither the start nor the end point, hide it
-      if (endPoint !== userLoc && startPoint !== userLoc) {
-        return false
-      }
+      const rc = (badge.route_code || '').trim().toUpperCase()
+      const stationEntry = rc ? routeStationMap.get(rc) : undefined
+      const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
+      const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
+      if (!dep && !arr) return false // no route info — hide
+      if (dep !== userLoc && arr !== userLoc) return false
     }
 
     return true

@@ -28,7 +28,7 @@ import { routeService, LegacyRoute } from "@/services/route.service"
 // import type { GtvtContractStatus, GtvtLastSyncResponse, GtvtSyncSummaryResponse } from "@/types/gtvt-sync.types"
 import { useUIStore } from "@/store/ui.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
-// import { useAuthStore } from "@/features/auth/store/authStore"
+import { useAuthStore } from "@/features/auth/store/authStore"
 import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
 import { normalizeFixedRouteRows, type NormalizedAppSheetFixedRoute } from "@/services/appsheet-normalize-fixed-routes"
 import { normalizeBusRouteRows, type NormalizedAppSheetBusRoute } from "@/services/appsheet-normalize-bus-routes"
@@ -54,8 +54,7 @@ export default function QuanLyTuyen() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 50
   const setTitle = useUIStore((state) => state.setTitle)
-  // const currentUser = useAuthStore((state) => state.user)
-  // const isAdmin = currentUser?.role === "admin"
+  const currentUser = useAuthStore((state) => state.user)
 
   // AppSheet realtime polling state
   const [appSheetFixedRoutes, setAppSheetFixedRoutes] = useState<NormalizedAppSheetFixedRoute[]>([])
@@ -270,6 +269,14 @@ export default function QuanLyTuyen() {
   const operationStatuses = Array.from(new Set(mergedRoutes.map((r) => r.operationStatus).filter(Boolean))).sort()
 
   const filteredRoutes = mergedRoutes.filter((route) => {
+    // Station filter: non-admin users with benPhuTrachName only see routes passing through their station
+    if (currentUser?.benPhuTrachName) {
+      const userStation = currentUser.benPhuTrachName.trim().toLowerCase()
+      const dep = (route.departureStation || '').trim().toLowerCase()
+      const arr = (route.arrivalStation || '').trim().toLowerCase()
+      if (dep !== userStation && arr !== userStation) return false
+    }
+
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
