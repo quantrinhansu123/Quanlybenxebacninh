@@ -81,7 +81,7 @@ export default function QuanLyPhuHieuXe() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
   const [filterBadgeType, setFilterBadgeType] = useState("")
-  const [filterBadgeColor, setFilterBadgeColor] = useState("")
+
   const [isLoading, setIsLoading] = useState(false)
   const [selectedBadge, setSelectedBadge] = useState<VehicleBadge | null>(null)
   const [viewDialogOpen, setViewDialogOpen] = useState(false)
@@ -330,11 +330,6 @@ export default function QuanLyPhuHieuXe() {
       return false
     }
 
-    // Badge color filter
-    if (filterBadgeColor && badge.badge_color !== filterBadgeColor) {
-      return false
-    }
-
     // Role-based Location filter
     // Apply if user has a benPhuTrachName assigned (regardless of role)
     if (currentUser && currentUser.benPhuTrachName) {
@@ -370,7 +365,7 @@ export default function QuanLyPhuHieuXe() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterStatus, filterBadgeType, filterBadgeColor])
+  }, [searchQuery, filterStatus, filterBadgeType])
 
   // Stats calculations
   const stats = useMemo(() => {
@@ -870,23 +865,7 @@ export default function QuanLyPhuHieuXe() {
                     ))}
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="filterBadgeColor" className="text-sm font-medium">
-                    Lọc theo màu phù hiệu
-                  </Label>
-                  <Select
-                    id="filterBadgeColor"
-                    value={filterBadgeColor}
-                    onChange={(e) => setFilterBadgeColor(e.target.value)}
-                  >
-                    <option value="">Tất cả màu</option>
-                    {badgeColors.map((color) => (
-                      <option key={color} value={color}>
-                        {color}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+
               </div>
             </div>
           </CardContent>
