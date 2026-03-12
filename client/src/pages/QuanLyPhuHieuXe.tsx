@@ -69,10 +69,10 @@ const getStatusVariant = (status: string): "active" | "inactive" | "maintenance"
   if (s === "active") return "active"
   if (s === "expired") return "inactive"
   if (s === "revoked") return "maintenance"
-  // Vietnamese text (legacy/display values)
-  if (s.includes("hiệu lực") || s.includes("cấp mới") || s.includes("cap moi")) return "active"
+  // Vietnamese text (legacy/display values) — check "hết hiệu lực" BEFORE "hiệu lực"
   if (s.includes("hết") || s.includes("het")) return "inactive"
   if (s.includes("thu hồi") || s.includes("thu hoi")) return "maintenance"
+  if (s.includes("hiệu lực") || s.includes("cấp mới") || s.includes("cap moi")) return "active"
   return "inactive"
 }
 
@@ -301,6 +301,11 @@ export default function QuanLyPhuHieuXe() {
   const filteredBadges = mergedBadges.filter((badge) => {
     // Filter by allowed badge types (Buýt and Tuyến cố định only)
     if (!allowedBadgeTypes.includes(badge.badge_type || "")) {
+      return false
+    }
+
+    // Hide expired badges (Hết hiệu lực)
+    if (getStatusVariant(badge.status) === "inactive") {
       return false
     }
 
