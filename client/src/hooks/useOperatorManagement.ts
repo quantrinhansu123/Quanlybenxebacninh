@@ -18,6 +18,7 @@ const ITEMS_PER_PAGE = 50;
 
 export function useOperatorManagement() {
   const [operators, setOperators] = useState<OperatorWithSource[]>([]);
+  const [appsheetPrefilterCodes, setAppsheetPrefilterCodes] = useState<Set<string> | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterTicketDelegated, setFilterTicketDelegated] = useState("");
@@ -101,6 +102,34 @@ export function useOperatorManagement() {
     }
   }, [dataSource]);
 
+  // Prefilter cho chế độ AppSheet:
+  // chỉ hiển thị các đơn vị có ít nhất 1 phù hiệu (Buýt/Tuyến cố định) theo backend pre-filter.
+  // Nếu backend lỗi → fallback (không lọc).
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAppsheetPrefilter() {
+      if (dataSource !== "appsheet") {
+        setAppsheetPrefilterCodes(null);
+        return;
+      }
+      try {
+        const data = await quanlyDataService.getAll(["operators"], false);
+        const codes = new Set<string>();
+        for (const op of (data.operators || []) as OperatorWithSource[]) {
+          const code = String(op.code || "").trim().toLowerCase();
+          if (code) codes.add(code);
+        }
+        if (!cancelled) setAppsheetPrefilterCodes(codes);
+      } catch (e) {
+        if (!cancelled) setAppsheetPrefilterCodes(null);
+      }
+    }
+    void loadAppsheetPrefilter();
+    return () => {
+      cancelled = true;
+    };
+  }, [dataSource]);
+
   const loadOperators = async (forceRefresh = false) => {
     if (dataSource === "appsheet") {
       pollNow();
@@ -130,8 +159,14 @@ export function useOperatorManagement() {
     const isDoanhNghiep = (s: string | undefined) =>
       (s || "").trim().toLowerCase() === "doanh nghiệp";
 
+    const prefilter = appsheetPrefilterCodes;
+
     return appSheetOperators
       .filter((op) => isDoanhNghiep((op as any).loaiHinh))
+      .filter((op) => {
+        if (!prefilter || prefilter.size === 0) return true;
+        return prefilter.has(String(op.firebaseId || "").trim().toLowerCase());
+      })
       .map((op) => ({
         id: op.firebaseId,
         code: op.code,
@@ -145,7 +180,7 @@ export function useOperatorManagement() {
         isTicketDelegated: false,
         source: "google_sheets" as const,
       }));
-  }, [appSheetOperators]);
+  }, [appSheetOperators, appsheetPrefilterCodes]);
 
   // Merge AppSheet realtime data with backend pre-filtered operators.
   // Backend pre-filters to ~22 operators with Buýt/TCD badges (source of truth for WHICH to show).

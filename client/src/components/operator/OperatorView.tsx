@@ -12,6 +12,7 @@ export function OperatorView({ operator }: OperatorViewProps) {
   const [appsheetBadges, setAppsheetBadges] = useState<ReturnType<typeof normalizeBadgeRows>>([])
   const [appsheetLoading, setAppsheetLoading] = useState(false)
   const [appsheetError, setAppsheetError] = useState<string | null>(null)
+  const [resolvedAppsheetOperatorId, setResolvedAppsheetOperatorId] = useState<string>("")
   const [appsheetDebug, setAppsheetDebug] = useState<{
     operatorId: string
     badgesTotal: number
@@ -19,26 +20,57 @@ export function OperatorView({ operator }: OperatorViewProps) {
     sampleBadge?: { badgeNumber?: string; vehicleRef?: string; plateNumber?: string; operatorRef?: string; badgeType?: string; status?: string }
   } | null>(null)
 
+  const isHex8 = (s: string) => /^[0-9a-f]{8}$/i.test((s || "").trim())
+
   // AppSheet operator id thường là 8 ký tự hex (IDDoanhNghiep)
-  const appsheetOperatorId = useMemo(() => {
+  const appsheetOperatorIdCandidate = useMemo(() => {
     const codeOrId = String(operator.code || operator.id || "").trim()
-    const isLikelyHex8 = /^[0-9a-f]{8}$/i.test(codeOrId)
-    return isLikelyHex8 ? codeOrId : ""
+    return isHex8(codeOrId) ? codeOrId : ""
   }, [operator.code, operator.id])
 
   useEffect(() => {
     let cancelled = false
     async function loadAppsheetBadges() {
+      const esc = (s: string) => s.replace(/"/g, '\\"').trim()
+
+      const resolveId = async (): Promise<string> => {
+        if (appsheetOperatorIdCandidate) return appsheetOperatorIdCandidate
+
+        // Fallback 1: lookup by tax code
+        const taxCode = String((operator as any)?.taxCode || "").trim()
+        if (taxCode) {
+          const selector = `Filter(THONGTINDONVIVANTAI, [MaSoThue] = "${esc(taxCode)}")`
+          const rows = await appsheetClient.findByName("operators", { selector }).catch(() => [])
+          const row0 = rows?.[0] as any
+          const id = String(row0?.IDDoanhNghiep || row0?.id || row0?.firebaseId || "").trim()
+          if (isHex8(id)) return id
+        }
+
+        // Fallback 2: lookup by exact name
+        const name = String((operator as any)?.name || "").trim()
+        if (name) {
+          const selector = `Filter(THONGTINDONVIVANTAI, [TenDoanhNghiep] = "${esc(name)}")`
+          const rows = await appsheetClient.findByName("operators", { selector }).catch(() => [])
+          const row0 = rows?.[0] as any
+          const id = String(row0?.IDDoanhNghiep || row0?.id || row0?.firebaseId || "").trim()
+          if (isHex8(id)) return id
+        }
+
+        return ""
+      }
+
+      const appsheetOperatorId = await resolveId()
       if (!appsheetOperatorId) {
         setAppsheetBadges([])
         setAppsheetError(null)
+        setResolvedAppsheetOperatorId("")
         return
       }
 
+      setResolvedAppsheetOperatorId(appsheetOperatorId)
       setAppsheetLoading(true)
       setAppsheetError(null)
       try {
-        const esc = (s: string) => s.replace(/"/g, '\\"').trim()
         // Selector đơn giản, tránh Lower()/IN() để chắc chắn có dữ liệu
         const opUpper = esc(appsheetOperatorId).toUpperCase()
         const opLower = esc(appsheetOperatorId).toLowerCase()
@@ -93,7 +125,7 @@ export function OperatorView({ operator }: OperatorViewProps) {
     return () => {
       cancelled = true
     }
-  }, [appsheetOperatorId])
+  }, [appsheetOperatorIdCandidate, operator])
 
   return (
     <div className="space-y-6">
@@ -183,12 +215,12 @@ export function OperatorView({ operator }: OperatorViewProps) {
       </div>
 
       {/* AppSheet Vehicles (debug/monitor) */}
-      {appsheetOperatorId && (
+      {resolvedAppsheetOperatorId && (
         <div className="space-y-2">
           <h3 className="text-lg font-medium border-b pb-2">
             Danh sách phù hiệu (AppSheet)
             <span className="ml-2 text-xs font-normal text-gray-500">
-              IDDoanhNghiep: {appsheetOperatorId.toUpperCase()}
+              IDDoanhNghiep: {resolvedAppsheetOperatorId.toUpperCase()}
             </span>
           </h3>
 

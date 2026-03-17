@@ -229,13 +229,41 @@ export function useOperatorDetail(
 
       const normalizePlateStr = (p: string) => p?.replace(/[\s.\-]/g, '').toUpperCase() || '';
 
-      // Xe trực thuộc luôn lấy từ AppSheet khi có IDDoanhNghiep (operator.code hoặc operator.id)
-      const operatorId = (operator.code || operator.id || '').trim();
-      const useAppSheet = !!operatorId;
+      const isHex8 = (s: string) => /^[0-9a-f]{8}$/i.test((s || "").trim());
+      const esc = (s: string) => s.replace(/"/g, '\\"').trim();
+
+      const resolveAppsheetOperatorId = async (): Promise<string> => {
+        const candidate = String((operator.code || operator.id || "")).trim();
+        if (isHex8(candidate)) return candidate;
+
+        const taxCode = String((operator as any)?.taxCode || "").trim();
+        if (taxCode) {
+          const selector = `Filter(THONGTINDONVIVANTAI, [MaSoThue] = "${esc(taxCode)}")`;
+          const rows = await appsheetClient.findByName("operators", { selector }).catch(() => []);
+          const row0 = rows?.[0] as any;
+          const id = String(row0?.IDDoanhNghiep || row0?.id || row0?.firebaseId || "").trim();
+          if (isHex8(id)) return id;
+        }
+
+        const name = String((operator as any)?.name || "").trim();
+        if (name) {
+          const selector = `Filter(THONGTINDONVIVANTAI, [TenDoanhNghiep] = "${esc(name)}")`;
+          const rows = await appsheetClient.findByName("operators", { selector }).catch(() => []);
+          const row0 = rows?.[0] as any;
+          const id = String(row0?.IDDoanhNghiep || row0?.id || row0?.firebaseId || "").trim();
+          if (isHex8(id)) return id;
+        }
+
+        return "";
+      };
+
+      // Xe trực thuộc luôn lấy từ AppSheet khi resolve ra được IDDoanhNghiep
+      const appsheetOperatorId = await resolveAppsheetOperatorId();
+      const useAppSheet = !!appsheetOperatorId;
       if (useAppSheet) {
-        appsheetOperatorIdRef.id = operatorId;
+        appsheetOperatorIdRef.id = appsheetOperatorId;
         // Cache hit: instant render
-        const cached = appsheetOperatorCache.get(operatorId.toLowerCase());
+        const cached = appsheetOperatorCache.get(appsheetOperatorId.toLowerCase());
         if (cached && (Date.now() - cached.ts) < APPSHEET_OPERATOR_CACHE_TTL_MS) {
           setVehicles(cached.vehicles);
           setBadges(cached.badges);
@@ -247,17 +275,16 @@ export function useOperatorDetail(
         // 1) Find PHUHIEUXE rows for this operator (server-side selector)
         // 2) FAST render from PHUHIEUXE.BienSo (no Xe join yet)
         // 3) Enrich in background: fetch Xe by IDXe (BienSoXe) to fill SoCho/… (non-blocking)
-        const esc = (s: string) => s.replace(/"/g, '\\"').trim();
         // TrangThai thực tế thường là "Hiệu lực"; một số view gọi là "Hoạt động"
         // Lấy cả 2 để tránh rỗng dữ liệu.
-        const badgeSelector = `Filter(PHUHIEUXE, And(Lower([Ref_DonViCapPhuHieu]) = "${esc(operatorId).toLowerCase()}", Or([TrangThai] = "Hoạt động", [TrangThai] = "Hiệu lực"), IN([LoaiPH], {"Tuyến cố định","Buýt"})))`;
+        const badgeSelector = `Filter(PHUHIEUXE, And(Lower([Ref_DonViCapPhuHieu]) = "${esc(appsheetOperatorId).toLowerCase()}", Or([TrangThai] = "Hoạt động", [TrangThai] = "Hiệu lực"), IN([LoaiPH], {"Tuyến cố định","Buýt"})))`;
         const badgeRows = await appsheetClient.findByName("badges", { selector: badgeSelector }).catch(() => []);
 
         const normalizedBadges = normalizeBadgeRows(badgeRows);
 
         // Rule 1: Ref_DonViCapPhuHieu (operatorRef) = IDDoanhNghiep (operator.id)
         const operatorBadges = normalizedBadges.filter(
-          (b) => b.operatorRef?.toLowerCase() === operatorId.toLowerCase(),
+          (b) => b.operatorRef?.toLowerCase() === appsheetOperatorId.toLowerCase(),
         );
 
         // Dedup by badge_number
@@ -321,7 +348,7 @@ export function useOperatorDetail(
 
         // Update state immediately (fast render) + cache
         setVehicles(Array.isArray(vehiclesData) ? vehiclesData : []);
-        appsheetOperatorCache.set(operatorId.toLowerCase(), { ts: Date.now(), vehicles: vehiclesData, badges: badgesData });
+        appsheetOperatorCache.set(appsheetOperatorId.toLowerCase(), { ts: Date.now(), vehicles: vehiclesData, badges: badgesData });
       } else {
         // Database mode
         const allBadges = await vehicleBadgeService.getAll();
