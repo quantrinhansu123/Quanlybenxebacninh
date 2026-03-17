@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
-import { vehicleBadges, vehicles, dispatchRecords, auditLogs, routes } from '../db/schema/index.js'
-import { eq, ne, and, sql } from 'drizzle-orm'
+import { vehicleBadges, vehicles, dispatchRecords, auditLogs, routes, operators } from '../db/schema/index.js'
+import { eq, ne, and, or, sql } from 'drizzle-orm'
 import { dashboardService } from '../services/dashboard.service.js'
 
 // Constants
@@ -394,6 +394,10 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
       expiry_date,
       status,
       bus_route_ref,
+      route_id: routeIdFromBody,
+      route_code: routeCodeFromBody,
+      route_name: routeNameFromBody,
+      operator_id: operatorIdFromBody,
       badge_color,
       file_code,
       issue_type,
@@ -405,6 +409,87 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
     if (!badge_number || !license_plate_sheet) {
       res.status(400).json({ error: 'Số phù hiệu và biển số xe là bắt buộc' })
       return
+    }
+
+    // Plate number column is varchar(20) → guard to avoid 500 errors
+    const rawPlate = String(license_plate_sheet).trim()
+    if (rawPlate.length > 20) {
+      res.status(400).json({
+        error:
+          'Biển số xe không hợp lệ. Vui lòng chỉ nhập biển số (tối đa 20 ký tự), không kèm thêm mã/ghi chú khác.',
+      })
+      return
+    }
+
+    // Resolve route: UUID (backend) | routeCode (fixed) | firebaseId (bus) | route_code/route_name from body
+    let resolvedRouteId: string | null = null
+    let resolvedRouteCode: string | null = null
+    let resolvedRouteName: string | null = null
+    const rawRouteId = routeIdFromBody && typeof routeIdFromBody === 'string' ? routeIdFromBody.trim() : ''
+    if (rawRouteId) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawRouteId)
+      let routeRow: { id: string; routeCode: string | null; departureStation: string | null; arrivalStation: string | null } | undefined
+      if (isUuid) {
+        ;[routeRow] = await db
+          .select({
+            id: routes.id,
+            routeCode: routes.routeCode,
+            departureStation: routes.departureStation,
+            arrivalStation: routes.arrivalStation,
+          })
+          .from(routes)
+          .where(eq(routes.id, rawRouteId))
+          .limit(1)
+      }
+      if (!routeRow) {
+        ;[routeRow] = await db
+          .select({
+            id: routes.id,
+            routeCode: routes.routeCode,
+            departureStation: routes.departureStation,
+            arrivalStation: routes.arrivalStation,
+          })
+          .from(routes)
+          .where(eq(routes.routeCode, rawRouteId))
+          .limit(1)
+      }
+      if (!routeRow) {
+        ;[routeRow] = await db
+          .select({
+            id: routes.id,
+            routeCode: routes.routeCode,
+            departureStation: routes.departureStation,
+            arrivalStation: routes.arrivalStation,
+          })
+          .from(routes)
+          .where(eq(routes.firebaseId, rawRouteId))
+          .limit(1)
+      }
+      if (routeRow) {
+        resolvedRouteId = routeRow.id
+        resolvedRouteCode = routeRow.routeCode || null
+        const dep = (routeRow.departureStation || '').trim()
+        const arr = (routeRow.arrivalStation || '').trim()
+        resolvedRouteName = dep && arr ? `${dep} - ${arr}` : dep || arr || null
+      } else if (routeCodeFromBody || routeNameFromBody) {
+        resolvedRouteCode = typeof routeCodeFromBody === 'string' && routeCodeFromBody.trim()
+          ? routeCodeFromBody.trim().slice(0, 50)
+          : rawRouteId.slice(0, 50) || null
+        resolvedRouteName = typeof routeNameFromBody === 'string' && routeNameFromBody.trim()
+          ? routeNameFromBody.trim().slice(0, 255)
+          : null
+      }
+    }
+    if (!resolvedRouteId && !resolvedRouteCode && bus_route_ref) {
+      const rawRouteCode = String(bus_route_ref).trim()
+      if (rawRouteCode.length > 50) {
+        res.status(400).json({
+          error:
+            'Tuyến đường không hợp lệ. Vui lòng chỉ nhập mã tuyến (tối đa 50 ký tự) hoặc chọn tuyến từ danh sách.',
+        })
+        return
+      }
+      resolvedRouteCode = rawRouteCode || null
     }
 
     // Check for duplicate badge number
@@ -429,17 +514,37 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
     if (vehicle_type) metadata.vehicleType = vehicle_type
     if (notes) metadata.notes = notes
 
-    // Create new badge in Drizzle
+    // Resolve operator_id (optional FK): support both UUID and firebaseId (IDDoanhNghiep)
+    let operatorId: string | null = null
+    const rawOperatorId = operatorIdFromBody && typeof operatorIdFromBody === 'string' ? operatorIdFromBody.trim() : ''
+    if (rawOperatorId) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawOperatorId)
+      if (isUuid) {
+        operatorId = rawOperatorId
+      } else {
+        const [op] = await db
+          .select({ id: operators.id })
+          .from(operators)
+          .where(eq(operators.firebaseId, rawOperatorId))
+          .limit(1)
+        operatorId = op?.id ?? null
+      }
+    }
+
+    // Create new badge in Drizzle (route_id + route_code + route_name from dropdown; operator_id from dropdown)
     const [data] = await db
       .insert(vehicleBadges)
       .values({
         badgeNumber: badge_number,
-        plateNumber: license_plate_sheet,
+        plateNumber: rawPlate,
         badgeType: badge_type || null,
         issueDate: issue_date || null,
         expiryDate: expiry_date || null,
         status: status || 'active',
-        routeCode: bus_route_ref || null,
+        routeId: resolvedRouteId,
+        routeCode: resolvedRouteCode,
+        routeName: resolvedRouteName,
+        operatorId: operatorId,
         metadata: Object.keys(metadata).length > 0 ? metadata : null,
         source: 'manual',
       })
@@ -501,12 +606,62 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
       expiry_date,
       status,
       bus_route_ref,
+      route_id: routeIdFromBody,
+      operator_id: operatorIdFromBody,
       badge_color,
       file_code,
       issue_type,
       vehicle_type,
       notes,
     } = req.body
+
+    // Resolve operator_id: support both UUID and firebaseId (IDDoanhNghiep) — same as create
+    let operatorId: string | null | undefined = undefined
+    const rawOperatorId = operatorIdFromBody !== undefined && operatorIdFromBody !== null && String(operatorIdFromBody).trim()
+      ? String(operatorIdFromBody).trim()
+      : ''
+    if (rawOperatorId) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawOperatorId)
+      if (isUuid) {
+        operatorId = rawOperatorId
+      } else {
+        const [op] = await db
+          .select({ id: operators.id })
+          .from(operators)
+          .where(eq(operators.firebaseId, rawOperatorId))
+          .limit(1)
+        operatorId = op?.id ?? null
+      }
+    } else if (operatorIdFromBody === null || operatorIdFromBody === '') {
+      operatorId = null
+    }
+
+    // Resolve route when route_id provided (same as create)
+    let resolvedRouteId: string | null | undefined = undefined
+    let resolvedRouteCode: string | null | undefined = undefined
+    let resolvedRouteName: string | null | undefined = undefined
+    if (routeIdFromBody && typeof routeIdFromBody === 'string' && routeIdFromBody.trim()) {
+      const [routeRow] = await db
+        .select({
+          id: routes.id,
+          routeCode: routes.routeCode,
+          departureStation: routes.departureStation,
+          arrivalStation: routes.arrivalStation,
+        })
+        .from(routes)
+        .where(eq(routes.id, routeIdFromBody.trim()))
+        .limit(1)
+      if (routeRow) {
+        resolvedRouteId = routeRow.id
+        resolvedRouteCode = routeRow.routeCode || null
+        const dep = (routeRow.departureStation || '').trim()
+        const arr = (routeRow.arrivalStation || '').trim()
+        resolvedRouteName = dep && arr ? `${dep} - ${arr}` : dep || arr || null
+      }
+    } else if (bus_route_ref !== undefined) {
+      const raw = String(bus_route_ref).trim()
+      resolvedRouteCode = raw.length > 50 ? raw.slice(0, 50) : raw || null
+    }
 
     // Check for duplicate badge number (excluding current badge)
     if (badge_number) {
@@ -556,7 +711,10 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
     if (issue_date !== undefined) updateData.issueDate = issue_date
     if (expiry_date !== undefined) updateData.expiryDate = expiry_date
     if (status !== undefined) updateData.status = status
-    if (bus_route_ref !== undefined) updateData.routeCode = bus_route_ref
+    if (resolvedRouteId !== undefined) updateData.routeId = resolvedRouteId
+    if (resolvedRouteCode !== undefined) updateData.routeCode = resolvedRouteCode
+    if (resolvedRouteName !== undefined) updateData.routeName = resolvedRouteName
+    if (operatorId !== undefined) updateData.operatorId = operatorId || null
     if (Object.keys(metadata).length > 0) updateData.metadata = metadata
 
     // Always update timestamp

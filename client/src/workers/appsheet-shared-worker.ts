@@ -274,7 +274,20 @@ async function doPoll(table: string) {
   const state = tableStates.get(table)
   if (!state || !config) return
   const endpoint = config.endpoints[table]
-  if (!endpoint) return
+  if (!endpoint) {
+    const envHint: Record<string, string> = {
+      badges: 'VITE_GTVT_APPSHEET_BADGES_ENDPOINT (PHUHIEUXE)',
+      operators: 'VITE_GTVT_APPSHEET_OPERATORS_ENDPOINT',
+      fixedRoutes: 'VITE_GTVT_APPSHEET_ROUTES_ENDPOINT',
+      busRoutes: 'VITE_GTVT_APPSHEET_BUS_ROUTES_ENDPOINT',
+    }
+    broadcast(table, {
+      type: 'error',
+      table,
+      message: `Endpoint chưa cấu hình. Thêm ${envHint[table] || table} vào client/.env`,
+    })
+    return
+  }
 
   state.polling = true
   broadcastStatus(table)

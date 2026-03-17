@@ -28,6 +28,10 @@ export default function QuanLyDonViVanTai() {
     paginatedOperators,
     filteredOperators,
     stats,
+    dataSource,
+    setDataSource,
+    appSheetConfigMissing,
+    appSheetError,
     searchQuery,
     setSearchQuery,
     filterStatus,
@@ -84,8 +88,24 @@ export default function QuanLyDonViVanTai() {
                 Quản lý Đơn vị vận tải
               </h1>
               <p className="text-slate-500 text-sm mt-1">
-                Đơn vị có phù hiệu Buýt hoặc Tuyến cố định
+                {dataSource === "appsheet"
+                  ? "Dữ liệu trực tiếp từ AppSheet API (GTVT)"
+                  : "Đơn vị có phù hiệu Buýt hoặc Tuyến cố định"}
               </p>
+              <div className="flex items-center gap-2 mt-2">
+                <Label htmlFor="data-source" className="text-xs text-slate-500 whitespace-nowrap">
+                  Nguồn:
+                </Label>
+                <select
+                  id="data-source"
+                  value={dataSource}
+                  onChange={(e) => setDataSource(e.target.value as "filtered" | "appsheet")}
+                  className="text-sm rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400"
+                >
+                  <option value="filtered">Đã lọc (có phù hiệu Buýt/TCD)</option>
+                  <option value="appsheet">Tất cả từ AppSheet API</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -107,6 +127,23 @@ export default function QuanLyDonViVanTai() {
             </Button>
           </div>
         </div>
+
+        {/* AppSheet connection warning when using "Tất cả từ AppSheet" */}
+        {dataSource === "appsheet" && (appSheetConfigMissing || appSheetError) && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+            <p className="font-medium">Không kết nối được AppSheet API</p>
+            {appSheetConfigMissing && (
+              <p className="mt-1 text-sm">
+                Thiếu cấu hình: thêm <code className="rounded bg-amber-100 px-1">VITE_GTVT_APPSHEET_API_KEY</code> và{" "}
+                <code className="rounded bg-amber-100 px-1">VITE_GTVT_APPSHEET_OPERATORS_ENDPOINT</code> vào file{" "}
+                <code className="rounded bg-amber-100 px-1">client/.env</code>. Xem <code className="rounded bg-amber-100 px-1">client/.env.example</code> để biết định dạng URL.
+              </p>
+            )}
+            {!appSheetConfigMissing && appSheetError && (
+              <p className="mt-1 text-sm">Lỗi: {appSheetError}</p>
+            )}
+          </div>
+        )}
 
         {/* Stats Cards */}
         <OperatorStatsCards stats={stats} />
@@ -470,6 +507,7 @@ export default function QuanLyDonViVanTai() {
             setSelectedOperatorForDetail(null);
           }}
           operator={selectedOperatorForDetail}
+          dataSource={dataSource}
         />
 
         <DeleteConfirmDialog

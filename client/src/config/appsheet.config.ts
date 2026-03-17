@@ -2,11 +2,14 @@
  * AppSheet API config - reads from Vite env vars (VITE_ prefix required)
  * Used for frontend direct polling to AppSheet GTVT tables
  */
+// Strip {} from API key if present (AppSheet UI shows as {V2-xxx} but API accepts both)
+const rawKey = import.meta.env.VITE_GTVT_APPSHEET_API_KEY || ''
 export const appsheetConfig = {
-  apiKey: import.meta.env.VITE_GTVT_APPSHEET_API_KEY || '',
+  apiKey: rawKey.replace(/^\{/, '').replace(/\}$/, ''),
   authHeader: 'ApplicationAccessKey',
-  timeoutMs: 10_000,
-  retries: 2,
+  // AppSheet tables (PHUHIEUXE, Xe) can be large → 10s often times out
+  timeoutMs: 30_000,
+  retries: 3,
   retryDelayMs: 500,
   // Adaptive interval: escalates when no changes detected, resets on change
   adaptive: {
@@ -19,6 +22,7 @@ export const appsheetConfig = {
   // notifications/busLookup = enrichment tables for join
   endpoints: {
     vehicles: import.meta.env.VITE_GTVT_APPSHEET_VEHICLES_ENDPOINT || '',
+    xe: import.meta.env.VITE_GTVT_APPSHEET_VEHICLES_ENDPOINT || import.meta.env.VITE_GTVT_APPSHEET_XE_ENDPOINT || '',
     badges: import.meta.env.VITE_GTVT_APPSHEET_BADGES_ENDPOINT || '',
     operators: import.meta.env.VITE_GTVT_APPSHEET_OPERATORS_ENDPOINT || '',
     fixedRoutes: import.meta.env.VITE_GTVT_APPSHEET_ROUTES_ENDPOINT || '',

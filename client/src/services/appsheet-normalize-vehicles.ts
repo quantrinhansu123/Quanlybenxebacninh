@@ -25,6 +25,22 @@ const int = (val: unknown): number | undefined => {
   return Number.isFinite(n) ? Math.floor(n) : undefined
 }
 
+/**
+ * Build IDXe → BienSo map from raw XE rows for badge plate resolution.
+ * PHUHIEUXE.BienSoXe references XE.IDXe; this map resolves to BienSo.
+ */
+export function buildIdXeToPlateMap(
+  rows: Record<string, unknown>[],
+): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const row of rows) {
+    const idXe = str(row['IDXe'] ?? row['_RowNumber'])
+    const plate = str(row['BienSo'] ?? row['BienKiemSoat'])
+    if (idXe && plate) map.set(idXe, normPlate(plate))
+  }
+  return map
+}
+
 export function normalizeVehicleRows(
   rows: Record<string, unknown>[],
 ): NormalizedAppSheetVehicle[] {

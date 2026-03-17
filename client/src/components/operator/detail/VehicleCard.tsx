@@ -10,8 +10,12 @@ interface VehicleCardProps {
 
 export const VehicleCard = memo(function VehicleCard({ vehicle, index, onClick }: VehicleCardProps) {
   const isActive = vehicle.isActive;
-  const hasSeats = vehicle.seatCapacity && vehicle.seatCapacity > 0;
+  const seatText = (vehicle as any)?.metadata?.seatText as string | undefined;
+  const vehicleRef = (vehicle as any)?.metadata?.vehicleRef as string | undefined;
+  const enriching = Boolean((vehicle as any)?.metadata?.enriching);
+  const hasSeats = (seatText && seatText.trim() !== "") || (vehicle.seatCapacity && vehicle.seatCapacity > 0);
   const hasBeds = vehicle.bedCapacity && vehicle.bedCapacity > 0;
+  const needsEnrich = Boolean(vehicleRef) && !hasSeats && !hasBeds && !vehicle.province && !vehicle.color;
 
   return (
     <div
@@ -67,7 +71,7 @@ export const VehicleCard = memo(function VehicleCard({ vehicle, index, onClick }
             <div>
               <p className="text-xs text-gray-500">Số ghế</p>
               <p className="text-sm font-bold text-gray-900">
-                {hasSeats ? vehicle.seatCapacity : "—"}
+                {hasSeats ? (seatText || vehicle.seatCapacity) : (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : "—"))}
               </p>
             </div>
           </div>
@@ -77,7 +81,7 @@ export const VehicleCard = memo(function VehicleCard({ vehicle, index, onClick }
             <div>
               <p className="text-xs text-gray-500">Giường</p>
               <p className="text-sm font-bold text-gray-900">
-                {hasBeds ? vehicle.bedCapacity : "—"}
+                {hasBeds ? vehicle.bedCapacity : (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : "—"))}
               </p>
             </div>
           </div>
@@ -86,7 +90,7 @@ export const VehicleCard = memo(function VehicleCard({ vehicle, index, onClick }
         {/* Location */}
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <MapPin className="w-4 h-4 text-gray-400" />
-          <span>{vehicle.province || "Chưa xác định"}</span>
+          <span>{vehicle.province || (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : "Chưa xác định"))}</span>
         </div>
       </div>
 

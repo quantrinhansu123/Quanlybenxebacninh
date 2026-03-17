@@ -21,17 +21,21 @@ interface OperatorDetailDialogProps {
   open: boolean;
   onClose: () => void;
   operator: Operator | null;
+  /** When "appsheet", operator detail uses AppSheet PHUHIEUXE + XE rules */
+  dataSource?: "filtered" | "appsheet";
 }
 
 export function OperatorDetailDialog({
   open,
   onClose,
   operator,
+  dataSource = "filtered",
 }: OperatorDetailDialogProps) {
   const {
     activeTab,
     setActiveTab,
     vehicles,
+    vehiclesSource,
     invoices,
     allDispatchRecords,
     paidDispatchRecords,
@@ -47,9 +51,21 @@ export function OperatorDetailDialog({
     formatDate,
     formatCurrency,
     resetTab,
-  } = useOperatorDetail(operator, open);
+    enrichVehicleRefs,
+  } = useOperatorDetail(operator, open, dataSource);
 
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [vehiclePage, setVehiclePage] = useState(1);
+  const VEHICLE_PAGE_SIZE = 100;
+  const vehicleTotalPages = Math.max(1, Math.ceil(vehicles.length / VEHICLE_PAGE_SIZE));
+  const pagedVehicles = vehicles.slice(
+    (vehiclePage - 1) * VEHICLE_PAGE_SIZE,
+    vehiclePage * VEHICLE_PAGE_SIZE,
+  );
+  // Reset pagination when switching operator/dialog
+  useEffect(() => {
+    if (open) setVehiclePage(1);
+  }, [open, operator?.id, operator?.code]);
 
   // Handle browser back button - close dialog instead of navigating away
   const closedViaBackButtonRef = useRef(false);
@@ -168,8 +184,11 @@ export function OperatorDetailDialog({
                     <Truck className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">
+                    <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                       Danh sách xe trực thuộc
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600">
+                        Nguồn: {vehiclesSource}
+                      </span>
                     </h2>
                     <p className="text-sm text-gray-500">
                       {vehicles.length > 0
@@ -195,14 +214,53 @@ export function OperatorDetailDialog({
                 )}
               </div>
 
+              {vehicles.length > 0 && (
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="text-xs text-slate-500">
+                    Hiển thị {(vehiclePage - 1) * VEHICLE_PAGE_SIZE + 1}–
+                    {Math.min(vehiclePage * VEHICLE_PAGE_SIZE, vehicles.length)} / {vehicles.length}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVehiclePage((p) => Math.max(1, p - 1))}
+                      disabled={vehiclePage <= 1}
+                    >
+                      Trước
+                    </Button>
+                    <div className="text-xs text-slate-600">
+                      Trang {vehiclePage}/{vehicleTotalPages}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVehiclePage((p) => Math.min(vehicleTotalPages, p + 1))}
+                      disabled={vehiclePage >= vehicleTotalPages}
+                    >
+                      Sau
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {isLoading ? (
                 <VehiclesSkeleton />
               ) : vehicles.length === 0 ? (
                 <EmptyVehicles />
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {vehicles.map((vehicle, index) => (
-                    <VehicleCard key={vehicle.id} vehicle={vehicle} index={index} onClick={setSelectedVehicle} />
+                  {pagedVehicles.map((vehicle, index) => (
+                    <VehicleCard
+                      key={vehicle.id}
+                      vehicle={vehicle}
+                      index={index}
+                      onClick={(v) => {
+                        const vref = (v as any)?.metadata?.vehicleRef as string | undefined;
+                        if (vref) void enrichVehicleRefs([vref]);
+                        setSelectedVehicle(v);
+                      }}
+                    />
                   ))}
                 </div>
               )}

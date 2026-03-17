@@ -29,8 +29,13 @@ export function VehicleBadgeDetailDialog({
   if (!vehicle) return null;
 
   const isActive = vehicle.isActive;
-  const hasSeats = vehicle.seatCapacity && vehicle.seatCapacity > 0;
-  const hasBeds = vehicle.bedCapacity && vehicle.bedCapacity > 0;
+  const seatText = (vehicle as any)?.metadata?.seatText as string | undefined;
+  const bedText = (vehicle as any)?.metadata?.bedText as string | undefined;
+  const vehicleRef = (vehicle as any)?.metadata?.vehicleRef as string | undefined;
+  const enriching = Boolean((vehicle as any)?.metadata?.enriching);
+  const hasSeats = (seatText && seatText.trim() !== "") || (vehicle.seatCapacity && vehicle.seatCapacity > 0);
+  const hasBeds = (bedText && bedText.trim() !== "") || (vehicle.bedCapacity && vehicle.bedCapacity > 0);
+  const needsEnrich = Boolean(vehicleRef) && !hasSeats && !hasBeds && !vehicle.province && !vehicle.color;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,11 +76,19 @@ export function VehicleBadgeDetailDialog({
           <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
             <h4 className="text-sm font-semibold text-blue-800 mb-2">Thông số xe</h4>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <InfoRow icon={Users} label="Số ghế" value={hasSeats ? String(vehicle.seatCapacity) : "—"} />
-              <InfoRow icon={Bed} label="Giường" value={hasBeds ? String(vehicle.bedCapacity) : "—"} />
+              <InfoRow
+                icon={Users}
+                label="Số ghế"
+                value={hasSeats ? (seatText || String(vehicle.seatCapacity)) : (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : "—"))}
+              />
+              <InfoRow
+                icon={Bed}
+                label="Giường"
+                value={hasBeds ? (bedText || String(vehicle.bedCapacity)) : (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : "—"))}
+              />
               <InfoRow icon={Truck} label="Loại xe" value={vehicle.vehicleType?.name} />
-              <InfoRow icon={MapPin} label="Tỉnh/TP" value={vehicle.province} />
-              <InfoRow icon={Palette} label="Màu sắc" value={vehicle.color} />
+              <InfoRow icon={MapPin} label="Tỉnh/TP" value={vehicle.province || (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : undefined))} />
+              <InfoRow icon={Palette} label="Màu sắc" value={vehicle.color || (enriching ? "Đang tải…" : (needsEnrich ? "Nhấn để tải" : undefined))} />
             </div>
           </div>
 

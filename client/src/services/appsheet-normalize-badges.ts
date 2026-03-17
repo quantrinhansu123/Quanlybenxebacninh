@@ -9,6 +9,8 @@ import { normPlate } from '@/utils/plate-utils'
 export interface NormalizedAppSheetBadge {
   badgeNumber: string
   plateNumber: string
+  /** BienSoXe = ref to XE.IDXe for plate resolution */
+  vehicleRef?: string
   badgeType?: string
   fileNumber?: string
   operatorRef?: string    // Ref_DonViCapPhuHieu → operators.firebase_id
@@ -42,12 +44,13 @@ export function normalizeBadgeRows(
     const badgeNum = str(row['SoPhuHieu'] ?? row['ID_PhuHieu'])
     if (!badgeNum) continue
 
-    // BienSo = actual plate text (e.g. "99H01844")
-    // BienSoXe = ref ID (e.g. "35841712"), NOT the plate number
-    const plate = str(row['BienSo']) || str(row['BienSoXe'])
+    // BienSo = actual plate text; BienSoXe = ref to XE.IDXe (NOT plate)
+    const plate = str(row['BienSo'])
+    const vehicleRef = str(row['BienSoXe'])
     const normalized: NormalizedAppSheetBadge = {
       badgeNumber: badgeNum,
       plateNumber: plate ? normPlate(plate) : '',
+      vehicleRef: vehicleRef || undefined,
       badgeType: str(row['LoaiPH']) || undefined,
       fileNumber: str(row['MaHoSo']) || undefined,
       operatorRef: str(row['Ref_DonViCapPhuHieu']) || undefined,

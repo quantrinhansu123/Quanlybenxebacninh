@@ -50,6 +50,13 @@ export interface CreateVehicleBadgeInput {
   file_code?: string
   issue_type?: string
   bus_route_ref?: string
+  /** When set, backend fills route_code and route_name from routes table (UUID, routeCode, or firebaseId) */
+  route_id?: string
+  /** Tuyến đường — khi chọn từ AppSheet, backend dùng khi route_id không khớp DB */
+  route_code?: string
+  route_name?: string
+  /** Đơn vị vận tải — dropdown theo operator_id */
+  operator_id?: string
   vehicle_type?: string
   notes?: string
 }

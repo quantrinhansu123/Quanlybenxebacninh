@@ -90,6 +90,71 @@ async function fetchTable(
 
     const payload = await response.json()
     return parseAppSheetResponse(payload)
+  } catch (err) {
+    // Browser abort errors are often surfaced as vague messages
+    const e = err as Error
+    if (e?.name === 'AbortError' || /aborted/i.test(e?.message || '')) {
+      throw new Error(`AppSheet request timeout after ${Math.round(appsheetConfig.timeoutMs / 1000)}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+type FindOptions = {
+  /** AppSheet Selector expression (e.g. Filter(PHUHIEUXE, [Ref_DonViCapPhuHieu]="25fac009")) */
+  selector?: string
+  /** Provide key values to read selected rows; shape depends on table key column */
+  rows?: Record<string, unknown>[]
+  /** Optional AbortSignal from caller */
+  signal?: AbortSignal
+}
+
+/** Find rows with optional Selector and/or input Rows (more efficient than full table scan) */
+async function findTable(endpoint: string, options: FindOptions): Promise<Record<string, unknown>[]> {
+  if (!endpoint) throw new Error('AppSheet endpoint not configured')
+  if (!appsheetConfig.apiKey) throw new Error('AppSheet API key not configured')
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), appsheetConfig.timeoutMs)
+
+  if (options.signal) {
+    options.signal.addEventListener('abort', () => controller.abort())
+  }
+
+  try {
+    const response = await fetchWithRetry(
+      endpoint,
+      {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          [appsheetConfig.authHeader]: appsheetConfig.apiKey,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          Action: 'Find',
+          Properties: options.selector ? { Selector: options.selector } : {},
+          Rows: options.rows ?? [],
+        }),
+      },
+      appsheetConfig.retries,
+    )
+
+    if (!response.ok) {
+      throw new Error(`AppSheet API error: ${response.status}`)
+    }
+
+    const payload = await response.json()
+    return parseAppSheetResponse(payload)
+  } catch (err) {
+    const e = err as Error
+    if (e?.name === 'AbortError' || /aborted/i.test(e?.message || '')) {
+      throw new Error(`AppSheet request timeout after ${Math.round(appsheetConfig.timeoutMs / 1000)}s`)
+    }
+    throw err
   } finally {
     clearTimeout(timeoutId)
   }
@@ -103,6 +168,13 @@ async function fetchByName(
   const endpoint = appsheetConfig.endpoints[tableName]
   if (!endpoint) throw new Error(`AppSheet endpoint not configured for table: ${tableName}`)
   return fetchTable(endpoint, signal)
+}
+
+/** Find rows by logical name, with Selector and/or input Rows */
+async function findByName(tableName: string, options: FindOptions): Promise<Record<string, unknown>[]> {
+  const endpoint = appsheetConfig.endpoints[tableName]
+  if (!endpoint) throw new Error(`AppSheet endpoint not configured for table: ${tableName}`)
+  return findTable(endpoint, options)
 }
 
 /** Fetch multiple tables in parallel, returns { [tableName]: rows[] } */
@@ -121,4 +193,4 @@ async function fetchMultiple(
   return output
 }
 
-export const appsheetClient = { fetchTable, fetchByName, fetchMultiple }
+export const appsheetClient = { fetchTable, fetchByName, findByName, fetchMultiple }

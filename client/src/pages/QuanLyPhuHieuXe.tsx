@@ -33,7 +33,12 @@ import { DatePicker } from "@/components/DatePicker"
 import BadgeDetailDialog from "./badge-detail-dialog"
 import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
 import { normalizeBadgeRows, type NormalizedAppSheetBadge } from "@/services/appsheet-normalize-badges"
+import { normalizeOperatorRows, type NormalizedAppSheetOperator } from "@/services/appsheet-normalize-operators"
+import { normalizeFixedRouteRows, type NormalizedAppSheetFixedRoute } from "@/services/appsheet-normalize-fixed-routes"
+import { normalizeBusRouteRows, type NormalizedAppSheetBusRoute } from "@/services/appsheet-normalize-bus-routes"
 import { vehicleBadgeService as vehicleBadgeFeatService } from "@/features/fleet/vehicle-badges"
+import { operatorApi } from "@/features/fleet/operators/api/operatorApi"
+import { routeApi } from "@/features/fleet/routes"
 import { useAuthStore } from "@/store/auth.store"
 
 // Helper function to convert Date to ISO string (YYYY-MM-DD)
@@ -82,6 +87,8 @@ export default function QuanLyPhuHieuXe() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
   const [filterBadgeType, setFilterBadgeType] = useState("Buýt")
+  /** Nguồn dữ liệu: appsheet = PHUHIEUXE GTVT, backend = Database */
+  const [dataSource, setDataSource] = useState<"appsheet" | "backend">("appsheet")
 
   const [isLoading, setIsLoading] = useState(false)
   const [selectedBadge, setSelectedBadge] = useState<VehicleBadge | null>(null)
@@ -103,6 +110,8 @@ export default function QuanLyPhuHieuXe() {
   const [formData, setFormData] = useState<Omit<CreateVehicleBadgeInput, 'issue_date' | 'expiry_date'> & {
     issue_date: Date | null
     expiry_date: Date | null
+    route_id: string
+    operator_id: string
   }>({
     badge_number: "",
     license_plate_sheet: "",
@@ -114,6 +123,8 @@ export default function QuanLyPhuHieuXe() {
     file_code: "",
     issue_type: "Cấp mới",
     bus_route_ref: "",
+    route_id: "",
+    operator_id: "",
     vehicle_type: "",
     notes: "",
   })
@@ -122,6 +133,14 @@ export default function QuanLyPhuHieuXe() {
   const itemsPerPage = 50
   const setTitle = useUIStore((state) => state.setTitle)
   const [userRouteIds, setUserRouteIds] = useState<string[]>([])
+  // Gõ để lọc: Tên đơn vị
+  const [operatorDropdownOpen, setOperatorDropdownOpen] = useState(false)
+  const [operatorSearch, setOperatorSearch] = useState("")
+  const operatorDropdownRef = useRef<HTMLDivElement>(null)
+  // Gõ để lọc: Tuyến đường
+  const [routeDropdownOpen, setRouteDropdownOpen] = useState(false)
+  const [routeSearch, setRouteSearch] = useState("")
+  const routeDropdownRef = useRef<HTMLDivElement>(null)
 
   // AppSheet realtime polling for badges
   const [appSheetBadges, setAppSheetBadges] = useState<NormalizedAppSheetBadge[]>([])
@@ -139,21 +158,101 @@ export default function QuanLyPhuHieuXe() {
   const [enrichmentMap, setEnrichmentMap] = useState<Map<string, { itinerary: string, endPoint: string, startPoint: string }>>(new Map())
   // Route code -> station endpoints (for filtering AppSheet badges by station)
   const [routeStationMap, setRouteStationMap] = useState<Map<string, { endPoint: string, startPoint: string }>>(new Map())
+  // Routes for dropdown — backend (id=UUID)
+  const [backendRouteOptions, setBackendRouteOptions] = useState<Array<{ id: string; code: string; name: string }>>([])
+  // AppSheet routes (DANHMUCTUYENCODINH + DANHMUCTUYENBUYT) — id = routeCode (fixed) | firebaseId (bus)
+  const [appSheetFixedRoutes, setAppSheetFixedRoutes] = useState<NormalizedAppSheetFixedRoute[]>([])
+  const [appSheetBusRoutes, setAppSheetBusRoutes] = useState<NormalizedAppSheetBusRoute[]>([])
+
+  useAppSheetPolling({
+    endpointKey: 'fixedRoutes',
+    normalize: normalizeFixedRouteRows,
+    onData: (data: NormalizedAppSheetFixedRoute[]) => setAppSheetFixedRoutes(data),
+    onSyncToDb: (data) => routeApi.syncFromAppSheet(data),
+    getKey: (r) => r.routeCode,
+    enabled: true,
+  })
+  useAppSheetPolling({
+    endpointKey: 'busRoutes',
+    normalize: normalizeBusRouteRows,
+    onData: (data: NormalizedAppSheetBusRoute[]) => setAppSheetBusRoutes(data),
+    onSyncToDb: (data) => routeApi.syncFromAppSheet(data),
+    getKey: (r) => r.firebaseId,
+    enabled: true,
+  })
+
+  // Ưu tiên AppSheet routes, fallback backend
+  const routeOptions = useMemo(() => {
+    const fixed = appSheetFixedRoutes.map((r) => ({
+      id: r.routeCode,
+      code: r.routeCode,
+      name: [r.departureStation, r.arrivalStation].filter(Boolean).join(' - ') || r.itinerary || r.routeCode,
+    }))
+    const bus = appSheetBusRoutes.map((r) => ({
+      id: r.firebaseId,
+      code: r.routeCode,
+      name: [r.departureStation, r.arrivalStation].filter(Boolean).join(' - ') || r.displayName || r.itinerary || r.routeCode,
+    }))
+    if (fixed.length > 0 || bus.length > 0) return [...fixed, ...bus]
+    return backendRouteOptions
+  }, [appSheetFixedRoutes, appSheetBusRoutes, backendRouteOptions])
+
+  // Operators for dropdown — Ưu tiên AppSheet THONGTINDONVIVANTAI (IDDoanhNghiep), fallback backend
+  const [backendOperatorOptions, setBackendOperatorOptions] = useState<Array<{ id: string; name: string; code?: string }>>([])
+
+  // AppSheet operators (THONGTINDONVIVANTAI) — id = firebaseId = IDDoanhNghiep
+  const [appSheetOperators, setAppSheetOperators] = useState<NormalizedAppSheetOperator[]>([])
+
+  useAppSheetPolling({
+    endpointKey: 'operators',
+    normalize: normalizeOperatorRows,
+    onData: (data: NormalizedAppSheetOperator[]) => setAppSheetOperators(data),
+    onSyncToDb: (data) => operatorApi.syncFromAppSheet(data),
+    getKey: (o) => o.firebaseId,
+    enabled: true,
+  })
+
+  // Ưu tiên AppSheet, fallback backend
+  const operatorOptions = useMemo(() => {
+    if (appSheetOperators.length > 0) {
+      return appSheetOperators.map((o) => ({
+        id: o.firebaseId,
+        name: (o.name || o.code || '').trim() || '—',
+        code: o.code,
+        province: o.province,
+        phone: o.phone,
+      }))
+    }
+    return backendOperatorOptions
+  }, [appSheetOperators, backendOperatorOptions])
 
   useEffect(() => {
     async function fetchEnrichment() {
       try {
-        const data = await quanlyDataService.getAll(['badges', 'routes'])
+        const data = await quanlyDataService.getAll(['badges', 'routes', 'operators'])
         const map = new Map<string, { itinerary: string, endPoint: string, startPoint: string }>()
         const routeMap = new Map<string, { endPoint: string, startPoint: string }>()
+        const options: Array<{ id: string; code: string; name: string }> = []
 
         // Build map of route Code -> Route Destination (endPoint and startPoint)
         const routeDestinationMap = new Map<string, { endPoint: string, startPoint: string }>()
         if (data.routes) {
           for (const r of data.routes) {
-            routeDestinationMap.set(r.code, { endPoint: r.endPoint, startPoint: r.startPoint })
-            routeMap.set((r.code || '').trim().toUpperCase(), { endPoint: r.endPoint, startPoint: r.startPoint })
+            const route = r as { id?: string; code?: string; startPoint?: string; endPoint?: string; name?: string }
+            routeDestinationMap.set(route.code || '', { endPoint: route.endPoint || '', startPoint: route.startPoint || '' })
+            routeMap.set((route.code || '').trim().toUpperCase(), { endPoint: route.endPoint || '', startPoint: route.startPoint || '' })
+            const name = route.name || (route.startPoint && route.endPoint ? `${route.startPoint} - ${route.endPoint}` : route.code || '')
+            if (route.id && (route.code || name)) options.push({ id: route.id, code: route.code || '', name })
           }
+          setBackendRouteOptions(options)
+        }
+        if (data.operators) {
+          const opList = (data.operators as Array<{ id?: string; name?: string; code?: string }>).map((o) => ({
+            id: o.id || '',
+            name: (o.name || o.code || '').trim() || '—',
+            code: o.code,
+          })).filter((o) => o.id)
+          setBackendOperatorOptions(opList)
         }
 
         if (data.badges) {
@@ -171,6 +270,48 @@ export default function QuanLyPhuHieuXe() {
       }
     }
     fetchEnrichment()
+  }, [])
+
+  // Lọc đơn vị theo chuỗi gõ (name, code)
+  const filteredOperatorOptions = useMemo(() => {
+    const q = (operatorSearch || "").trim().toLowerCase()
+    if (!q) return operatorOptions
+    return operatorOptions.filter(
+      (o) =>
+        (o.name || "").toLowerCase().includes(q) ||
+        (o.code || "").toLowerCase().includes(q)
+    )
+  }, [operatorOptions, operatorSearch])
+
+  // Lọc tuyến theo chuỗi gõ (name, code)
+  const filteredRouteOptions = useMemo(() => {
+    const q = (routeSearch || "").trim().toLowerCase()
+    if (!q) return routeOptions
+    return routeOptions.filter(
+      (r) =>
+        (r.name || "").toLowerCase().includes(q) ||
+        (r.code || "").toLowerCase().includes(q)
+    )
+  }, [routeOptions, routeSearch])
+
+  // Click outside đóng dropdown
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (
+        operatorDropdownRef.current &&
+        !operatorDropdownRef.current.contains(e.target as Node)
+      ) {
+        setOperatorDropdownOpen(false)
+      }
+      if (
+        routeDropdownRef.current &&
+        !routeDropdownRef.current.contains(e.target as Node)
+      ) {
+        setRouteDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown)
+    return () => document.removeEventListener("mousedown", onMouseDown)
   }, [])
 
   // Handle browser back button for dialogs
@@ -258,9 +399,11 @@ export default function QuanLyPhuHieuXe() {
   // Get unique values for filters - only from allowed badge types
   const allowedTypesForFilters = ["Buýt", "Tuyến cố định"]
 
-  // Merge AppSheet data (primary) with backend enrichment (itinerary)
+  // Merge data theo nguồn đã chọn
   const mergedBadges = useMemo((): VehicleBadge[] => {
-    if (appSheetBadges.length === 0) return badges // fallback to backend-only
+    if (dataSource === "backend") return badges
+
+    if (appSheetBadges.length === 0) return badges // fallback when AppSheet chưa load
 
     return appSheetBadges.map(b => {
       // Tìm badge backend tương ứng để lấy thêm thông tin (ví dụ: tuyen_bus_code)
@@ -298,10 +441,11 @@ export default function QuanLyPhuHieuXe() {
       issuing_authority_ref: b.operatorRef || '',
       // Backend enrichment
       itinerary: enrichmentMap.get(b.badgeNumber)?.itinerary || '',
-      // Route fields from AppSheet
+      // Route fields from AppSheet — Tuyến cố định: route_code=MaSoTuyen, route_ref=Ref_Tuyen (fallback lookup)
       route_id: '',
       route_code: b.routeCode || '',
       route_name: b.routeName || '',
+      route_ref: b.routeRef || '', // Ref_Tuyen — khớp routeStationMap khi MaSoTuyen không có trong backend
       // Tuyến bus code lấy từ backend (nếu có)
       tuyen_bus_code: (backendBadge as any)?.tuyen_bus_code || '',
       vehicle_type: '',
@@ -309,12 +453,15 @@ export default function QuanLyPhuHieuXe() {
       // Custom field to pass endpoint to filter
       _endPoint: enrichmentMap.get(b.badgeNumber)?.endPoint || '',
       _startPoint: enrichmentMap.get(b.badgeNumber)?.startPoint || '',
-      } as VehicleBadge & { tuyen_bus_code?: string; _endPoint?: string; _startPoint?: string }
+      } as VehicleBadge & { tuyen_bus_code?: string; route_ref?: string; _endPoint?: string; _startPoint?: string }
     })
-  }, [appSheetBadges, badges, enrichmentMap])
+  }, [dataSource, appSheetBadges, badges, enrichmentMap])
 
-  // Show loading until EITHER AppSheet data OR backend data loads
-  const effectiveLoading = isLoading && appSheetBadges.length === 0
+  // Loading: backend = chờ loadBadges; appsheet = chờ AppSheet hoặc fallback backend
+  const effectiveLoading =
+    dataSource === "backend"
+      ? isLoading
+      : isLoading && appSheetBadges.length === 0
 
   // Only show "Buýt" and "Tuyến cố định" badge types
   const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
@@ -364,10 +511,10 @@ export default function QuanLyPhuHieuXe() {
 
     // For non-Bus types, apply additional route/location filters
     if (badge.badge_type !== "Buýt") {
-      // Only show rows that have route_code
-      if (!badge.route_code || !badge.route_code.trim()) {
-        return false
-      }
+      // Tuyến cố định: cần route_code hoặc route_ref (Ref_Tuyen) — AppSheet dùng Ref_Tuyen khi MaSoTuyen không khớp backend
+      const routeCode = (badge.route_code || '').trim()
+      const routeRef = ((badge as any).route_ref || '').trim()
+      if (!routeCode && !routeRef) return false
 
       // Hide expired badges (Hết hiệu lực)
       if (getStatusVariant(badge.status) === "inactive") {
@@ -375,12 +522,13 @@ export default function QuanLyPhuHieuXe() {
       }
 
       // Role-based Location filter - ONLY for "Tuyến cố định", NOT for "Buýt"
-      // AppSheet badges are filtered here using routeCode -> station lookup
-      // Tuyến cố định badges: filter by user's benPhuTrachName
+      // Lookup: thử route_code trước, không có thì dùng route_ref (Ref_Tuyen)
       if (badge.badge_type === "Tuyến cố định" && currentUser && currentUser.benPhuTrachName) {
         const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
-        const rc = (badge.route_code || '').trim().toUpperCase()
-        const stationEntry = rc ? routeStationMap.get(rc) : undefined
+        const rc = routeCode.toUpperCase()
+        const rr = routeRef.toUpperCase()
+        let stationEntry = rc ? routeStationMap.get(rc) : undefined
+        if (!stationEntry && rr) stationEntry = routeStationMap.get(rr)
         const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
         const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
         if (!dep && !arr) return false // no route info — hide
@@ -428,9 +576,15 @@ export default function QuanLyPhuHieuXe() {
       file_code: "",
       issue_type: "Cấp mới",
       bus_route_ref: "",
+      route_id: "",
+      operator_id: "",
       vehicle_type: "",
       notes: "",
     })
+    setOperatorSearch("")
+    setRouteSearch("")
+    setOperatorDropdownOpen(false)
+    setRouteDropdownOpen(false)
     setFormDialogOpen(true)
   }
 
@@ -472,11 +626,13 @@ export default function QuanLyPhuHieuXe() {
 
     setIsSubmitting(true)
     try {
-      // Convert Date objects to ISO strings for API
+      // Convert Date objects to ISO strings for API; send route_id so backend fills route_code/route_name
       const submitData: CreateVehicleBadgeInput = {
         ...formData,
         issue_date: formatDateToISO(formData.issue_date),
         expiry_date: formatDateToISO(formData.expiry_date),
+        route_id: formData.route_id || undefined,
+        operator_id: formData.operator_id || undefined,
       }
 
       if (formMode === "create") {
@@ -738,8 +894,24 @@ export default function QuanLyPhuHieuXe() {
                   Quản lý phù hiệu xe
                 </h1>
                 <p className="text-slate-500 text-sm mt-1">
-                  Danh sách phù hiệu xe buýt và tuyến cố định
+                  {dataSource === "appsheet"
+                    ? "Dữ liệu trực tiếp từ AppSheet PHUHIEUXE (GTVT)"
+                    : "Dữ liệu từ Database"}
                 </p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Label htmlFor="data-source" className="text-xs text-slate-500 whitespace-nowrap">
+                    Nguồn:
+                  </Label>
+                  <select
+                    id="data-source"
+                    value={dataSource}
+                    onChange={(e) => setDataSource(e.target.value as "appsheet" | "backend")}
+                    className="text-sm rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400"
+                  >
+                    <option value="appsheet">AppSheet (PHUHIEUXE)</option>
+                    <option value="backend">Database</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1186,14 +1358,130 @@ export default function QuanLyPhuHieuXe() {
                     placeholder="VD: Xe khách 45 chỗ"
                   />
                 </div>
-                <div className="space-y-2 col-span-2">
-                  <Label htmlFor="bus_route_ref">Tuyến đường</Label>
-                  <Input
-                    id="bus_route_ref"
-                    value={formData.bus_route_ref}
-                    onChange={(e) => setFormData({ ...formData, bus_route_ref: e.target.value })}
-                    placeholder="VD: Sài Gòn - Nha Trang"
-                  />
+                <div className="space-y-2 col-span-2" ref={operatorDropdownRef}>
+                  <Label htmlFor="operator_id">Tên đơn vị</Label>
+                  <div className="relative">
+                    <Input
+                      id="operator_id"
+                      value={operatorDropdownOpen ? operatorSearch : (operatorOptions.find((o) => o.id === formData.operator_id)?.name ?? "")}
+                      onChange={(e) => {
+                        setOperatorSearch(e.target.value)
+                        setOperatorDropdownOpen(true)
+                      }}
+                      onFocus={() => {
+                        setOperatorDropdownOpen(true)
+                        setOperatorSearch(operatorOptions.find((o) => o.id === formData.operator_id)?.name ?? "")
+                      }}
+                      placeholder="Chọn hoặc gõ để tìm đơn vị"
+                      className="pr-8"
+                    />
+                    <Search className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    {operatorDropdownOpen && (
+                      <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover py-1 shadow-md">
+                        <li>
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                            onClick={() => {
+                              setFormData({ ...formData, operator_id: "" })
+                              setOperatorSearch("")
+                              setOperatorDropdownOpen(false)
+                            }}
+                          >
+                            — Không chọn —
+                          </button>
+                        </li>
+                        {filteredOperatorOptions.map((o) => (
+                          <li key={o.id}>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                              onClick={() => {
+                                setFormData({ ...formData, operator_id: o.id })
+                                setOperatorSearch("")
+                                setOperatorDropdownOpen(false)
+                              }}
+                            >
+                              {o.name}
+                              {o.code ? ` (${o.code})` : ""}
+                            </button>
+                          </li>
+                        ))}
+                        {filteredOperatorOptions.length === 0 && (
+                          <li className="px-3 py-2 text-sm text-muted-foreground">Không có kết quả</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2 col-span-2" ref={routeDropdownRef}>
+                  <Label htmlFor="route_id">Tuyến đường</Label>
+                  <div className="relative">
+                    <Input
+                      id="route_id"
+                      value={routeDropdownOpen ? routeSearch : (() => { const s = routeOptions.find((r) => r.id === formData.route_id); return s?.name || s?.code || ""; })()}
+                      onChange={(e) => {
+                        setRouteSearch(e.target.value)
+                        setRouteDropdownOpen(true)
+                      }}
+                      onFocus={() => {
+                        setRouteDropdownOpen(true)
+                        const sel = routeOptions.find((r) => r.id === formData.route_id)
+                        setRouteSearch(sel?.name || sel?.code || "")
+                      }}
+                      placeholder="Chọn hoặc gõ để tìm tuyến"
+                      className="pr-8"
+                    />
+                    <Search className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                    {routeDropdownOpen && (
+                      <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover py-1 shadow-md">
+                        <li>
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                            onClick={() => {
+                              setFormData({ ...formData, route_id: "" })
+                              setRouteSearch("")
+                              setRouteDropdownOpen(false)
+                            }}
+                          >
+                            — Không chọn —
+                          </button>
+                        </li>
+                        {filteredRouteOptions.map((r) => (
+                          <li key={r.id}>
+                            <button
+                              type="button"
+                              className="w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                              onClick={() => {
+                                setFormData({ ...formData, route_id: r.id })
+                                setRouteSearch("")
+                                setRouteDropdownOpen(false)
+                              }}
+                            >
+                              {r.name || r.code || r.id}
+                            </button>
+                          </li>
+                        ))}
+                        {filteredRouteOptions.length === 0 && (
+                          <li className="px-3 py-2 text-sm text-muted-foreground">Không có kết quả</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                  {formData.route_id && !routeDropdownOpen && (() => {
+                    const selected = routeOptions.find((r) => r.id === formData.route_id)
+                    return selected ? (
+                      <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                        <p>
+                          Mã tuyến: <span className="font-medium text-foreground font-mono">{selected.code || "—"}</span>
+                        </p>
+                        <p>
+                          Tên tuyến: <span className="font-medium text-foreground">{selected.name || "—"}</span>
+                        </p>
+                      </div>
+                    ) : null
+                  })()}
                 </div>
                 <div className="space-y-2 col-span-2">
                   <Label htmlFor="notes">Ghi chú</Label>

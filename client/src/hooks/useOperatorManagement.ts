@@ -7,6 +7,7 @@ import type { Operator } from "@/types";
 import { useAppSheetPolling } from "@/hooks/use-appsheet-polling";
 import { normalizeOperatorRows, type NormalizedAppSheetOperator } from "@/services/appsheet-normalize-operators";
 import { operatorApi } from "@/features/fleet/operators/api/operatorApi";
+import { appsheetConfig } from "@/config/appsheet.config";
 
 export interface OperatorWithSource extends Operator {
   source?: "database" | "legacy" | "google_sheets";
@@ -34,11 +35,13 @@ export function useOperatorManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [operatorToDelete, setOperatorToDelete] = useState<OperatorWithSource | null>(null);
   const setTitle = useUIStore((state) => state.setTitle);
+  /** 'filtered' = backend lọc (có phù hiệu Buýt/TCD) + merge AppSheet; 'appsheet' = trực tiếp 100% từ AppSheet API. Tạm thời mặc định hiện tất cả. */
+  const [dataSource, setDataSource] = useState<"filtered" | "appsheet">("appsheet");
 
   // AppSheet realtime polling for operators (subscribe to 1 table ONLY)
   const [appSheetOperators, setAppSheetOperators] = useState<NormalizedAppSheetOperator[]>([]);
 
-  useAppSheetPolling({
+  const { error: appSheetError, pollNow } = useAppSheetPolling({
     endpointKey: 'operators',
     normalize: normalizeOperatorRows,
     onData: (data: NormalizedAppSheetOperator[]) => setAppSheetOperators(data),
@@ -46,6 +49,9 @@ export function useOperatorManagement() {
     getKey: (op) => op.firebaseId,
     enabled: true,
   });
+
+  const appSheetConfigMissing =
+    !appsheetConfig.apiKey || !appsheetConfig.endpoints['operators'];
 
   // Refs for history management
   const historyPushedRef = useRef(false);
@@ -85,13 +91,23 @@ export function useOperatorManagement() {
 
   useEffect(() => {
     setTitle("Quản lý Đơn vị vận tải");
-    loadOperators();
   }, [setTitle]);
 
+  // Khi dataSource = "appsheet": dữ liệu từ useAppSheetPolling, không gọi backend (tránh 500)
+  // Khi dataSource = "filtered": gọi backend quanlyDataService
+  useEffect(() => {
+    if (dataSource === "filtered") {
+      loadOperators();
+    }
+  }, [dataSource]);
+
   const loadOperators = async (forceRefresh = false) => {
+    if (dataSource === "appsheet") {
+      pollNow();
+      return;
+    }
     setIsLoading(true);
     try {
-      // Backend pre-filters operators to only those with Buýt/Tuyến cố định badges
       const data = await quanlyDataService.getAll(
         ["operators"],
         forceRefresh
@@ -108,38 +124,52 @@ export function useOperatorManagement() {
     }
   };
 
+  // Map AppSheet-only list to OperatorWithSource (khi chọn "Tất cả từ AppSheet")
+  const operatorsFromAppSheetOnly = useMemo((): OperatorWithSource[] => {
+    return appSheetOperators.map((op) => ({
+      id: op.firebaseId,
+      code: op.code,
+      name: op.name,
+      province: op.province ?? "",
+      phone: op.phone ?? "",
+      address: op.address ?? "",
+      representativeName: op.representative ?? "",
+      taxCode: op.taxCode ?? "",
+      isActive: true,
+      isTicketDelegated: false,
+      source: "google_sheets" as const,
+    }));
+  }, [appSheetOperators]);
+
   // Merge AppSheet realtime data with backend pre-filtered operators.
   // Backend pre-filters to ~22 operators with Buýt/TCD badges (source of truth for WHICH to show).
   // AppSheet enriches realtime fields (name, phone, province, address, taxCode, representative).
-  const mergedOperators = useMemo((): OperatorWithSource[] => {
+  const mergedOperatorsFromBackend = useMemo((): OperatorWithSource[] => {
     if (appSheetOperators.length === 0 || operators.length === 0) return operators;
 
-    // Build lookup: firebaseId (lowercase hex) → AppSheet data
     const appSheetMap = new Map<string, NormalizedAppSheetOperator>();
     for (const op of appSheetOperators) {
       appSheetMap.set(op.firebaseId, op);
     }
 
     return operators.map((op) => {
-      // Backend code = UPPER(firebaseId), so match via code.toLowerCase()
-      const appOp = appSheetMap.get(op.code?.toLowerCase() || '');
+      const appOp = appSheetMap.get(op.code?.toLowerCase() || "");
       if (!appOp) return op;
-
       return {
         ...op,
-        // AppSheet wins for realtime fields
         name: appOp.name || op.name,
         phone: appOp.phone ?? op.phone,
         province: appOp.province ?? op.province,
         address: appOp.address ?? op.address,
         taxCode: appOp.taxCode ?? op.taxCode,
         representativeName: appOp.representative ?? op.representativeName,
-        // Backend wins for app-specific flags
         isActive: op.isActive,
         isTicketDelegated: op.isTicketDelegated,
       };
     });
   }, [operators, appSheetOperators]);
+
+  const mergedOperators = dataSource === "appsheet" ? operatorsFromAppSheetOnly : mergedOperatorsFromBackend;
 
   const stats = useMemo(() => {
     const active = mergedOperators.filter((o) => o.isActive).length;
@@ -174,10 +204,12 @@ export function useOperatorManagement() {
 
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
+        const queryDigits = query.replace(/\D/g, "");
         const matchesSearch =
           operator.name.toLowerCase().includes(query) ||
           (operator.code || "").toLowerCase().includes(query) ||
           (operator.phone || "").toLowerCase().includes(query) ||
+          (queryDigits.length >= 7 && (operator.phone || "").replace(/\D/g, "").includes(queryDigits)) ||
           (operator.address || "").toLowerCase().includes(query) ||
           (operator.province || "").toLowerCase().includes(query);
         if (!matchesSearch) return false;
@@ -281,6 +313,10 @@ export function useOperatorManagement() {
   return {
     // Data
     operators: mergedOperators,
+    dataSource,
+    setDataSource,
+    appSheetConfigMissing,
+    appSheetError: appSheetError ?? null,
     paginatedOperators,
     filteredOperators,
     stats,

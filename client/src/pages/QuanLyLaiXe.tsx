@@ -463,8 +463,8 @@ export default function QuanLyLaiXe() {
 
         {/* Content - Table View */}
         {displayMode === "table" && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible">
+            <div className="overflow-x-auto overflow-y-visible">
               <table className="w-full">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-800 to-slate-900">
@@ -579,7 +579,7 @@ export default function QuanLyLaiXe() {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center justify-center opacity-60 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-center">
                             <ActionMenu
                               items={[
                                 {
