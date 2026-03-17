@@ -13,6 +13,7 @@ export interface NormalizedAppSheetOperator {
   firebaseId: string
   code: string
   name: string
+  loaiHinh?: string
   province?: string
   address?: string
   phone?: string
@@ -42,6 +43,7 @@ export function normalizeOperatorRows(
       firebaseId: id,
       code,
       name,
+      loaiHinh: str(row['LoaiHinh']) || undefined,
       // TinhDangKyHoatDong = province of registered operation (more relevant)
       province: str(row['TinhDangKyHoatDong']) || str(row['TinhThanh']) || undefined,
       address: str(row['DiaChiSauSapNhap']) || undefined,

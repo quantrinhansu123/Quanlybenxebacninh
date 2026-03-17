@@ -3,24 +3,20 @@ import { Operator } from "@/types"
 import { Check, X } from "lucide-react"
 import { appsheetClient } from "@/services/appsheet-client.service"
 import { normalizeBadgeRows } from "@/services/appsheet-normalize-badges"
-import { buildIdXeToPlateMap } from "@/services/appsheet-normalize-vehicles"
 
 interface OperatorViewProps {
   operator: Operator
 }
 
 export function OperatorView({ operator }: OperatorViewProps) {
-  const [appsheetPlates, setAppsheetPlates] = useState<string[]>([])
+  const [appsheetBadges, setAppsheetBadges] = useState<ReturnType<typeof normalizeBadgeRows>>([])
   const [appsheetLoading, setAppsheetLoading] = useState(false)
   const [appsheetError, setAppsheetError] = useState<string | null>(null)
   const [appsheetDebug, setAppsheetDebug] = useState<{
     operatorId: string
     badgesTotal: number
-    vehiclesTotal: number
     matchedBadges: number
-    sampleBadge?: { badgeNumber?: string; vehicleRef?: string; plateNumber?: string; operatorRef?: string }
-    sampleVehicleKeys?: string[]
-    sampleVehicleRow?: Record<string, unknown> | null
+    sampleBadge?: { badgeNumber?: string; vehicleRef?: string; plateNumber?: string; operatorRef?: string; badgeType?: string; status?: string }
   } | null>(null)
 
   // AppSheet operator id thường là 8 ký tự hex (IDDoanhNghiep)
@@ -32,9 +28,9 @@ export function OperatorView({ operator }: OperatorViewProps) {
 
   useEffect(() => {
     let cancelled = false
-    async function loadAppsheetVehicles() {
+    async function loadAppsheetBadges() {
       if (!appsheetOperatorId) {
-        setAppsheetPlates([])
+        setAppsheetBadges([])
         setAppsheetError(null)
         return
       }
@@ -43,82 +39,49 @@ export function OperatorView({ operator }: OperatorViewProps) {
       setAppsheetError(null)
       try {
         const esc = (s: string) => s.replace(/"/g, '\\"').trim()
-        // TrangThai thực tế thường là "Hiệu lực"; lấy cả "Hoạt động" để tương thích UI
-        const badgeSelector = `Filter(PHUHIEUXE, And(Lower([Ref_DonViCapPhuHieu]) = "${esc(appsheetOperatorId).toLowerCase()}", Or([TrangThai] = "Hoạt động", [TrangThai] = "Hiệu lực")))`
+        // Selector đơn giản, tránh Lower()/IN() để chắc chắn có dữ liệu
+        const opUpper = esc(appsheetOperatorId).toUpperCase()
+        const opLower = esc(appsheetOperatorId).toLowerCase()
+        const badgeSelector = `Filter(PHUHIEUXE, Or([Ref_DonViCapPhuHieu] = "${opUpper}", [Ref_DonViCapPhuHieu] = "${opLower}"))`
         const badgeRows = await appsheetClient.findByName("badges", { selector: badgeSelector })
 
         const badges = normalizeBadgeRows(badgeRows)
-        const vehicleRefs = Array.from(
-          new Set(badges.map((b) => (b.vehicleRef || "").trim()).filter(Boolean)),
-        )
-
-        const CHUNK = 200
-        const vehicleRows: Record<string, unknown>[] = []
-        for (let i = 0; i < vehicleRefs.length; i += CHUNK) {
-          const chunk = vehicleRefs.slice(i, i + CHUNK)
-          const rows = chunk.map((id) => ({ IDXe: id }))
-          const res = await appsheetClient.findByName("vehicles", { rows }).catch(() => [])
-          vehicleRows.push(...res)
-        }
-
-        const idXeToPlate = buildIdXeToPlateMap(vehicleRows)
 
         // Đã lọc server-side bằng Selector; giữ lại để debug/count
-        const relevant = badges.filter(
-          (b) =>
-            (b.operatorRef || "").trim().toLowerCase() ===
-            appsheetOperatorId.trim().toLowerCase(),
+        const relevant = badges.filter((b) =>
+          (b.operatorRef || "").trim().toLowerCase() === appsheetOperatorId.trim().toLowerCase(),
         )
 
-        // Lấy hết xe thỏa mãn (không lọc TrangThai), dedup theo biển số
-        const plates = new Set<string>()
-        for (const b of relevant) {
-          const plate =
-            (b.vehicleRef && idXeToPlate.get(b.vehicleRef)) || b.plateNumber || ""
-          const normalized = plate.trim()
-          if (normalized) plates.add(normalized)
-        }
+        // Chỉ lấy LoaiPH = "Tuyến cố định" hoặc "Buýt" (lọc client-side)
+        const allowed = new Set(["tuyến cố định", "buýt"])
+        const filtered = relevant.filter((b) => allowed.has((b.badgeType || "").trim().toLowerCase()))
 
         if (!cancelled) {
-          setAppsheetPlates(Array.from(plates))
+          setAppsheetBadges(filtered)
 
-          const sampleBadge = relevant[0]
+          const sampleBadge = filtered[0]
             ? {
-                badgeNumber: relevant[0].badgeNumber,
-                vehicleRef: relevant[0].vehicleRef,
-                plateNumber: relevant[0].plateNumber,
-                operatorRef: relevant[0].operatorRef,
+                badgeNumber: filtered[0].badgeNumber,
+                vehicleRef: filtered[0].vehicleRef,
+                plateNumber: filtered[0].plateNumber,
+                operatorRef: filtered[0].operatorRef,
+                badgeType: filtered[0].badgeType,
+                status: filtered[0].status,
               }
             : undefined
-
-          const sampleVehicleKeys =
-            vehicleRows && vehicleRows[0]
-              ? Object.keys(vehicleRows[0]).slice(0, 30)
-              : []
-
-          const sampleVehicleRow =
-            sampleBadge?.vehicleRef
-              ? (vehicleRows.find((r) => {
-                  const id = typeof r["IDXe"] === "string" ? r["IDXe"].trim() : String(r["IDXe"] ?? "").trim()
-                  return id && id === String(sampleBadge.vehicleRef).trim()
-                }) ?? null)
-              : null
 
           setAppsheetDebug({
             operatorId: appsheetOperatorId,
             badgesTotal: badges.length,
-            vehiclesTotal: vehicleRows.length,
-            matchedBadges: relevant.length,
+            matchedBadges: filtered.length,
             sampleBadge,
-            sampleVehicleKeys,
-            sampleVehicleRow,
           })
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Không tải được dữ liệu AppSheet"
         if (!cancelled) {
           setAppsheetError(msg)
-          setAppsheetPlates([])
+          setAppsheetBadges([])
           setAppsheetDebug(null)
         }
       } finally {
@@ -126,7 +89,7 @@ export function OperatorView({ operator }: OperatorViewProps) {
       }
     }
 
-    void loadAppsheetVehicles()
+    void loadAppsheetBadges()
     return () => {
       cancelled = true
     }
@@ -223,33 +186,52 @@ export function OperatorView({ operator }: OperatorViewProps) {
       {appsheetOperatorId && (
         <div className="space-y-2">
           <h3 className="text-lg font-medium border-b pb-2">
-            Danh sách xe (AppSheet)
+            Danh sách phù hiệu (AppSheet)
             <span className="ml-2 text-xs font-normal text-gray-500">
               IDDoanhNghiep: {appsheetOperatorId.toUpperCase()}
             </span>
           </h3>
 
           {appsheetLoading ? (
-            <div className="text-sm text-gray-500">Đang tải danh sách xe từ AppSheet…</div>
+            <div className="text-sm text-gray-500">Đang tải danh sách phù hiệu từ AppSheet…</div>
           ) : appsheetError ? (
             <div className="text-sm text-red-600">Lỗi AppSheet: {appsheetError}</div>
-          ) : appsheetPlates.length === 0 ? (
-            <div className="text-sm text-gray-500">Không tìm thấy xe trong PHUHIEUXE cho đơn vị này.</div>
+          ) : appsheetBadges.length === 0 ? (
+            <div className="text-sm text-gray-500">Không tìm thấy phù hiệu (LoaiPH = Buýt/Tuyến cố định) cho đơn vị này.</div>
           ) : (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               <div className="font-semibold mb-2">
-                Tìm thấy {appsheetPlates.length} xe:
+                Tìm thấy {appsheetBadges.length} phù hiệu:
               </div>
-              <ul className="flex flex-wrap gap-2">
-                {appsheetPlates.map((p) => (
-                  <li
-                    key={p}
-                    className="px-2 py-0.5 rounded-md bg-white border border-slate-200"
-                  >
-                    {p}
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-auto">
+                <table className="min-w-full text-xs">
+                  <thead className="text-slate-500">
+                    <tr>
+                      <th className="text-left py-1 pr-3">Số PH</th>
+                      <th className="text-left py-1 pr-3">Loại PH</th>
+                      <th className="text-left py-1 pr-3">Trạng thái</th>
+                      <th className="text-left py-1 pr-3">Biển số</th>
+                      <th className="text-left py-1 pr-3">BienSoXe(IDXe)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {appsheetBadges.slice(0, 200).map((b) => (
+                      <tr key={b.badgeNumber} className="border-t border-slate-200">
+                        <td className="py-1 pr-3 font-medium">{b.badgeNumber}</td>
+                        <td className="py-1 pr-3">{b.badgeType || "-"}</td>
+                        <td className="py-1 pr-3">{b.status || "-"}</td>
+                        <td className="py-1 pr-3">{b.plateNumber || "-"}</td>
+                        <td className="py-1 pr-3">{b.vehicleRef || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {appsheetBadges.length > 200 && (
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    (Đang hiển thị 200/{appsheetBadges.length} dòng để tránh lag)
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -260,7 +242,7 @@ export function OperatorView({ operator }: OperatorViewProps) {
               <div className="mt-2 space-y-2">
                 <div>
                   <span className="font-medium">Counts:</span>{" "}
-                  badges={appsheetDebug.badgesTotal}, xe={appsheetDebug.vehiclesTotal}, matchedBadges={appsheetDebug.matchedBadges}
+                  badges={appsheetDebug.badgesTotal}, matchedBadges={appsheetDebug.matchedBadges}
                 </div>
                 {appsheetDebug.sampleBadge && (
                   <div>
@@ -268,19 +250,11 @@ export function OperatorView({ operator }: OperatorViewProps) {
                     SoPH={appsheetDebug.sampleBadge.badgeNumber || "?"},{" "}
                     Ref_DonViCapPhuHieu={appsheetDebug.sampleBadge.operatorRef || "?"},{" "}
                     BienSoXe={appsheetDebug.sampleBadge.vehicleRef || "?"},{" "}
-                    BienSo={appsheetDebug.sampleBadge.plateNumber || "?"}
+                    BienSo={appsheetDebug.sampleBadge.plateNumber || "?"},{" "}
+                    LoaiPH={appsheetDebug.sampleBadge.badgeType || "?"},{" "}
+                    TrangThai={appsheetDebug.sampleBadge.status || "?"}
                   </div>
                 )}
-                <div>
-                  <span className="font-medium">Sample Xe keys (first row):</span>{" "}
-                  {appsheetDebug.sampleVehicleKeys?.join(", ") || "(none)"}
-                </div>
-                <div className="overflow-auto max-h-40 rounded bg-slate-50 p-2">
-                  <span className="font-medium">Xe row for BienSoXe (matched IDXe):</span>
-                  <pre className="mt-1 whitespace-pre-wrap break-words">
-{JSON.stringify(appsheetDebug.sampleVehicleRow, null, 2)}
-                  </pre>
-                </div>
               </div>
             </details>
           )}

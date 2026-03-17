@@ -126,19 +126,25 @@ export function useOperatorManagement() {
 
   // Map AppSheet-only list to OperatorWithSource (khi chọn "Tất cả từ AppSheet")
   const operatorsFromAppSheetOnly = useMemo((): OperatorWithSource[] => {
-    return appSheetOperators.map((op) => ({
-      id: op.firebaseId,
-      code: op.code,
-      name: op.name,
-      province: op.province ?? "",
-      phone: op.phone ?? "",
-      address: op.address ?? "",
-      representativeName: op.representative ?? "",
-      taxCode: op.taxCode ?? "",
-      isActive: true,
-      isTicketDelegated: false,
-      source: "google_sheets" as const,
-    }));
+    // Only show LoaiHinh = "Doanh nghiệp" in AppSheet mode
+    const isDoanhNghiep = (s: string | undefined) =>
+      (s || "").trim().toLowerCase() === "doanh nghiệp";
+
+    return appSheetOperators
+      .filter((op) => isDoanhNghiep((op as any).loaiHinh))
+      .map((op) => ({
+        id: op.firebaseId,
+        code: op.code,
+        name: op.name,
+        province: op.province ?? "",
+        phone: op.phone ?? "",
+        address: op.address ?? "",
+        representativeName: op.representative ?? "",
+        taxCode: op.taxCode ?? "",
+        isActive: true,
+        isTicketDelegated: false,
+        source: "google_sheets" as const,
+      }));
   }, [appSheetOperators]);
 
   // Merge AppSheet realtime data with backend pre-filtered operators.

@@ -250,7 +250,7 @@ export function useOperatorDetail(
         const esc = (s: string) => s.replace(/"/g, '\\"').trim();
         // TrangThai thực tế thường là "Hiệu lực"; một số view gọi là "Hoạt động"
         // Lấy cả 2 để tránh rỗng dữ liệu.
-        const badgeSelector = `Filter(PHUHIEUXE, And(Lower([Ref_DonViCapPhuHieu]) = "${esc(operatorId).toLowerCase()}", Or([TrangThai] = "Hoạt động", [TrangThai] = "Hiệu lực")))`;
+        const badgeSelector = `Filter(PHUHIEUXE, And(Lower([Ref_DonViCapPhuHieu]) = "${esc(operatorId).toLowerCase()}", Or([TrangThai] = "Hoạt động", [TrangThai] = "Hiệu lực"), IN([LoaiPH], {"Tuyến cố định","Buýt"})))`;
         const badgeRows = await appsheetClient.findByName("badges", { selector: badgeSelector }).catch(() => []);
 
         const normalizedBadges = normalizeBadgeRows(badgeRows);
