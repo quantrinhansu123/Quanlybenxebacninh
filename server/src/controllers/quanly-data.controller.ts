@@ -445,6 +445,12 @@ export const preWarmQuanLyCache = async () => {
 // Unified endpoint - returns all data for Quản lý thông tin module
 export const getQuanLyData = async (req: Request, res: Response) => {
   try {
+    if (!db) {
+      console.error('[QuanLyData] Database not initialized')
+      res.status(500).json({ error: 'Database not initialized' })
+      return
+    }
+
     const { include } = req.query
     const forceRefresh = req.query.refresh === 'true'
     
