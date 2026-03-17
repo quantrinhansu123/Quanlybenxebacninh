@@ -473,13 +473,21 @@ export const getQuanLyData = async (req: Request, res: Response) => {
 
       if (user && user.benPhuTrach) {
         const [location] = await db
-          .select({ name: locations.name, code: locations.code })
+          .select({
+            name: locations.name,
+            code: locations.code,
+            // Some databases store mã bến separately (maBen); fallback to code when missing
+            maBen: (locations as any).maBen,
+          })
           .from(locations)
           .where(eq(locations.id, user.benPhuTrach))
           .limit(1)
+
         if (location) {
           stationName = location.name.trim()
-          stationCode = location.code.trim() // ma_ben
+          const rawMaBen = (location as any).maBen as string | null | undefined
+          const effectiveCode = (rawMaBen || location.code || '').trim()
+          stationCode = effectiveCode || null
         }
       }
     }
