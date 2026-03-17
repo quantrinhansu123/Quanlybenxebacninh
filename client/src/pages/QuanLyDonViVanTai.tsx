@@ -47,6 +47,7 @@ export default function QuanLyDonViVanTai() {
     showAdvancedFilters,
     setShowAdvancedFilters,
     isLoading,
+    isPrefilterLoading,
     loadOperators,
     currentPage,
     setCurrentPage,
@@ -142,6 +143,18 @@ export default function QuanLyDonViVanTai() {
             {!appSheetConfigMissing && appSheetError && (
               <p className="mt-1 text-sm">Lỗi: {appSheetError}</p>
             )}
+          </div>
+        )}
+
+        {/* AppSheet prefilter loading: badge intersection */}
+        {dataSource === "appsheet" && !appSheetConfigMissing && !appSheetError && isPrefilterLoading && (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 shadow-sm">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin text-orange-600" />
+              <p className="text-sm">
+                Đang đối soát phù hiệu (Buýt/Tuyến cố định) để lọc danh sách đơn vị…
+              </p>
+            </div>
           </div>
         )}
 
@@ -331,7 +344,7 @@ export default function QuanLyDonViVanTai() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {isLoading ? (
+                  {isLoading || isPrefilterLoading ? (
                     Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
                   ) : paginatedOperators.length === 0 ? (
                     <tr>
@@ -392,7 +405,7 @@ export default function QuanLyDonViVanTai() {
         {/* Grid View */}
         {displayMode === "grid" && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {isLoading ? (
+            {isLoading || isPrefilterLoading ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <div
                   key={i}

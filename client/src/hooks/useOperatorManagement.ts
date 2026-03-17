@@ -19,6 +19,7 @@ const ITEMS_PER_PAGE = 50;
 export function useOperatorManagement() {
   const [operators, setOperators] = useState<OperatorWithSource[]>([]);
   const [appsheetPrefilterCodes, setAppsheetPrefilterCodes] = useState<Set<string> | null>(null);
+  const [isPrefilterLoading, setIsPrefilterLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterTicketDelegated, setFilterTicketDelegated] = useState("");
@@ -110,8 +111,10 @@ export function useOperatorManagement() {
     async function loadAppsheetPrefilter() {
       if (dataSource !== "appsheet") {
         setAppsheetPrefilterCodes(null);
+        setIsPrefilterLoading(false);
         return;
       }
+      setIsPrefilterLoading(true);
       try {
         const data = await quanlyDataService.getAll(["operators"], false);
         const codes = new Set<string>();
@@ -122,6 +125,8 @@ export function useOperatorManagement() {
         if (!cancelled) setAppsheetPrefilterCodes(codes);
       } catch (e) {
         if (!cancelled) setAppsheetPrefilterCodes(null);
+      } finally {
+        if (!cancelled) setIsPrefilterLoading(false);
       }
     }
     void loadAppsheetPrefilter();
@@ -378,6 +383,7 @@ export function useOperatorManagement() {
     setShowAdvancedFilters,
     // Loading
     isLoading,
+    isPrefilterLoading,
     loadOperators,
     // Pagination
     currentPage,
