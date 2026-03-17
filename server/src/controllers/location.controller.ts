@@ -2,7 +2,7 @@ import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
 import { locations } from '../db/schema/index.js'
 import { users } from '../db/schema/users.js'
-import { eq, asc, and } from 'drizzle-orm'
+import { eq, asc, and, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AuthRequest } from '../middleware/auth.js'
 
@@ -76,19 +76,44 @@ export const getAllLocations = async (req: Request, res: Response) => {
     
     console.log(`[Locations] Found ${data.length} locations`)
 
-    const result = data.map((loc) => ({
-      id: loc.id,
-      name: loc.name,
-      code: loc.code,
-      stationType: loc.stationType,
-      phone: loc.phone,
-      email: loc.email,
-      address: loc.address,
-      latitude: loc.latitude ? parseFloat(loc.latitude) : null,
-      longitude: loc.longitude ? parseFloat(loc.longitude) : null,
-      isActive: loc.isActive,
-      createdAt: loc.createdAt,
-    }))
+    // Build map: ma_ben (diem_dau) -> list of id_tuyen from danh_muc_tuyen_bus
+    let busRouteMap = new Map<string, string[]>()
+    try {
+      const rows = await db.execute(
+        // eslint-disable-next-line drizzle/enforce-query-usage
+        sql`SELECT diem_dau, array_agg(id_tuyen) AS route_ids FROM danh_muc_tuyen_bus GROUP BY diem_dau`,
+      )
+      for (const row of rows as any[]) {
+        const key = (row.diem_dau || '').trim()
+        if (!key) continue
+        const ids: string[] = Array.isArray(row.route_ids) ? row.route_ids : []
+        busRouteMap.set(key, ids)
+      }
+    } catch (err) {
+      console.error('[Locations] Failed to load danh_muc_tuyen_bus route ids:', err)
+      busRouteMap = new Map()
+    }
+
+    const result = data.map((loc) => {
+      const maBen = (loc as any).maBen ?? loc.code
+      const routeIds = maBen ? busRouteMap.get(maBen) ?? [] : []
+
+      return {
+        id: loc.id,
+        name: loc.name,
+        code: loc.code,
+        maBen,
+        busRouteIds: routeIds,
+        stationType: loc.stationType,
+        phone: loc.phone,
+        email: loc.email,
+        address: loc.address,
+        latitude: loc.latitude ? parseFloat(loc.latitude) : null,
+        longitude: loc.longitude ? parseFloat(loc.longitude) : null,
+        isActive: loc.isActive,
+        createdAt: loc.createdAt,
+      }
+    })
 
     return res.json(result)
   } catch (error) {
@@ -118,6 +143,7 @@ export const getLocationById = async (req: Request, res: Response) => {
       id: location.id,
       name: location.name,
       code: location.code,
+      maBen: (location as any).maBen ?? null,
       stationType: location.stationType,
       phone: location.phone,
       email: location.email,

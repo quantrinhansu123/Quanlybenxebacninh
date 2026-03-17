@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { vehicleBadgeService, type VehicleBadge, type CreateVehicleBadgeInput } from "@/services/vehicle-badge.service"
 import { quanlyDataService } from "@/services/quanly-data.service"
+import { locationService } from "@/services/location.service"
 import { useUIStore } from "@/store/ui.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { DatePicker } from "@/components/DatePicker"
@@ -80,7 +81,7 @@ export default function QuanLyPhuHieuXe() {
   const [badges, setBadges] = useState<VehicleBadge[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
-  const [filterBadgeType, setFilterBadgeType] = useState("")
+  const [filterBadgeType, setFilterBadgeType] = useState("Buýt")
 
   const [isLoading, setIsLoading] = useState(false)
   const [selectedBadge, setSelectedBadge] = useState<VehicleBadge | null>(null)
@@ -120,6 +121,7 @@ export default function QuanLyPhuHieuXe() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 50
   const setTitle = useUIStore((state) => state.setTitle)
+  const [userRouteIds, setUserRouteIds] = useState<string[]>([])
 
   // AppSheet realtime polling for badges
   const [appSheetBadges, setAppSheetBadges] = useState<NormalizedAppSheetBadge[]>([])
@@ -196,6 +198,18 @@ export default function QuanLyPhuHieuXe() {
   useEffect(() => {
     setTitle("Quản lý phù hiệu xe")
     loadBadges()
+
+    // Load route IDs (id_tuyen) that current user has via locations endpoint
+    ;(async () => {
+      try {
+        const locs = await locationService.getAll(true)
+        if (locs.length > 0) {
+          setUserRouteIds(locs[0].busRouteIds || [])
+        }
+      } catch (error) {
+        console.error("Failed to load user route ids from locations:", error)
+      }
+    })()
   }, [setTitle])
 
   const loadBadges = async (forceRefresh = false) => {
@@ -248,7 +262,11 @@ export default function QuanLyPhuHieuXe() {
   const mergedBadges = useMemo((): VehicleBadge[] => {
     if (appSheetBadges.length === 0) return badges // fallback to backend-only
 
-    return appSheetBadges.map(b => ({
+    return appSheetBadges.map(b => {
+      // Tìm badge backend tương ứng để lấy thêm thông tin (ví dụ: tuyen_bus_code)
+      const backendBadge = badges.find(bb => bb.badge_number === b.badgeNumber)
+
+      return {
       id: b.badgeNumber,
       badge_number: b.badgeNumber,
       license_plate_sheet: b.plateNumber || '',
@@ -284,24 +302,27 @@ export default function QuanLyPhuHieuXe() {
       route_id: '',
       route_code: b.routeCode || '',
       route_name: b.routeName || '',
+      // Tuyến bus code lấy từ backend (nếu có)
+      tuyen_bus_code: (backendBadge as any)?.tuyen_bus_code || '',
       vehicle_type: '',
       metadata: {},
       // Custom field to pass endpoint to filter
       _endPoint: enrichmentMap.get(b.badgeNumber)?.endPoint || '',
       _startPoint: enrichmentMap.get(b.badgeNumber)?.startPoint || '',
-    } as VehicleBadge & { _endPoint?: string, _startPoint?: string }))
+      } as VehicleBadge & { tuyen_bus_code?: string; _endPoint?: string; _startPoint?: string }
+    })
   }, [appSheetBadges, badges, enrichmentMap])
 
   // Show loading until EITHER AppSheet data OR backend data loads
   const effectiveLoading = isLoading && appSheetBadges.length === 0
 
-  const filteredByTypeOnly = mergedBadges.filter(b => allowedTypesForFilters.includes(b.badge_type || ""))
-  const badgeStatuses = Array.from(new Set(filteredByTypeOnly.map((b) => b.status).filter(Boolean))).sort()
-  const badgeTypes = allowedTypesForFilters // Only show allowed types in dropdown
-  const badgeColors = Array.from(new Set(filteredByTypeOnly.map((b) => b.badge_color).filter(Boolean))).sort()
-
   // Only show "Buýt" and "Tuyến cố định" badge types
   const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
+
+  const filteredByTypeOnly = mergedBadges.filter(b => allowedBadgeTypes.includes(b.badge_type || ""))
+  const badgeStatuses = Array.from(new Set(filteredByTypeOnly.map((b) => b.status).filter(Boolean))).sort()
+  const badgeTypes = allowedBadgeTypes // Only show allowed types in dropdown
+  const badgeColors = Array.from(new Set(filteredByTypeOnly.map((b) => b.badge_color).filter(Boolean))).sort()
 
   const filteredBadges = mergedBadges.filter((badge) => {
     // Filter by allowed badge types (Buýt and Tuyến cố định only)
@@ -309,9 +330,13 @@ export default function QuanLyPhuHieuXe() {
       return false
     }
 
-    // Hide expired badges (Hết hiệu lực)
-    if (getStatusVariant(badge.status) === "inactive") {
-      return false
+    // Với Bus: nếu đã có danh sách ID tuyến của tài khoản, chỉ hiển thị
+    // các badge có Tuyến bus code (tuyen_bus_code) thuộc danh sách đó
+    if (badge.badge_type === "Buýt" && userRouteIds.length > 0) {
+      const id = ((badge as any).tuyen_bus_code || "").trim()
+      if (!id || !userRouteIds.includes(id)) {
+        return false
+      }
     }
 
     // Search filter
@@ -321,7 +346,9 @@ export default function QuanLyPhuHieuXe() {
         badge.badge_number.toLowerCase().includes(query) ||
         badge.license_plate_sheet.toLowerCase().includes(query) ||
         badge.file_code.toLowerCase().includes(query) ||
-        (badge.vehicle_id && badge.vehicle_id.toLowerCase().includes(query))
+        (badge.vehicle_id && badge.vehicle_id.toLowerCase().includes(query)) ||
+        (badge.route_code && badge.route_code.toLowerCase().includes(query)) ||
+        ((badge as any).tuyen_bus_code && (badge as any).tuyen_bus_code.toLowerCase().includes(query))
       if (!matchesSearch) return false
     }
 
@@ -335,16 +362,30 @@ export default function QuanLyPhuHieuXe() {
       return false
     }
 
-    // Role-based Location filter for AppSheet badges (backend already filters DB badges)
-    // AppSheet badges are filtered here using routeCode -> station lookup
-    if (currentUser && currentUser.benPhuTrachName) {
-      const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
-      const rc = (badge.route_code || '').trim().toUpperCase()
-      const stationEntry = rc ? routeStationMap.get(rc) : undefined
-      const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
-      const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
-      if (!dep && !arr) return false // no route info — hide
-      if (dep !== userLoc && arr !== userLoc) return false
+    // For non-Bus types, apply additional route/location filters
+    if (badge.badge_type !== "Buýt") {
+      // Only show rows that have route_code
+      if (!badge.route_code || !badge.route_code.trim()) {
+        return false
+      }
+
+      // Hide expired badges (Hết hiệu lực)
+      if (getStatusVariant(badge.status) === "inactive") {
+        return false
+      }
+
+      // Role-based Location filter - ONLY for "Tuyến cố định", NOT for "Buýt"
+      // AppSheet badges are filtered here using routeCode -> station lookup
+      // Tuyến cố định badges: filter by user's benPhuTrachName
+      if (badge.badge_type === "Tuyến cố định" && currentUser && currentUser.benPhuTrachName) {
+        const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
+        const rc = (badge.route_code || '').trim().toUpperCase()
+        const stationEntry = rc ? routeStationMap.get(rc) : undefined
+        const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
+        const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
+        if (!dep && !arr) return false // no route info — hide
+        if (dep !== userLoc && arr !== userLoc) return false
+      }
     }
 
     return true
@@ -356,7 +397,7 @@ export default function QuanLyPhuHieuXe() {
   const endIndex = startIndex + itemsPerPage
   const paginatedBadges = filteredBadges.slice(startIndex, endIndex)
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when filters change (route_code filter is informational only)
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, filterStatus, filterBadgeType])
@@ -687,18 +728,37 @@ export default function QuanLyPhuHieuXe() {
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-500 shadow-xl shadow-violet-500/30">
-              <Award className="h-7 w-7 text-white" />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-4">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-500 shadow-xl shadow-violet-500/30">
+                <Award className="h-7 w-7 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
+                  Quản lý phù hiệu xe
+                </h1>
+                <p className="text-slate-500 text-sm mt-1">
+                  Danh sách phù hiệu xe buýt và tuyến cố định
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
-                Quản lý phù hiệu xe
-              </h1>
-              <p className="text-slate-500 text-sm mt-1">
-                Danh sách phù hiệu xe buýt và tuyến cố định
-              </p>
-            </div>
+
+            {/* List id_tuyen (tuyến bus) mà user hiện tại có quyền (theo Mã bến) */}
+            {userRouteIds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-1">
+                <span className="font-medium text-slate-700">ID tuyến (danh_muc_tuyen_bus) của tài khoản:</span>
+                <div className="flex flex-wrap gap-1">
+                  {userRouteIds.map((id) => (
+                    <span
+                      key={id}
+                      className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100 font-mono"
+                    >
+                      {id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 flex-wrap">
@@ -859,7 +919,6 @@ export default function QuanLyPhuHieuXe() {
                     ))}
                   </Select>
                 </div>
-
               </div>
             </div>
           </CardContent>
@@ -873,6 +932,8 @@ export default function QuanLyPhuHieuXe() {
                 <TableHead className="text-center text-base">Số phù hiệu</TableHead>
                 <TableHead className="text-center text-base">Biển số xe</TableHead>
                 <TableHead className="text-center text-base">Loại phù hiệu</TableHead>
+                <TableHead className="text-center text-base">Route code</TableHead>
+                <TableHead className="text-center text-base">Tuyến bus code</TableHead>
                 <TableHead className="text-center text-base">Ngày cấp</TableHead>
                 <TableHead className="text-center text-base">Ngày hết hạn</TableHead>
                 <TableHead className="text-center text-base">Trạng thái</TableHead>
@@ -903,6 +964,12 @@ export default function QuanLyPhuHieuXe() {
                     </TableCell>
                     <TableCell className="text-center text-base">
                       {badge.badge_type || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {badge.route_code || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-center text-base">
+                      {(badge as any).tuyen_bus_code || "N/A"}
                     </TableCell>
                     <TableCell className="text-center text-base">
                       {formatDate(badge.issue_date)}

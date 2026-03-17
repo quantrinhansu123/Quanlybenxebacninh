@@ -3,7 +3,7 @@ import { db } from '../db/drizzle.js'
 import { vehicleBadges, vehicles as vehiclesTable, operators as operatorsTable, routes as routesTable, vehicleTypes as vehicleTypesTable } from '../db/schema/index.js'
 import { users } from '../db/schema/users.js'
 import { locations } from '../db/schema/locations.js'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { AuthRequest } from '../middleware/auth.js'
 
 // Unified cache for all quanly data - pre-filtered for Buýt and Tuyến cố định
@@ -61,6 +61,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           routeId: vehicleBadges.routeId,
           routeCode: vehicleBadges.routeCode,
           routeName: vehicleBadges.routeName,
+          tuyenBusCode: vehicleBadges.tuyenBusCode,
           metadata: vehicleBadges.metadata,
         }).from(vehicleBadges),
         db.select({
@@ -95,7 +96,9 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           routeCode: routesTable.routeCode,
           routeCodeOld: routesTable.routeCodeOld,
           departureStation: routesTable.departureStation,
+          departureStationRef: routesTable.departureStationRef,
           arrivalStation: routesTable.arrivalStation,
+          arrivalStationRef: routesTable.arrivalStationRef,
           distanceKm: routesTable.distanceKm,
           routeType: routesTable.routeType,
           itinerary: routesTable.itinerary,
@@ -258,6 +261,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           route_id: routeId,
           route_code: b.routeCode || '',
           route_name: b.routeName || '',
+          tuyen_bus_code: b.tuyenBusCode || '',
           itinerary: itinerary,
           vehicle_type: '',
         })
@@ -371,6 +375,8 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           name: routeName,
           startPoint: r.departureStation || '',
           endPoint: r.arrivalStation || '',
+          departureStationRef: r.departureStationRef || '',
+          arrivalStationRef: r.arrivalStationRef || '',
           distance: r.distanceKm || '',
           routeType: r.routeType || '',
         })
@@ -448,8 +454,9 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     
     const data = await loadQuanLyData()
 
-    // Resolve station filter for non-admin users with benPhuTrach assigned
+    // Resolve station filter for users with benPhuTrach assigned
     let stationName: string | null = null
+    let stationCode: string | null = null // ma_ben from locations.code
     const authReq = req as AuthRequest
     if (authReq.user) {
       const [user] = await db
@@ -458,14 +465,15 @@ export const getQuanLyData = async (req: Request, res: Response) => {
         .where(eq(users.id, authReq.user.id))
         .limit(1)
 
-      if (user && user.role !== 'admin' && user.benPhuTrach) {
+      if (user && user.benPhuTrach) {
         const [location] = await db
-          .select({ name: locations.name })
+          .select({ name: locations.name, code: locations.code })
           .from(locations)
           .where(eq(locations.id, user.benPhuTrach))
           .limit(1)
         if (location) {
           stationName = location.name.trim()
+          stationCode = location.code.trim() // ma_ben
         }
       }
     }
@@ -475,26 +483,76 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     
     const response: Record<string, any> = {}
     if (includes.includes('badges')) {
-      // Filter badges by station: only routes whose departureStation or arrivalStation matches user's station
-      // Station info comes from routes table joined via route_code on each badge
-      // Build a set of route codes that pass through user's station
+      // Filter badges by station (phân quyền theo bến)
+      // For "Buýt": dùng danh_muc_tuyen_bus + badges.tuyen_bus_code
+      //   - locations.code / ma_ben = danh_muc_tuyen_bus.diem_dau
+      //   - danh_muc_tuyen_bus.id_tuyen = badges.tuyen_bus_code
+      // For "Tuyến cố định": filter by routes.startPoint/endPoint matches location.name (như cũ)
       let filteredBadges = data.badges
-      if (stationName) {
-        const stationLower = stationName.trim().toLowerCase()
-        // Build allowed route codes from routes data
-        const allowedRouteCodes = new Set<string>(
-          data.routes
-            .filter(r =>
-              r.startPoint.trim().toLowerCase() === stationLower ||
-              r.endPoint.trim().toLowerCase() === stationLower
+      if (stationCode || stationName) {
+        // ===== 1) Buýt: build allowed id_tuyen via danh_muc_tuyen_bus (matched by ma_ben/diem_dau) =====
+        const allowedBusRouteIds = new Set<string>()
+        if (stationCode) {
+          try {
+            const busRouteRows = await db.execute(
+              // eslint-disable-next-line drizzle/enforce-query-usage
+              sql`SELECT id_tuyen FROM danh_muc_tuyen_bus WHERE diem_dau = ${stationCode}`,
             )
-            .map(r => (r.code || '').trim().toUpperCase())
-        )
+            for (const row of busRouteRows as any[]) {
+              const id = (row.id_tuyen || '').trim()
+              if (id) allowedBusRouteIds.add(id)
+            }
+          } catch (error) {
+            console.error('[QuanLyData] Failed to load Buýt route ids via danh_muc_tuyen_bus:', error)
+          }
+        }
+
+        // ===== 2) Tuyến cố định: build allowed route codes by station name (startPoint/endPoint) =====
+        const allowedFixedRouteCodes = new Set<string>()
+        if (stationName) {
+          const stationLower = stationName.trim().toLowerCase()
+          for (const r of data.routes) {
+            const route = r as any
+            const startPoint = (route.startPoint || '').trim().toLowerCase()
+            const endPoint = (route.endPoint || '').trim().toLowerCase()
+            if (startPoint === stationLower || endPoint === stationLower) {
+              const rc = (route.code || '').trim().toUpperCase()
+              if (rc) allowedFixedRouteCodes.add(rc)
+            }
+          }
+        }
+
+        // ===== 3) Apply filters to badges =====
         filteredBadges = data.badges.filter(b => {
-          const rc = (b.route_code || '').trim().toUpperCase()
-          return rc && allowedRouteCodes.has(rc)
+          // "Buýt" badges: chỉ hiển thị nếu tuyen_bus_code thuộc danh sách id_tuyen của bến
+          if (b.badge_type === 'Buýt') {
+            if (!stationCode || allowedBusRouteIds.size === 0) return false
+            const id = (b.tuyen_bus_code || '').trim()
+            return !!id && allowedBusRouteIds.has(id)
+          }
+
+          // "Tuyến cố định" badges: filter by station name via routeCode → startPoint/endPoint
+          if (b.badge_type === 'Tuyến cố định') {
+            if (!stationName || allowedFixedRouteCodes.size === 0) {
+              return false
+            }
+            const rc = (b.route_code || '').trim().toUpperCase()
+            return rc && allowedFixedRouteCodes.has(rc)
+          }
+
+          // Other badge types: no filter (show all)
+          return true
         })
-        console.log(`[QuanLyData] Station filter '${stationName}': ${allowedRouteCodes.size} matching routes, ${filteredBadges.length}/${data.badges.length} badges`)
+
+        const busCount = data.badges.filter(b => b.badge_type === 'Buýt').length
+        const fixedRouteCount = data.badges.filter(b => b.badge_type === 'Tuyến cố định').length
+        const filteredBusCount = filteredBadges.filter(b => b.badge_type === 'Buýt').length
+        const filteredFixedRouteCount = filteredBadges.filter(b => b.badge_type === 'Tuyến cố định').length
+        console.log(
+          `[QuanLyData] Station filter (ma_ben: ${stationCode}, name: ${stationName}): ` +
+          `${allowedBusRouteIds.size} Buýt route ids, ${allowedFixedRouteCodes.size} Tuyến cố định routes, ` +
+          `${filteredBusCount}/${busCount} Buýt badges, ${filteredFixedRouteCount}/${fixedRouteCount} Tuyến cố định badges`
+        )
       }
       response.badges = filteredBadges
     }

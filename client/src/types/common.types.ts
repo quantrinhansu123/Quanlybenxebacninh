@@ -19,6 +19,8 @@ export interface Location {
   id: string
   name: string
   code: string
+  maBen?: string
+  busRouteIds?: string[]
   stationType?: string
   province?: string
   district?: string

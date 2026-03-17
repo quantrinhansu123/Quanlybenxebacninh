@@ -199,6 +199,19 @@ export default function QuanLyNhanSu() {
     admin: users.filter(u => u.role === 'admin').length,
   }
 
+  const getMaBen = (user: User): string => {
+    if (!user.benPhuTrach) return ''
+    const loc = locations.find((l) => l.id === user.benPhuTrach)
+    // Ưu tiên lấy từ cột ma_ben (maBen), fallback về code nếu chưa có
+    return loc?.maBen || loc?.code || ''
+  }
+
+  const getIdTuyenList = (user: User): string[] => {
+    if (!user.benPhuTrach) return []
+    const loc = locations.find((l) => l.id === user.benPhuTrach)
+    return loc?.busRouteIds || []
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-emerald-50">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
@@ -329,7 +342,7 @@ export default function QuanLyNhanSu() {
         {/* Users Table */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed">
+            <table className="min-w-[1200px] w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[200px]">Người dùng</th>
@@ -337,6 +350,8 @@ export default function QuanLyNhanSu() {
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[140px]">Số điện thoại</th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[130px]">Vai trò</th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[180px]">Bến phụ trách</th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider w-[120px]">Mã bến</th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">ID tuyến (danh_muc_tuyen_bus)</th>
                   <th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-[130px]">Trạng thái</th>
                   <th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider w-[100px]">Thao tác</th>
                 </tr>
@@ -344,14 +359,14 @@ export default function QuanLyNhanSu() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
                       <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
                       Đang tải...
                     </td>
                   </tr>
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
                       Không có dữ liệu
                     </td>
                   </tr>
@@ -395,6 +410,29 @@ export default function QuanLyNhanSu() {
                           <span className="text-slate-700 font-medium truncate block">{user.benPhuTrachName}</span>
                         ) : (
                           <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        {getMaBen(user) ? (
+                          <span className="text-slate-700 font-mono text-sm">{getMaBen(user)}</span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        {getIdTuyenList(user).length > 0 ? (
+                          <div className="flex flex-wrap gap-1 text-xs text-slate-700 font-mono">
+                            {getIdTuyenList(user).map((id) => (
+                              <span
+                                key={id}
+                                className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100"
+                              >
+                                {id}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
                         )}
                       </td>
                       <td className="px-4 py-4 text-center">

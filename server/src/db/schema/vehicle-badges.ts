@@ -22,6 +22,7 @@ export const vehicleBadges = pgTable('vehicle_badges', {
   badgeType: varchar('badge_type', { length: 50 }),
   routeCode: varchar('route_code', { length: 50 }),
   routeName: varchar('route_name', { length: 255 }),
+  tuyenBusCode: varchar('tuyen_bus_code', { length: 50 }),
   // Validity (stored as YYYY-MM-DD strings)
   issueDate: varchar('issue_date', { length: 10 }),
   expiryDate: varchar('expiry_date', { length: 10 }),

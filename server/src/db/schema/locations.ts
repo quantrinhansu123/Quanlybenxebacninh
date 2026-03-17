@@ -8,7 +8,9 @@ export const locations = pgTable('locations', {
   id: uuid('id').primaryKey().defaultRandom(),
   // Basic fields
   name: varchar('name', { length: 255 }).notNull(),
+  // ma_ben từ nguồn gốc Supabase, lưu vào code và cột ma_ben (nếu tồn tại)
   code: varchar('code', { length: 50 }).unique().notNull(),
+  maBen: varchar('ma_ben', { length: 50 }),
   stationType: varchar('station_type', { length: 100 }),
   phone: varchar('phone', { length: 20 }),
   email: varchar('email', { length: 255 }),
