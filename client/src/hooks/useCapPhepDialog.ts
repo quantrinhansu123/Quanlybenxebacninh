@@ -2,6 +2,15 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "react-toastify";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { scheduleService } from "@/services/schedule.service";
+import { appsheetClient } from "@/services/appsheet-client.service";
+import { enrichRows } from "@/services/appsheet-sync-utils";
+import { scheduleApi } from "@/features/fleet/schedules";
+import {
+  normalizeScheduleRows,
+  buildScheduleCode,
+  type NormalizedAppSheetSchedule,
+} from "@/services/appsheet-normalize-schedules";
+import { normalizeBusScheduleRows } from "@/services/appsheet-normalize-bus-schedules";
 import { dispatchService } from "@/services/dispatch.service";
 import { vehicleService } from "@/services/vehicle.service";
 import { type VehicleBadge } from "@/services/vehicle-badge.service";
@@ -56,11 +65,14 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   const [showZeroAmountConfirm, setShowZeroAmountConfirm] = useState(false);
   const [dailyTripCounts, setDailyTripCounts] = useState<Record<number, number>>({});
   const [tripCountsLoaded, setTripCountsLoaded] = useState(false);
-  const schedulesCacheRef = useRef<Record<string, Schedule[]>>({});
+  const schedulesCacheRef = useRef<
+    Record<string, { items: Schedule[]; source: "database" | "appsheet" }>
+  >({});
   const [cachedDispatchRecords, setCachedDispatchRecords] = useState<DispatchRecord[] | null>(null);
   const [scheduleWarning, setScheduleWarning] = useState("");
   const [tripLimitWarning, setTripLimitWarning] = useState("");
   const [tripLimitData, setTripLimitData] = useState<{ maxTrips: number; currentTrips: number } | null>(null);
+  const [isUsingAppsheetSchedules, setIsUsingAppsheetSchedules] = useState(false);
 
   const { currentShift } = useUIStore();
 
@@ -72,17 +84,127 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   const loadSchedules = useCallback(async (rid: string, opId?: string) => {
     try {
       const cacheKey = opId ? `${rid}_${opId}` : rid;
-      if (schedulesCacheRef.current[cacheKey]) {
-        setSchedules(schedulesCacheRef.current[cacheKey]);
+      const cached = schedulesCacheRef.current[cacheKey];
+      if (cached) {
+        setSchedules(cached.items);
+        setIsUsingAppsheetSchedules(cached.source === "appsheet");
         return;
       }
-      const data = await scheduleService.getAll(rid, opId, true, 'Đi');
-      setSchedules(data);
-      schedulesCacheRef.current[cacheKey] = data;
+
+      const dbData = await scheduleService.getAll(rid, opId, true, "Đi");
+      if (Array.isArray(dbData) && dbData.length > 0) {
+        setSchedules(dbData);
+        setIsUsingAppsheetSchedules(false);
+        schedulesCacheRef.current[cacheKey] = { items: dbData, source: "database" };
+        return;
+      }
+
+      // Fallback: nếu DB không có schedule → lấy trực tiếp từ AppSheet (UI appsheet)
+      const routeCode = routes.find((r) => r.id === rid)?.routeCode?.trim() || "";
+      const operatorCode = opId ? operators.find((o) => o.id === opId)?.code?.trim() || "" : "";
+
+      if (!routeCode) {
+        setSchedules([]);
+        setIsUsingAppsheetSchedules(false);
+        schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
+        return;
+      }
+
+      // Nếu không có operatorId (chưa chọn đơn vị), vẫn hiển thị lịch theo routeCode
+      // bằng cách resolve operatorId theo operatorCode từ AppSheet.
+      setIsUsingAppsheetSchedules(true);
+
+      const [fixedRows, notificationsRows, busRows, busLookupRows] = await Promise.all([
+        appsheetClient.fetchByName("fixedSchedules").catch(() => []),
+        appsheetClient.fetchByName("notifications").catch(() => []),
+        appsheetClient.fetchByName("busSchedules").catch(() => []),
+        appsheetClient.fetchByName("busLookup").catch(() => []),
+      ]);
+
+      const fixedEnriched = enrichRows(fixedRows, notificationsRows, {
+        refKey: "Ref_ThongBaoKhaiThac",
+        lookupIdKey: "ID_TB",
+        mappings: [
+          { from: "Ref_Tuyen", to: "Ref_Tuyen" },
+          { from: "Ref_DonVi", to: "Ref_DonVi" },
+        ],
+      });
+      const fixedNormalized = normalizeScheduleRows(fixedEnriched as any) as NormalizedAppSheetSchedule[];
+
+      const busEnriched = enrichRows(busRows, busLookupRows, {
+        refKey: "BieuDo",
+        lookupIdKey: "ID_BieuDo",
+        mappings: [
+          { from: "TuyenBuyt", to: "Ref_Tuyen" },
+          { from: "DonViKhaiThac", to: "Ref_DonVi" },
+        ],
+      });
+      const busNormalized = normalizeBusScheduleRows(busEnriched as any) as NormalizedAppSheetSchedule[];
+
+      const normKey = (s?: string | null) => (s || "").trim().toUpperCase();
+
+      const filtered = [...fixedNormalized, ...busNormalized].filter((s) => {
+        const dirOk = normKey(s.direction) === normKey("Đi") || normKey(s.direction) === normKey("DI");
+        if (!dirOk) return false;
+        if (!s.routeCode) return false;
+        const routeOk = normKey(s.routeCode) === normKey(routeCode);
+        if (!routeOk) return false;
+        if (!operatorCode) return true;
+        if (!s.operatorCode) return false;
+        return normKey(s.operatorCode) === normKey(operatorCode);
+      });
+
+      const resolvedSchedules: Schedule[] = [];
+      for (const s of filtered) {
+        const resolvedOperatorId =
+          opId ||
+          (s.operatorCode
+            ? operators.find((o) => normKey(o.code) === normKey(s.operatorCode))?.id
+            : undefined);
+        if (!resolvedOperatorId) continue;
+
+        resolvedSchedules.push({
+          id: s.firebaseId,
+          scheduleCode: s.scheduleCode || buildScheduleCode(routeCode, s.direction, s.departureTime),
+          routeId: rid,
+          operatorId: resolvedOperatorId,
+          departureTime: s.departureTime,
+          frequencyType: s.frequencyType,
+          daysOfWeek: s.daysOfWeek,
+          effectiveFrom: s.effectiveFrom,
+          effectiveTo: undefined,
+          isActive: true,
+          direction: s.direction,
+          daysOfMonth: s.daysOfMonth,
+          calendarType: s.calendarType,
+          notificationNumber: s.notificationNumber ?? undefined,
+          tripStatus: s.tripStatus ?? undefined,
+          operator: undefined,
+          route: undefined,
+        } as Schedule);
+      }
+
+      setSchedules(resolvedSchedules);
+      schedulesCacheRef.current[cacheKey] = { items: resolvedSchedules, source: "appsheet" };
+
+      // Optional: đồng bộ sang DB để các API validate/trip-limit hoạt động đúng
+      void (async () => {
+        try {
+          await scheduleApi.syncFromAppSheet(filtered as unknown as any);
+          const refreshed = await scheduleService.getAll(rid, opId, true, "Đi").catch(() => []);
+          if (Array.isArray(refreshed) && refreshed.length > 0) {
+            setSchedules(refreshed);
+            setIsUsingAppsheetSchedules(false);
+            schedulesCacheRef.current[cacheKey] = { items: refreshed, source: "database" };
+          }
+        } catch {
+          // Keep appsheet schedules for UI
+        }
+      })();
     } catch (error) {
       console.error("Failed to load schedules:", error);
     }
-  }, []);
+  }, [routes, operators]);
 
   const calculateTotal = useCallback(() => {
     const total = serviceCharges.reduce((sum, charge) => sum + charge.totalAmount, 0);
@@ -672,6 +794,18 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       setScheduleWarning("");
       return;
     }
+    // When schedules are still sourced from AppSheet (non-UUID ids), skip DB validate.
+    if (isUsingAppsheetSchedules) {
+      setScheduleWarning("");
+      return;
+    }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      scheduleId.trim(),
+    );
+    if (!isUuid) {
+      setScheduleWarning("");
+      return;
+    }
     let cancelled = false;
     scheduleService.validateDay(scheduleId, departureDate)
       .then(result => {
@@ -688,6 +822,12 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   // Trip limit check: when route + date changes
   useEffect(() => {
     if (!routeId || !departureDate || !record.vehiclePlateNumber) {
+      setTripLimitWarning("");
+      setTripLimitData(null);
+      return;
+    }
+    if (isUsingAppsheetSchedules) {
+      // DB schedules chưa sẵn sàng; tránh chặn luồng cấp phép bằng trip-limit sai.
       setTripLimitWarning("");
       setTripLimitData(null);
       return;
@@ -713,7 +853,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       });
     return () => { cancelled = true; };
-  }, [routeId, departureDate, record.vehiclePlateNumber]);
+  }, [routeId, departureDate, record.vehiclePlateNumber, isUsingAppsheetSchedules]);
 
   useEffect(() => {
     calculateTotal();
@@ -821,6 +961,20 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       setDepartureTime(selected.departureTime.slice(0, 5));
     }
   }, [scheduleId, schedules]);
+
+  // Remap scheduleId when schedules list is replaced (AppSheet fallback -> DB refresh)
+  // Match by HH:mm (departureTime) because DB ids differ from AppSheet firebaseId.
+  useEffect(() => {
+    if (!scheduleId) return;
+    const exists = schedules.some((s) => s.id === scheduleId);
+    if (exists) return;
+    if (!departureTime) return;
+    const dep = departureTime.trim().slice(0, 5).toUpperCase();
+    const match = schedules.find(
+      (s) => (s.departureTime || "").trim().slice(0, 5).toUpperCase() === dep,
+    );
+    if (match?.id) setScheduleId(match.id);
+  }, [schedules, scheduleId, departureTime]);
 
   // Validation: block permit when badge route has no valid schedule
   const noValidScheduleWarning = useMemo(() => {

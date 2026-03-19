@@ -98,6 +98,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Nhân sự", href: "/quan-ly-nhan-su", icon: UserCog },
     { name: "Đơn vị vận tải", href: "/quan-ly-don-vi-van-tai", icon: Building2 },
     { name: "Quản lý tuyến", href: "/quan-ly-tuyen", icon: Route },
+    { name: "Schedules", href: "/quan-ly-schedules", icon: Clock },
     { name: "Bến đến", href: "/quan-ly-ben-den", icon: MapPin },
     { name: "Quản lý dịch vụ", href: "/quan-ly-dich-vu", icon: Package },
     { name: "Biểu thức", href: "/quan-ly-bieu-thuc", icon: Calculator },

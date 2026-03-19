@@ -38,6 +38,7 @@ const QuanLyXe = lazy(() => import("@/pages/QuanLyXe"))
 const QuanLyLaiXe = lazy(() => import("@/pages/QuanLyLaiXe"))
 const QuanLyDonViVanTai = lazy(() => import("@/pages/QuanLyDonViVanTai"))
 const QuanLyPhuHieuXe = lazy(() => import("@/pages/QuanLyPhuHieuXe"))
+const QuanLySchedules = lazy(() => import("@/pages/QuanLySchedules"))
 
 // Human Resources (Nhân sự)
 const QuanLyNhanSu = lazy(() => import("@/pages/QuanLyNhanSu"))
@@ -286,6 +287,18 @@ function App() {
               <MainLayout>
                 <Suspense fallback={<PageLoader />}>
                   <QuanLyPhuHieuXe />
+                </Suspense>
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/quan-ly-schedules"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Suspense fallback={<PageLoader />}>
+                  <QuanLySchedules />
                 </Suspense>
               </MainLayout>
             </ProtectedRoute>
