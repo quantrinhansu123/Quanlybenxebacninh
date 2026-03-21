@@ -96,6 +96,32 @@ export const getVehicleById = async (req: Request, res: Response) => {
   }
 };
 
+/** Plate lookup for permit dialog (vehicle cache — legacy + badge sheets) */
+export const lookupVehicleByPlate = async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.plate;
+    const plate = raw ? decodeURIComponent(String(raw)) : '';
+    if (!plate.trim()) {
+      return res.status(400).json({ error: 'Plate required' });
+    }
+    const hit = await vehicleCacheService.lookupByPlate(plate);
+    if (!hit) {
+      return res.status(404).json({ error: 'Vehicle not found for plate' });
+    }
+    return res.json({
+      id: hit.id,
+      plateNumber: hit.plateNumber,
+      seatCapacity: hit.seatCapacity,
+      operatorName: hit.operatorName,
+      vehicleType: hit.vehicleType,
+      source: hit.source,
+    });
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    return res.status(500).json({ error: err.message || 'Lookup failed' });
+  }
+};
+
 export const createVehicle = async (req: Request, res: Response) => {
   try {
     if (!db) throw new Error('Database not initialized')

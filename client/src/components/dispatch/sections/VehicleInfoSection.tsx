@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { Truck, AlertTriangle, CheckCircle, FileText } from "lucide-react";
+import { toast } from "react-toastify";
+import { Truck, AlertTriangle, CheckCircle, FileText, CloudDownload, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { formatVietnamTime } from "@/utils/timezone";
 import { Select } from "@/components/ui/select";
@@ -8,7 +9,8 @@ import { GlassCard, SectionHeader, FormField, StyledInput, StyledSelect } from "
 import { operationNoticeService } from "@/services/operation-notice.service";
 import { prefetchPdf } from "@/lib/pdf-cache";
 import { OperationNoticePdfViewer } from "../OperationNoticePdfViewer";
-import type { DispatchRecord, Schedule, Vehicle, Operator, OperationNotice, Route } from "@/types";
+import { ScheduleSourceToggle } from "../ScheduleSourceToggle";
+import type { DispatchRecord, Schedule, Vehicle, Operator, OperationNotice, Route, ScheduleDataSource } from "@/types";
 
 interface VehicleInfoSectionProps {
   record: DispatchRecord;
@@ -30,6 +32,10 @@ interface VehicleInfoSectionProps {
   schedules: Schedule[];
   departureTime: string;
   scheduleWarning?: string;
+  onLoadSchedulesFromAppsheetTbJoin?: () => void | Promise<void>;
+  isLoadingTbJoinSchedules?: boolean;
+  scheduleDataSource?: ScheduleDataSource;
+  onScheduleDataSourceChange?: (v: ScheduleDataSource) => void;
 }
 
 export function VehicleInfoSection({
@@ -52,6 +58,10 @@ export function VehicleInfoSection({
   schedules,
   departureTime,
   scheduleWarning,
+  onLoadSchedulesFromAppsheetTbJoin,
+  isLoadingTbJoinSchedules = false,
+  scheduleDataSource = "database",
+  onScheduleDataSourceChange,
 }: VehicleInfoSectionProps) {
   const [noticePdfOpen, setNoticePdfOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<OperationNotice | null>(null);
@@ -74,47 +84,99 @@ export function VehicleInfoSection({
     return raw;
   };
 
+  const resolveRouteCodeForNotice = (selectedSchedule: Schedule): string | undefined => {
+    const fromFormRoute = routes.find((r) => r.id === routeId)?.routeCode?.trim();
+    if (fromFormRoute) return fromFormRoute;
+    const fromSched = selectedSchedule.route?.routeCode?.trim();
+    if (fromSched) return fromSched;
+    return routes.find((r) => r.id === selectedSchedule.routeId)?.routeCode?.trim();
+  };
+
+  /** Lịch AppSheet: file PDF lấy từ THONGBAO_KHAITHAC (cột link file / File) sau ghép Ref_ThongBaoKhaiThac → ID_TB + Ref_Tuyen. */
+  const buildAppsheetTbNotice = (selectedSchedule: Schedule, noticeNumber: string): OperationNotice => {
+    const url = selectedSchedule.notificationFileUrl!.trim();
+    const routeCode = resolveRouteCodeForNotice(selectedSchedule);
+    return {
+      id: "appsheet-tb",
+      routeCode: selectedSchedule.tbRefTuyen?.trim() || routeCode || "",
+      noticeNumber,
+      fileUrl: url,
+    };
+  };
+
   /** Prefetch API + PDF blob on hover (fire-and-forget) */
-  const handlePrefetchNotice = (noticeNumber: string) => {
-    const selectedRoute = routes.find(r => r.id === routeId);
-    const routeCode = selectedRoute?.routeCode;
+  const handlePrefetchNotice = (selectedSchedule: Schedule) => {
+    const noticeNumber = selectedSchedule.notificationNumber?.trim();
+    if (!noticeNumber) return;
+
+    if (scheduleDataSource === "appsheet" && selectedSchedule.notificationFileUrl?.trim()) {
+      const url = selectedSchedule.notificationFileUrl.trim();
+      const key = `appsheet-file:${url}`;
+      if (prefetchedNotice.current?.key === key) return;
+      const notice = buildAppsheetTbNotice(selectedSchedule, noticeNumber);
+      prefetchedNotice.current = { key, notice };
+      prefetchPdf(url);
+      return;
+    }
+
+    const routeCode = resolveRouteCodeForNotice(selectedSchedule);
     if (!routeCode) return;
     const key = `${routeCode}:${noticeNumber}`;
     if (prefetchedNotice.current?.key === key) return;
-    operationNoticeService.getByRouteCode(routeCode, noticeNumber).then((notices) => {
-      if (notices.length > 0) {
-        prefetchedNotice.current = { key, notice: notices[0] };
-        if (notices[0].fileUrl) prefetchPdf(notices[0].fileUrl);
+    void operationNoticeService.resolveForSchedule(routeCode, noticeNumber).then((notice) => {
+      if (notice?.fileUrl) {
+        prefetchedNotice.current = { key, notice };
+        prefetchPdf(notice.fileUrl);
       }
     }).catch(() => { });
   };
 
-  const handleViewNoticePdf = async (noticeNumber: string) => {
-    const selectedRoute = routes.find(r => r.id === routeId);
-    const routeCode = selectedRoute?.routeCode;
-    if (!routeCode) return;
+  const handleViewNoticePdf = async (selectedSchedule: Schedule) => {
+    const noticeNumber = selectedSchedule.notificationNumber?.trim();
+    if (!noticeNumber) return;
 
-    // Open panel immediately
+    if (scheduleDataSource === "appsheet" && selectedSchedule.notificationFileUrl?.trim()) {
+      const url = selectedSchedule.notificationFileUrl.trim();
+      const key = `appsheet-file:${url}`;
+      setNoticePdfOpen(true);
+      if (prefetchedNotice.current?.key === key && prefetchedNotice.current.notice) {
+        setSelectedNotice(prefetchedNotice.current.notice);
+        return;
+      }
+      const notice = buildAppsheetTbNotice(selectedSchedule, noticeNumber);
+      prefetchedNotice.current = { key, notice };
+      setSelectedNotice(notice);
+      return;
+    }
+
+    const routeCode = resolveRouteCodeForNotice(selectedSchedule);
+    if (!routeCode) {
+      toast.warn("Chưa xác định được mã tuyến để tra thông báo khai thác.");
+      return;
+    }
+
     setNoticePdfOpen(true);
 
-    // Use prefetched data if available
     const key = `${routeCode}:${noticeNumber}`;
-    if (prefetchedNotice.current?.key === key) {
+    if (prefetchedNotice.current?.key === key && prefetchedNotice.current.notice) {
       setSelectedNotice(prefetchedNotice.current.notice);
       return;
     }
 
     setNoticeLoading(true);
     try {
-      const notices = await operationNoticeService.getByRouteCode(routeCode, noticeNumber);
-      if (notices.length > 0) {
-        setSelectedNotice(notices[0]);
+      const notice = await operationNoticeService.resolveForSchedule(routeCode, noticeNumber);
+      if (notice) {
+        prefetchedNotice.current = { key, notice };
+        setSelectedNotice(notice);
       } else {
         setNoticePdfOpen(false);
+        toast.info("Không tìm thấy thông báo trong CSDL (so khớp mã tuyến + số TB).");
       }
     } catch (err) {
-      console.error('Failed to fetch operation notice:', err);
+      console.error("Failed to fetch operation notice:", err);
       setNoticePdfOpen(false);
+      toast.error("Không tải được thông báo khai thác.");
     } finally {
       setNoticeLoading(false);
     }
@@ -225,20 +287,47 @@ export function VehicleInfoSection({
             />
           </FormField>
           <FormField label="Biểu đồ giờ" required={!departureTime}>
-            <StyledSelect
-              value={scheduleId}
-              onChange={(e) => setScheduleId(e.target.value)}
-              disabled={!routeId || readOnly}
-            >
-              <option value="">
-                {!routeId ? "Chọn tuyến trước" : schedules.length === 0 ? "Không có biểu đồ" : "Chọn giờ"}
-              </option>
-              {schedules.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {format(new Date(`2000-01-01T${s.departureTime}`), "HH:mm")}
+            <div className="flex flex-col gap-2">
+              {onScheduleDataSourceChange && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-gray-600">Nguồn:</span>
+                  <ScheduleSourceToggle
+                    value={scheduleDataSource}
+                    onChange={onScheduleDataSourceChange}
+                    disabled={!routeId || readOnly}
+                  />
+                </div>
+              )}
+              <StyledSelect
+                value={scheduleId}
+                onChange={(e) => setScheduleId(e.target.value)}
+                disabled={!routeId || readOnly}
+              >
+                <option value="">
+                  {!routeId ? "Chọn tuyến trước" : schedules.length === 0 ? "Không có biểu đồ" : "Chọn giờ"}
                 </option>
-              ))}
-            </StyledSelect>
+                {schedules.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {format(new Date(`2000-01-01T${s.departureTime}`), "HH:mm")}
+                  </option>
+                ))}
+              </StyledSelect>
+              {onLoadSchedulesFromAppsheetTbJoin && !readOnly && (
+                <button
+                  type="button"
+                  onClick={() => void onLoadSchedulesFromAppsheetTbJoin()}
+                  disabled={!routeId || isLoadingTbJoinSchedules}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {isLoadingTbJoinSchedules ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  ) : (
+                    <CloudDownload className="h-3.5 w-3.5 shrink-0" />
+                  )}
+                  Lấy từ AppSheet (TB khai thác → ID_TB → giờ, chiều Đi)
+                </button>
+              )}
+            </div>
             {scheduleId && (() => {
               const selected = schedules.find(s => s.id === scheduleId);
               if (!selected) return null;
@@ -276,9 +365,13 @@ export function VehicleInfoSection({
                       <span className="text-gray-600">{selected.notificationNumber}</span>
                       <button
                         type="button"
-                        onClick={() => handleViewNoticePdf(selected.notificationNumber!)}
-                        onMouseEnter={() => handlePrefetchNotice(selected.notificationNumber!)}
-                        className="p-0.5 hover:bg-blue-100 rounded transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleViewNoticePdf(selected);
+                        }}
+                        onMouseEnter={() => handlePrefetchNotice(selected)}
+                        className="p-0.5 hover:bg-blue-100 rounded transition-colors shrink-0"
                         title="Xem thông báo khai thác (PDF)"
                         disabled={noticeLoading}
                       >

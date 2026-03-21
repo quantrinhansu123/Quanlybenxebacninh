@@ -9,6 +9,7 @@ import { authenticate } from '../../middleware/auth.js'
 import {
   getAllVehicles,
   getVehicleById,
+  lookupVehicleByPlate,
   createVehicle,
   updateVehicle,
   deleteVehicle,
@@ -29,6 +30,7 @@ router.use(authenticate)
 // Vehicle CRUD
 router.get('/', getAllVehicles)
 router.get('/document-audit-logs/all', getAllDocumentAuditLogs)
+router.get('/lookup/:plate', lookupVehicleByPlate)
 router.get('/:id/document-audit-logs', getVehicleDocumentAuditLogs)
 router.get('/:id', getVehicleById)
 router.post('/appsheet-sync', bodyParser.json({ limit: '5mb' }), syncVehiclesFromAppSheet)

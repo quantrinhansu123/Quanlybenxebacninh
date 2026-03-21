@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import {
   Home,
   LayoutDashboard,
@@ -53,9 +53,19 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+type QuanLySubItem = {
+  name: string;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  /** Chỉ hiện khi user role admin */
+  adminOnly?: boolean;
+};
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
   const logout = useAuthStore((state) => state.logout);
+  const userRole = useAuthStore((state) => state.user?.role);
+  const isAdmin = userRole === "admin";
   const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const [isTruyenTaiOpen, setIsTruyenTaiOpen] = useState(false);
@@ -92,13 +102,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Lịch sử giấy tờ", href: "/bao-cao/lich-su-giay-to", icon: History },
   ];
 
-  const quanLySubmenu = [
+  const quanLySubmenu: QuanLySubItem[] = [
     { name: "Quản lý xe", href: "/quan-ly-xe", icon: Bus },
     { name: "Quản lý lái xe", href: "/quan-ly-lai-xe", icon: Users },
     { name: "Nhân sự", href: "/quan-ly-nhan-su", icon: UserCog },
     { name: "Đơn vị vận tải", href: "/quan-ly-don-vi-van-tai", icon: Building2 },
     { name: "Quản lý tuyến", href: "/quan-ly-tuyen", icon: Route },
-    { name: "Schedules", href: "/quan-ly-schedules", icon: Clock },
+    { name: "Schedules", href: "/quan-ly-schedules", icon: Clock, adminOnly: true },
     { name: "Bến đến", href: "/quan-ly-ben-den", icon: MapPin },
     { name: "Quản lý dịch vụ", href: "/quan-ly-dich-vu", icon: Package },
     { name: "Biểu thức", href: "/quan-ly-bieu-thuc", icon: Calculator },
@@ -106,8 +116,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { name: "Danh sách ca trực", href: "/danh-sach-ca-truc", icon: Clock },
   ];
 
+  const visibleQuanLySubmenu = quanLySubmenu.filter((item) => !item.adminOnly || isAdmin);
+
   // Check if any submenu item is active
-  const isQuanLyActive = quanLySubmenu.some((item) => location.pathname === item.href);
+  const isQuanLyActive = visibleQuanLySubmenu.some((item) => location.pathname === item.href);
   const isTruyenTaiActive = truyenTaiSubmenu.some((item) => location.pathname === item.href);
   const isBaoCaoActive = baoCaoSubmenu.some((item) => location.pathname === item.href);
 
@@ -256,7 +268,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   {/* Submenu */}
                   {isQuanLyOpen && (
                     <div className="mt-1 ml-4 space-y-0.5 border-l border-stone-200 pl-3">
-                      {quanLySubmenu.map((subItem) => {
+                      {visibleQuanLySubmenu.map((subItem) => {
                         const isSubActive = location.pathname === subItem.href;
                         return (
                           <Link

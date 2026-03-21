@@ -75,8 +75,12 @@ export const vehicleService = {
     try {
       const response = await api.get(`/vehicles/lookup/${encodeURIComponent(plate)}`)
       return response.data
-    } catch (error) {
-      console.error('Error looking up vehicle by plate:', error)
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404) {
+        return null
+      }
+      console.warn('Error looking up vehicle by plate:', error)
       return null
     }
   },

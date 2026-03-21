@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
-import { ProtectedRoute } from "@/features/auth"
+import { AdminRoute, ProtectedRoute } from "@/features/auth"
 import { MainLayout } from "@/components/layout/MainLayout"
 import { PublicLayout } from "@/components/layout/PublicLayout"
 import { PageLoader } from "@/components/common/PageLoader"
@@ -296,11 +296,13 @@ function App() {
           path="/quan-ly-schedules"
           element={
             <ProtectedRoute>
-              <MainLayout>
-                <Suspense fallback={<PageLoader />}>
-                  <QuanLySchedules />
-                </Suspense>
-              </MainLayout>
+              <AdminRoute>
+                <MainLayout>
+                  <Suspense fallback={<PageLoader />}>
+                    <QuanLySchedules />
+                  </Suspense>
+                </MainLayout>
+              </AdminRoute>
             </ProtectedRoute>
           }
         />

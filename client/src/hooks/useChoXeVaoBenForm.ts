@@ -1,13 +1,26 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "react-toastify";
 import { vehicleService } from "@/services/vehicle.service";
 import { routeService } from "@/services/route.service";
 import { scheduleService } from "@/services/schedule.service";
 import { dispatchService } from "@/services/dispatch.service";
 import { driverService } from "@/services/driver.service";
+import { operatorService } from "@/services/operator.service";
+import { scheduleApi } from "@/features/fleet/schedules";
+import { fetchSchedulesFromAppsheetTbJoin } from "@/services/appsheet-fetch-schedules-tb-join";
+import { fetchFullAppsheetSchedulesForRoute } from "@/services/appsheet-fetch-schedules-full-route";
 import { useUIStore } from "@/store/ui.store";
+import { useDispatchStore } from "@/store/dispatch.store";
 import { parseDatabaseTimeForEdit } from "@/lib/vietnam-time";
-import type { Route, Schedule, Driver, DispatchInput, DispatchRecord } from "@/types";
+import type {
+  Route,
+  Schedule,
+  Driver,
+  DispatchInput,
+  DispatchRecord,
+  Operator,
+  ScheduleDataSource,
+} from "@/types";
 import type { Shift } from "@/services/shift.service";
 
 interface UseChoXeVaoBenFormProps {
@@ -36,6 +49,14 @@ export function useChoXeVaoBenForm({
   const [printDisplay, setPrintDisplay] = useState(false);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [operators, setOperators] = useState<Operator[]>([]);
+  const [vehicleOperatorId, setVehicleOperatorId] = useState("");
+  const [isLoadingTbJoinSchedules, setIsLoadingTbJoinSchedules] = useState(false);
+  const scheduleDataSource = useDispatchStore((s) => s.scheduleDataSource);
+  const setScheduleDataSource = useDispatchStore((s) => s.setScheduleDataSource);
+  const schedulesCacheRef = useRef<
+    Record<string, { items: Schedule[]; source: ScheduleDataSource }>
+  >({});
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [transportOrderDisplay] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +65,9 @@ export function useChoXeVaoBenForm({
   const [permitDispatchRecord, setPermitDispatchRecord] = useState<DispatchRecord | null>(null);
   const [hasUserModified, setHasUserModified] = useState(false);  // Prevents vehicleId reset after user clears
   const { currentShift } = useUIStore();
+
+  const scheduleCacheKey = (rid: string, opId: string | undefined, source: ScheduleDataSource) =>
+    `${opId ? `${rid}_${opId}` : rid}::${source}`;
 
   const getShiftIdFromCurrentShift = (): string | undefined => {
     if (!currentShift || currentShift === "<Trống>") {
@@ -69,6 +93,7 @@ export function useChoXeVaoBenForm({
       if (!isEditMode) {
         resetForm();
       }
+      void operatorService.getAll(true).then(setOperators).catch(() => setOperators([]));
     } else {
       document.body.style.overflow = "unset";
     }
@@ -90,16 +115,76 @@ export function useChoXeVaoBenForm({
       loadVehicleDetails(vehicleId);
     } else {
       setSelectedDriver(null);
+      setVehicleOperatorId("");
     }
   }, [vehicleId]);
 
+  const loadSchedules = useCallback(
+    async (rid: string) => {
+      const opId = vehicleOperatorId || undefined;
+      try {
+        const cacheKey = scheduleCacheKey(rid, opId, scheduleDataSource);
+        const hit = schedulesCacheRef.current[cacheKey];
+        if (hit) {
+          setSchedules(hit.items);
+          return;
+        }
+
+        if (scheduleDataSource === "database") {
+          const data = await scheduleService.getAll(rid, opId, true, "Đi");
+          const list = Array.isArray(data) ? data : [];
+          setSchedules(list);
+          schedulesCacheRef.current[cacheKey] = { items: list, source: "database" };
+          return;
+        }
+
+        const routeCode = routes.find((r) => r.id === rid)?.routeCode?.trim() || "";
+        if (!routeCode) {
+          setSchedules([]);
+          schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
+          return;
+        }
+
+        const outcome = await fetchFullAppsheetSchedulesForRoute({
+          routeId: rid,
+          routeCode,
+          operatorId: opId,
+          operators,
+        });
+        setSchedules(outcome.resolvedSchedules);
+        schedulesCacheRef.current[cacheKey] = {
+          items: outcome.resolvedSchedules,
+          source: "appsheet",
+        };
+
+        void (async () => {
+          try {
+            if (outcome.normalizedForSync.length > 0) {
+              await scheduleApi.syncFromAppSheet(outcome.normalizedForSync as unknown[]);
+            }
+            const refreshed = await scheduleService.getAll(rid, opId, true, "Đi").catch(() => []);
+            if (Array.isArray(refreshed) && refreshed.length > 0) {
+              const dbKey = scheduleCacheKey(rid, opId, "database");
+              schedulesCacheRef.current[dbKey] = { items: refreshed, source: "database" };
+            }
+          } catch {
+            /* ignore */
+          }
+        })();
+      } catch (error) {
+        console.error("Failed to load schedules:", error);
+      }
+    },
+    [scheduleDataSource, routes, operators, vehicleOperatorId],
+  );
+
   useEffect(() => {
     if (routeId) {
-      loadSchedules(routeId);
+      void loadSchedules(routeId);
     } else {
       setSchedules([]);
     }
-  }, [routeId]);
+  }, [routeId, loadSchedules]);
 
   // Auto-generate transport order code when vehicle is selected
   useEffect(() => {
@@ -142,6 +227,8 @@ export function useChoXeVaoBenForm({
     setConfirmPassengerDrop(false);
     setPerformPermitAfterEntry(false);
     setSelectedDriver(null);
+    setScheduleDataSource("database");
+    schedulesCacheRef.current = {};
   };
 
   const loadRoutes = async () => {
@@ -157,6 +244,7 @@ export function useChoXeVaoBenForm({
     const isLegacyOrBadge = id.startsWith("legacy_") || id.startsWith("badge_");
     try {
       const vehicle = await vehicleService.getById(id);
+      setVehicleOperatorId(vehicle.operatorId?.trim() || "");
       if (vehicle.operatorId) {
         try {
           const drivers = await driverService.getAll(vehicle.operatorId, true);
@@ -180,15 +268,78 @@ export function useChoXeVaoBenForm({
         console.warn("Không tìm thấy thông tin lái xe cho xe này - cho phép tiếp tục");
       }
       setSelectedDriver(null);
+      setVehicleOperatorId("");
     }
   };
 
-  const loadSchedules = async (routeId: string) => {
+  const handleScheduleDataSourceChange = (next: ScheduleDataSource) => {
+    setScheduleDataSource(next);
+    setScheduleId("");
+  };
+
+  const loadSchedulesFromAppsheetTbJoin = async () => {
+    if (!routeId) {
+      toast.warning("Chọn tuyến trước");
+      return;
+    }
+    const routeCode = routes.find((r) => r.id === routeId)?.routeCode?.trim() || "";
+    if (!routeCode) {
+      toast.error("Tuyến không có mã (route_code)");
+      return;
+    }
+
+    setIsLoadingTbJoinSchedules(true);
+    setScheduleDataSource("appsheet");
     try {
-      const data = await scheduleService.getAll(routeId, undefined, true);
-      setSchedules(data);
-    } catch (error) {
-      console.error("Failed to load schedules:", error);
+      const outcome = await fetchSchedulesFromAppsheetTbJoin({
+        routeId,
+        routeCode,
+        operatorId: vehicleOperatorId || undefined,
+        operators,
+      });
+
+      if (outcome.tbFilteredRawCount === 0) {
+        setSchedules([]);
+        setScheduleId("");
+        toast.info("Không có nút chạy cố định khớp TB khai thác (Ref_Tuyen → ID_TB) chiều Đi");
+        return;
+      }
+
+      const opId = vehicleOperatorId || undefined;
+      const appKey = scheduleCacheKey(routeId, opId, "appsheet");
+      schedulesCacheRef.current[appKey] = {
+        items: outcome.resolvedSchedules,
+        source: "appsheet",
+      };
+      setSchedules(outcome.resolvedSchedules);
+      setScheduleId("");
+      toast.success(
+        outcome.resolvedSchedules.length > 0
+          ? `Đã tải ${outcome.resolvedSchedules.length} biểu đồ giờ từ AppSheet (theo TB khai thác)`
+          : "Đã lọc theo TB nhưng chưa gán được đơn vị — kiểm tra mã ĐV trên AppSheet / thông tin xe",
+      );
+
+      void (async () => {
+        try {
+          if (outcome.normalizedForSync.length > 0) {
+            await scheduleApi.syncFromAppSheet(outcome.normalizedForSync as unknown[]);
+          }
+          const refreshed = await scheduleService
+            .getAll(routeId, vehicleOperatorId || undefined, true, "Đi")
+            .catch(() => []);
+          if (Array.isArray(refreshed) && refreshed.length > 0) {
+            const dbKey = scheduleCacheKey(routeId, opId, "database");
+            schedulesCacheRef.current[dbKey] = { items: refreshed, source: "database" };
+          }
+        } catch {
+          /* giữ danh sách TB */
+        }
+      })();
+    } catch (e) {
+      console.error("[loadSchedulesFromAppsheetTbJoin]", e);
+      toast.error("Không tải được lịch từ AppSheet");
+    } finally {
+      setIsLoadingTbJoinSchedules(false);
     }
   };
 
@@ -390,5 +541,9 @@ export function useChoXeVaoBenForm({
     handleSubmit,
     handleClose,
     handlePermitDialogClose,
+    loadSchedulesFromAppsheetTbJoin,
+    isLoadingTbJoinSchedules,
+    scheduleDataSource,
+    handleScheduleDataSourceChange,
   };
 }

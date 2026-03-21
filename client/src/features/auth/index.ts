@@ -3,6 +3,7 @@
 
 // Components
 export { ProtectedRoute } from './components/ProtectedRoute'
+export { AdminRoute } from './components/AdminRoute'
 
 // Hooks
 export { useAuth } from './hooks/useAuth'

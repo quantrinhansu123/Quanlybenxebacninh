@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { X, ExternalLink, Loader2 } from "lucide-react"
 import { Document, Page, pdfjs } from "react-pdf"
 import { fetchPdfBlob } from "@/lib/pdf-cache"
@@ -51,8 +52,9 @@ export function OperationNoticePdfViewer({ notice, open, onClose }: OperationNot
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+  // Portal ra body + z cao hơn CapPhepDialog (z-50) để không bị overflow/stacking của dialog nuốt panel
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 transition-opacity" onClick={onClose} />
 
@@ -149,6 +151,7 @@ export function OperationNoticePdfViewer({ notice, open, onClose }: OperationNot
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
