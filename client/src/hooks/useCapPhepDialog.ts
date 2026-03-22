@@ -22,7 +22,7 @@ import type {
   Operator,
   VehicleDocuments,
   ScheduleDataSource,
-  type ScheduleAppSheetFetchStepRow,
+  ScheduleAppSheetFetchStepRow,
 } from "@/types";
 
 type DocumentStatus = 'valid' | 'expired' | 'expiring_soon' | 'missing';

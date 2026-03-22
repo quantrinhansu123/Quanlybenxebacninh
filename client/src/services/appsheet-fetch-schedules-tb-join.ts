@@ -4,7 +4,11 @@
  */
 import { DOC_TB } from '@/config/appsheet-schedule-chain-docs'
 import { fetchAppsheetTableWithChainDoc } from '@/services/appsheet-fetch-table-with-doc'
-import { enrichRows } from '@/services/appsheet-sync-utils'
+import {
+  enrichRows,
+  applyThongBaoFileBySoThongBao,
+  mergeThongBaoPdfIntoNormalizedSchedules,
+} from '@/services/appsheet-sync-utils'
 import {
   normalizeScheduleRows,
   buildScheduleCode,
@@ -83,6 +87,8 @@ export async function fetchSchedulesFromAppsheetTbJoin(
     mappings: [
       { from: 'Ref_Tuyen', to: 'Ref_Tuyen' },
       { from: 'Ref_DonVi', to: 'Ref_DonVi' },
+      { from: 'SoThongBao', to: 'SoThongBao' },
+      { from: 'so_thong_bao', to: 'SoThongBao' },
       { from: 'link file', to: 'TB_LinkFile' },
       { from: 'Link file', to: 'TB_LinkFile' },
       { from: 'File', to: 'TB_File' },
@@ -102,7 +108,15 @@ export async function fetchSchedulesFromAppsheetTbJoin(
     phase: 'start',
     detail: DOC_TB.normalize,
   })
-  const fixedNormalized = normalizeScheduleRows(enriched as Record<string, unknown>[]) as NormalizedAppSheetSchedule[]
+  const fixedNormalized = mergeThongBaoPdfIntoNormalizedSchedules(
+    normalizeScheduleRows(
+      applyThongBaoFileBySoThongBao(
+        enriched as Record<string, unknown>[],
+        notificationsRows as Record<string, unknown>[],
+      ),
+    ) as NormalizedAppSheetSchedule[],
+    notificationsRows as Record<string, unknown>[],
+  )
   r?.({
     id: 'tb-normalize',
     label: '⑤ Chuẩn hóa (GioXuatBen, Chieu)',

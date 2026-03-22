@@ -7,6 +7,13 @@ const rawKey = import.meta.env.VITE_GTVT_APPSHEET_API_KEY || ''
 export const appsheetConfig = {
   apiKey: rawKey.replace(/^\{/, '').replace(/\}$/, ''),
   authHeader: 'ApplicationAccessKey',
+  /**
+   * gettablefileurl bắt buộc dùng tên app (slug), không dùng UUID trong URL API.
+   * GTVT BG: SMARTTRANSPORTBG_V11_Core-822150001 — ghi đè bằng env nếu app đổi tên.
+   */
+  fileUrlAppName:
+    (import.meta.env.VITE_GTVT_APPSHEET_FILE_URL_APP_NAME as string | undefined)?.trim() ||
+    'SMARTTRANSPORTBG_V11_Core-822150001',
   // AppSheet tables (PHUHIEUXE, Xe) can be large → 10s often times out
   timeoutMs: 30_000,
   retries: 3,

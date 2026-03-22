@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { X, ExternalLink, Loader2 } from "lucide-react"
 import { Document, Page, pdfjs } from "react-pdf"
 import { fetchPdfBlob } from "@/lib/pdf-cache"
+import { normalizePdfHref } from "@/utils/pdf-href"
 import type { OperationNotice } from "@/types"
 
 // Configure pdf.js worker
@@ -26,7 +27,7 @@ export function OperationNoticePdfViewer({ notice, open, onClose }: OperationNot
   const [error, setError] = useState(false)
   const [numPages, setNumPages] = useState(0)
 
-  const fileUrl = notice?.fileUrl || ""
+  const fileUrl = notice?.fileUrl?.trim() ? normalizePdfHref(notice.fileUrl.trim()) : ""
 
   // Fetch PDF blob when fileUrl changes
   useEffect(() => {

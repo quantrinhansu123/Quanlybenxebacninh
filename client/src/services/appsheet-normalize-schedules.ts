@@ -6,7 +6,7 @@
  *   enrichRows(scheduleRows, notificationRows, {
  *     refKey: 'Ref_ThongBaoKhaiThac',
  *     lookupIdKey: 'ID_TB',
- *     mappings: [{ from: 'Ref_Tuyen', to: 'Ref_Tuyen' }, { from: 'Ref_DonVi', to: 'Ref_DonVi' }],
+ *     mappings: [Ref_Tuyen, Ref_DonVi, File→TB_File, link file→TB_LinkFile, …]
  *   })
  */
 import {
@@ -15,7 +15,10 @@ import {
   parseTimeValue,
   parseIntArray,
   DEFAULT_DAYS_OF_WEEK,
+  extractAppSheetCellString,
 } from './appsheet-sync-utils'
+import { expandAppSheetFileRefToHttps } from '@/utils/appsheet-table-file-url'
+import { normalizePdfHref } from '@/utils/pdf-href'
 
 export interface NormalizedAppSheetSchedule {
   firebaseId: string
@@ -34,7 +37,7 @@ export interface NormalizedAppSheetSchedule {
   calendarType: string
   effectiveFrom: string
   notificationNumber: string | null
-  /** URL PDF: từ THONGBAO_KHAITHAC (link file / File) sau enrich theo Ref_ThongBaoKhaiThac → ID_TB */
+  /** URL PDF: TB_File sau enrich; khớp Số TB ↔ THONGBAO.SoThongBao → File (applyThongBaoFileBySoThongBao) */
   notificationFileUrl: string | null
   tripStatus: string
 }
@@ -64,8 +67,63 @@ const EFFECTIVE_FROM_KEYS = [
   'ngay_ban_hanh',
   'NgayApDung',
 ]
-const NOTIFICATION_KEYS = ['notification_number', 'notificationNumber', 'SoThongBao', 'QD_KhaiThac']
+const NOTIFICATION_KEYS = ['SoThongBao', 'so_thong_bao', 'notification_number', 'notificationNumber', 'QD_KhaiThac']
 const TRIP_STATUS_KEYS = ['trip_status', 'tripStatus', 'TrangThaiChuyen']
+
+/** Ref_Tuyen từ THONGBAO_KHAITHAC sau enrichRows (cùng key với route code cố định) */
+const TB_REF_TUYEN_KEYS = ['Ref_Tuyen', 'ref_Tuyen', 'ref_tuyen']
+
+/** PDF: TB_* sau enrich, rồi File / link; cuối cùng quét ô có chuỗi http / drive / .pdf */
+const NOTICE_FILE_URL_KEYS = [
+  'TB_File',
+  'TB_LinkFile',
+  'File',
+  'file',
+  'link file',
+  'Link file',
+  'URL',
+  'url',
+  'Link',
+  'link',
+]
+
+function pickNoticeFileUrlFromRow(row: Record<string, unknown>): string | null {
+  /** Không thêm https:// chỉ vì có .pdf — đường dẫn AppSheet *_Files_/… sẽ bị hỏng */
+  const urlFrom = (t: string): string | null => {
+    if (!t) return null
+    if (/^https?:\/\//i.test(t)) return t
+    if (t.startsWith('//')) return `https:${t}`
+    if (/^www\./i.test(t)) return `https://${t}`
+    if (/drive\.google\.com|docs\.google\.com/i.test(t)) {
+      return /^https?:\/\//i.test(t) ? t : `https://${t.replace(/^\/+/, '')}`
+    }
+    return null
+  }
+  const storagePathFrom = (t: string): string | null => {
+    const s = t.trim()
+    if (!s) return null
+    if (/_Files_\//i.test(s)) return s
+    if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(s) && !s.includes('://') && !s.startsWith('//')) return s
+    return null
+  }
+  for (const key of NOTICE_FILE_URL_KEYS) {
+    const t = extractAppSheetCellString(row[key])
+    if (!t) continue
+    const u = urlFrom(t.trim())
+    if (u) return u
+    const sp = storagePathFrom(t)
+    if (sp) return sp
+  }
+  for (const v of Object.values(row)) {
+    const t = extractAppSheetCellString(v)
+    if (!t) continue
+    const u = urlFrom(t.trim())
+    if (u) return u
+    const sp = storagePathFrom(t)
+    if (sp) return sp
+  }
+  return null
+}
 
 const normalizeDirection = (value: string | null): string => {
   const n = (value || '').trim().toLowerCase()
@@ -169,7 +227,12 @@ export function normalizeScheduleRows(
       calendarType,
       effectiveFrom: parseDateValue(pickString(item, EFFECTIVE_FROM_KEYS)) || '2025-01-01',
       notificationNumber: pickString(item, NOTIFICATION_KEYS),
-      notificationFileUrl: pickNoticeFileUrlFromRow(item),
+      notificationFileUrl: (() => {
+        const raw = pickNoticeFileUrlFromRow(item)
+        if (!raw?.trim()) return null
+        const ex = expandAppSheetFileRefToHttps(raw) || normalizePdfHref(raw)
+        return /^https?:\/\//i.test(ex) ? ex : null
+      })(),
       tripStatus: pickString(item, TRIP_STATUS_KEYS) || 'Hoạt động',
     })
   }

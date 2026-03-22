@@ -3,6 +3,7 @@
  * Column names based on ETL + AppSheet "PHUHIEUXE" table
  *
  * Dedup by badgeNumber (ID_PhuHieu) — each badge is unique
+ * Route code (fixed): Ref_Tuyen trước, MaSoTuyen khi Ref_Tuyen trống
  */
 import { normPlate } from '@/utils/plate-utils'
 
@@ -47,6 +48,8 @@ export function normalizeBadgeRows(
     // BienSo = actual plate text; BienSoXe = ref to XE.IDXe (NOT plate)
     const plate = str(row['BienSo'])
     const vehicleRef = str(row['BienSoXe'])
+    const refTuyen = str(row['Ref_Tuyen'])
+    const maSoTuyen = str(row['MaSoTuyen'])
     const normalized: NormalizedAppSheetBadge = {
       badgeNumber: badgeNum,
       plateNumber: plate ? normPlate(plate) : '',
@@ -59,9 +62,9 @@ export function normalizeBadgeRows(
       status: str(row['TrangThai']) || undefined,
       badgeColor: str(row['MauPhuHieu']) || undefined,
       issueType: str(row['LoaiCap']) || undefined,
-      routeRef: str(row['Ref_Tuyen']) || undefined,
+      routeRef: refTuyen || undefined,
       busRouteRef: str(row['Ref_TuyenBuyt']) || undefined,
-      routeCode: str(row['MaSoTuyen']) || undefined,
+      routeCode: refTuyen || maSoTuyen || undefined,
       routeName: str(row['TenTuyen']) || undefined,
       oldBadgeNumber: str(row['SoPhuHieuCu']) || undefined,
       renewalReason: str(row['LyDoCapLai']) || undefined,

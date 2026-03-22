@@ -1,3 +1,5 @@
+import { normalizePdfHref } from '@/utils/pdf-href'
+
 /** In-memory PDF blob cache with prefetch support */
 const cache = new Map<string, string>()
 const pending = new Map<string, Promise<string>>()
@@ -22,15 +24,18 @@ function getProxyUrl(fileUrl: string): string {
 
 /** Fetch PDF via backend proxy and return a blob URL (cached) */
 export async function fetchPdfBlob(url: string): Promise<string> {
-  const cached = cache.get(url)
+  const resolved = normalizePdfHref(url.trim())
+  if (!resolved) throw new Error('Empty PDF URL')
+
+  const cached = cache.get(resolved)
   if (cached) return cached
 
   // Deduplicate concurrent requests for the same URL
-  const inflight = pending.get(url)
+  const inflight = pending.get(resolved)
   if (inflight) return inflight
 
   const token = localStorage.getItem('auth_token')
-  const proxyUrl = getProxyUrl(url)
+  const proxyUrl = getProxyUrl(resolved)
 
   const promise = fetch(proxyUrl, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -41,21 +46,23 @@ export async function fetchPdfBlob(url: string): Promise<string> {
     })
     .then((blob) => {
       const blobUrl = URL.createObjectURL(blob)
-      cache.set(url, blobUrl)
-      pending.delete(url)
+      cache.set(resolved, blobUrl)
+      pending.delete(resolved)
       return blobUrl
     })
     .catch((err) => {
-      pending.delete(url)
+      pending.delete(resolved)
       throw err
     })
 
-  pending.set(url, promise)
+  pending.set(resolved, promise)
   return promise
 }
 
 /** Prefetch PDF into cache (fire-and-forget) */
 export function prefetchPdf(url: string): void {
-  if (!url || cache.has(url) || pending.has(url)) return
+  if (!url?.trim()) return
+  const resolved = normalizePdfHref(url.trim())
+  if (!resolved || cache.has(resolved) || pending.has(resolved)) return
   fetchPdfBlob(url).catch(() => {})
 }

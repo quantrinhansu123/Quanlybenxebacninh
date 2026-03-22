@@ -7,19 +7,22 @@ interface DialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: React.ReactNode
+  /** Merged into the content wrapper (around DialogContent); default includes max-w-[95vw] */
   className?: string
+  /** Merged into the fixed inset-0 overlay (e.g. p-0 items-stretch for full-screen) */
+  overlayClassName?: string
 }
 
 interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode
 }
 
-const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children, className }) => {
+const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children, className, overlayClassName }) => {
   if (!open) return null
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className={cn("fixed inset-0 z-[100] flex items-center justify-center p-4", overlayClassName)}
       onClick={() => onOpenChange(false)}
     >
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />

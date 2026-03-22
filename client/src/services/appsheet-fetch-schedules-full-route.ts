@@ -4,7 +4,11 @@
  */
 import { DOC_FULL } from '@/config/appsheet-schedule-chain-docs'
 import { fetchAppsheetTableWithChainDoc } from '@/services/appsheet-fetch-table-with-doc'
-import { enrichRows } from '@/services/appsheet-sync-utils'
+import {
+  enrichRows,
+  applyThongBaoFileBySoThongBao,
+  mergeThongBaoPdfIntoNormalizedSchedules,
+} from '@/services/appsheet-sync-utils'
 import {
   normalizeScheduleRows,
   buildScheduleCode,
@@ -76,12 +80,22 @@ export async function fetchFullAppsheetSchedulesForRoute(
     mappings: [
       { from: 'Ref_Tuyen', to: 'Ref_Tuyen' },
       { from: 'Ref_DonVi', to: 'Ref_DonVi' },
+      { from: 'SoThongBao', to: 'SoThongBao' },
+      { from: 'so_thong_bao', to: 'SoThongBao' },
       { from: 'link file', to: 'TB_LinkFile' },
       { from: 'Link file', to: 'TB_LinkFile' },
       { from: 'File', to: 'TB_File' },
     ],
   })
-  const fixedNormalized = normalizeScheduleRows(fixedEnriched as Record<string, unknown>[]) as NormalizedAppSheetSchedule[]
+  const fixedNormalized = mergeThongBaoPdfIntoNormalizedSchedules(
+    normalizeScheduleRows(
+      applyThongBaoFileBySoThongBao(
+        fixedEnriched as Record<string, unknown>[],
+        notificationsRows as Record<string, unknown>[],
+      ),
+    ) as NormalizedAppSheetSchedule[],
+    notificationsRows as Record<string, unknown>[],
+  )
   report?.({
     id: 'full-merge-fixed',
     label: '⑤ Ghép TB ↔ nút cố định + chuẩn hóa',

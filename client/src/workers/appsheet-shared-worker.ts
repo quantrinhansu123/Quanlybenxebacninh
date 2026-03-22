@@ -16,7 +16,11 @@ import { normalizeFixedRouteRows } from '../services/appsheet-normalize-fixed-ro
 import { normalizeBusRouteRows } from '../services/appsheet-normalize-bus-routes'
 import { normalizeScheduleRows, type NormalizedAppSheetSchedule } from '../services/appsheet-normalize-schedules'
 import { normalizeBusScheduleRows } from '../services/appsheet-normalize-bus-schedules'
-import { enrichRows } from '../services/appsheet-sync-utils'
+import {
+  enrichRows,
+  applyThongBaoFileBySoThongBao,
+  mergeThongBaoPdfIntoNormalizedSchedules,
+} from '../services/appsheet-sync-utils'
 
 // ─── Types ───────────────────────────────────────────────────────
 type NormalizerFn = (rows: Record<string, unknown>[]) => unknown[]
@@ -40,9 +44,18 @@ const normalizeFixedScheduleRowsWrapped: NormalizerFn = (rows): NormalizedAppShe
     mappings: [
       { from: 'Ref_Tuyen', to: 'Ref_Tuyen' },
       { from: 'Ref_DonVi', to: 'Ref_DonVi' },
+      { from: 'SoThongBao', to: 'SoThongBao' },
+      { from: 'so_thong_bao', to: 'SoThongBao' },
+      { from: 'File', to: 'TB_File' },
+      { from: 'file', to: 'TB_File' },
+      { from: 'FILE', to: 'TB_File' },
+      { from: 'link file', to: 'TB_LinkFile' },
+      { from: 'Link file', to: 'TB_LinkFile' },
     ],
   })
-  return normalizeScheduleRows(enriched)
+  const withPdf = applyThongBaoFileBySoThongBao(enriched, notificationsCache || [])
+  const normalized = normalizeScheduleRows(withPdf)
+  return mergeThongBaoPdfIntoNormalizedSchedules(normalized, notificationsCache || [])
 }
 
 /** Bus schedule normalizer wrapper — enriches with busLookupCache then normalizes */

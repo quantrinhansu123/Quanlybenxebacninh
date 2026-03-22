@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { toast } from "react-toastify"
 import { Search, Download, Plus, Upload, FileSpreadsheet, Award, TrendingUp, CheckCircle, XCircle, Clock } from "lucide-react"
 import * as XLSX from "xlsx"
@@ -226,6 +226,18 @@ export default function QuanLyPhuHieuXe() {
     return backendOperatorOptions
   }, [appSheetOperators, backendOperatorOptions])
 
+  const resolveOperatorDisplayName = useCallback(
+    (badge: VehicleBadge) => {
+      const ref = (badge.issuing_authority_ref || "").trim()
+      if (!ref) return ""
+      const op = operatorOptions.find(
+        (o) => o.id.toLowerCase() === ref.toLowerCase()
+      )
+      return (op?.name || "").trim()
+    },
+    [operatorOptions]
+  )
+
   useEffect(() => {
     async function fetchEnrichment() {
       try {
@@ -441,7 +453,7 @@ export default function QuanLyPhuHieuXe() {
       issuing_authority_ref: b.operatorRef || '',
       // Backend enrichment
       itinerary: enrichmentMap.get(b.badgeNumber)?.itinerary || '',
-      // Route fields from AppSheet — Tuyến cố định: route_code=MaSoTuyen, route_ref=Ref_Tuyen (fallback lookup)
+      // Route fields from AppSheet — route_code = Ref_Tuyen ưu tiên (+ MaSoTuyen nếu trống), route_ref = Ref_Tuyen
       route_id: '',
       route_code: b.routeCode || '',
       route_name: b.routeName || '',
@@ -492,6 +504,7 @@ export default function QuanLyPhuHieuXe() {
       const matchesSearch =
         badge.badge_number.toLowerCase().includes(query) ||
         badge.license_plate_sheet.toLowerCase().includes(query) ||
+        resolveOperatorDisplayName(badge).toLowerCase().includes(query) ||
         badge.file_code.toLowerCase().includes(query) ||
         (badge.vehicle_id && badge.vehicle_id.toLowerCase().includes(query)) ||
         (badge.route_code && badge.route_code.toLowerCase().includes(query)) ||
@@ -1102,10 +1115,9 @@ export default function QuanLyPhuHieuXe() {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-center text-base">Số phù hiệu</TableHead>
-                <TableHead className="text-center text-base">Biển số xe</TableHead>
+                <TableHead className="text-center text-base">Biển số</TableHead>
+                <TableHead className="text-center text-base">Tên đơn vị</TableHead>
                 <TableHead className="text-center text-base">Loại phù hiệu</TableHead>
-                <TableHead className="text-center text-base">Route code</TableHead>
-                <TableHead className="text-center text-base">Tuyến bus code</TableHead>
                 <TableHead className="text-center text-base">Ngày cấp</TableHead>
                 <TableHead className="text-center text-base">Ngày hết hạn</TableHead>
                 <TableHead className="text-center text-base">Trạng thái</TableHead>
@@ -1115,13 +1127,13 @@ export default function QuanLyPhuHieuXe() {
             <TableBody>
               {effectiveLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     Đang tải...
                   </TableCell>
                 </TableRow>
               ) : filteredBadges.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                     Không có dữ liệu
                   </TableCell>
                 </TableRow>
@@ -1134,14 +1146,16 @@ export default function QuanLyPhuHieuXe() {
                     <TableCell className="text-center text-base">
                       {badge.license_plate_sheet || "N/A"}
                     </TableCell>
+                    <TableCell className="align-middle text-center text-base max-w-[240px] px-3 py-2">
+                      <span
+                        className="line-clamp-2 break-words whitespace-normal leading-snug"
+                        title={resolveOperatorDisplayName(badge) || undefined}
+                      >
+                        {resolveOperatorDisplayName(badge) || "—"}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-center text-base">
                       {badge.badge_type || "N/A"}
-                    </TableCell>
-                    <TableCell className="text-center text-base">
-                      {badge.route_code || "N/A"}
-                    </TableCell>
-                    <TableCell className="text-center text-base">
-                      {(badge as any).tuyen_bus_code || "N/A"}
                     </TableCell>
                     <TableCell className="text-center text-base">
                       {formatDate(badge.issue_date)}
@@ -1233,7 +1247,12 @@ export default function QuanLyPhuHieuXe() {
         )}
 
         {/* View Detail Dialog */}
-        <BadgeDetailDialog open={viewDialogOpen} onOpenChange={handleViewDialogChange} badge={selectedBadge} />
+        <BadgeDetailDialog
+          open={viewDialogOpen}
+          onOpenChange={handleViewDialogChange}
+          badge={selectedBadge}
+          operatorName={selectedBadge ? resolveOperatorDisplayName(selectedBadge) : ""}
+        />
 
         {/* Form Dialog (Create/Edit) */}
         <Dialog open={formDialogOpen} onOpenChange={handleFormDialogChange}>

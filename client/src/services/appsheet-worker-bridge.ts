@@ -12,7 +12,11 @@ import { normalizeFixedRouteRows } from '@/services/appsheet-normalize-fixed-rou
 import { normalizeBusRouteRows } from '@/services/appsheet-normalize-bus-routes'
 import { normalizeScheduleRows } from '@/services/appsheet-normalize-schedules'
 import { normalizeBusScheduleRows } from '@/services/appsheet-normalize-bus-schedules'
-import { enrichRows } from '@/services/appsheet-sync-utils'
+import {
+  enrichRows,
+  applyThongBaoFileBySoThongBao,
+  mergeThongBaoPdfIntoNormalizedSchedules,
+} from '@/services/appsheet-sync-utils'
 import type { WorkerEvent } from '@/workers/appsheet-shared-worker'
 
 type WorkerEventCallback = (event: WorkerEvent) => void
@@ -163,18 +167,32 @@ class AppSheetWorkerBridge {
         }
       case 'fixedSchedules':
         await this.ensureFallbackNotifications()
-        return {
-          normalized: normalizeScheduleRows(
-            enrichRows(rawRows, this.fallbackNotificationsCache || [], {
-              refKey: 'Ref_ThongBaoKhaiThac',
-              lookupIdKey: 'ID_TB',
-              mappings: [
-                { from: 'Ref_Tuyen', to: 'Ref_Tuyen' },
-                { from: 'Ref_DonVi', to: 'Ref_DonVi' },
-              ],
-            }),
-          ),
-          keyField: 'firebaseId',
+        {
+          const notif = this.fallbackNotificationsCache || []
+          const normalized = normalizeScheduleRows(
+            applyThongBaoFileBySoThongBao(
+              enrichRows(rawRows, notif, {
+                refKey: 'Ref_ThongBaoKhaiThac',
+                lookupIdKey: 'ID_TB',
+                mappings: [
+                  { from: 'Ref_Tuyen', to: 'Ref_Tuyen' },
+                  { from: 'Ref_DonVi', to: 'Ref_DonVi' },
+                  { from: 'SoThongBao', to: 'SoThongBao' },
+                  { from: 'so_thong_bao', to: 'SoThongBao' },
+                  { from: 'File', to: 'TB_File' },
+                  { from: 'file', to: 'TB_File' },
+                  { from: 'FILE', to: 'TB_File' },
+                  { from: 'link file', to: 'TB_LinkFile' },
+                  { from: 'Link file', to: 'TB_LinkFile' },
+                ],
+              }),
+              notif,
+            ),
+          )
+          return {
+            normalized: mergeThongBaoPdfIntoNormalizedSchedules(normalized, notif),
+            keyField: 'firebaseId',
+          }
         }
       case 'busSchedules':
         await this.ensureFallbackBusLookup()
