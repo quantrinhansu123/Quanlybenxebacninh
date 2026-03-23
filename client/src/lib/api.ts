@@ -1,23 +1,31 @@
 import axios, { AxiosError, AxiosInstance } from 'axios'
 
+/**
+ * Base URL phải trỏ tới prefix `/api` của Express (vd `https://host/api`).
+ * Nhiều cấu hình Vercel chỉ ghi `https://host` → mọi request thành `/quanly-data`
+ * thay vì `/api/quanly-data` → backend trả 404 `{ error: 'Route not found' }`.
+ */
+/** Exported for pdf-cache và chỗ khác cần cùng base URL với axios. */
+export function normalizeApiBase(raw: string): string {
+  const u = raw.trim().replace(/\/+$/, '')
+  if (!u) return u
+  if (u.endsWith('/api')) return u
+  return `${u}/api`
+}
+
 // Auto-detect API URL based on environment
 // In production/Vercel, use VITE_API_URL from env vars
 // In local dev, fallback to localhost if VITE_API_URL not set
 const getApiUrl = (): string => {
-  // Check if VITE_API_URL is explicitly set
   if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
+    return normalizeApiBase(import.meta.env.VITE_API_URL)
   }
-  
-  // In production (Vercel), we should have VITE_API_URL set
-  // In local dev, use localhost
+
   if (import.meta.env.PROD) {
-    // Production but no VITE_API_URL - this is an error
     console.error('VITE_API_URL is not set in production environment!')
     return 'https://quanlybenxebacninh-server.vercel.app/api'
   }
-  
-  // Local development fallback
+
   return 'http://localhost:3000/api'
 }
 

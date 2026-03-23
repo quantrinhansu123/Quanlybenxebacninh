@@ -1,6 +1,7 @@
 /**
  * Đọc SoCho / SoChoNgoi từ bảng AppSheet «Xe» khi biển khớp BienSo (hoặc BienKiemSoat).
- * Chỉ dùng Filter (nhẹ) — không tải cả bảng ~19k dòng (tránh chậm / timeout).
+ * 1) Filter (nhanh)  2) Nếu không có dòng: quét bảng + so khớp normPlate (chậm hơn nhưng đúng khi GTVT lưu biển có dấu cách/dấu chấm).
+ * Tắt bước 2: VITE_APPSHEET_XE_SEAT_SKIP_FULL_SCAN=true
  * Cache ngắn + gộp request trùng biển.
  */
 import { appsheetConfig } from '@/config/appsheet.config'
@@ -29,6 +30,11 @@ function pickSeat(rows: Record<string, unknown>[]): number | null {
     if (n != null && n > 0) return n
   }
   return null
+}
+
+function rowPlateNorm(row: Record<string, unknown>): string {
+  const raw = row['BienSo'] ?? row['BienKiemSoat']
+  return normPlate(typeof raw === 'string' ? raw : String(raw ?? ''))
 }
 
 function cacheGet(key: string): number | null | undefined {
@@ -100,10 +106,32 @@ export async function fetchSeatFromAppsheetXeByPlate(
       new Set([want, trimmed.replace(/\s+/g, ' '), trimmed.toUpperCase()]),
     )
     try {
-      const n = await findSeatBySelectors(variants, signal)
-      const out = n ?? null
-      cacheSet(want, out)
-      return out
+      const fromFilter = await findSeatBySelectors(variants, signal)
+      if (fromFilter != null) {
+        cacheSet(want, fromFilter)
+        return fromFilter
+      }
+
+      const skipFull =
+        (import.meta.env.VITE_APPSHEET_XE_SEAT_SKIP_FULL_SCAN as string | undefined) === 'true'
+      if (skipFull) {
+        cacheSet(want, null)
+        return null
+      }
+
+      const rows = await appsheetClient.fetchByName('vehicles', signal)
+      for (const row of rows) {
+        if (signal?.aborted) return null
+        const r = row as Record<string, unknown>
+        if (rowPlateNorm(r) !== want) continue
+        const n = int(r['SoChoNgoi'] ?? r['SoCho'])
+        if (n != null && n > 0) {
+          cacheSet(want, n)
+          return n
+        }
+      }
+      cacheSet(want, null)
+      return null
     } finally {
       inflight.delete(want)
     }

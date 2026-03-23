@@ -1,13 +1,13 @@
+import { normalizeApiBase } from '@/lib/api'
 import { normalizePdfHref } from '@/utils/pdf-href'
 
 /** In-memory PDF blob cache with prefetch support */
 const cache = new Map<string, string>()
 const pending = new Map<string, Promise<string>>()
 
-// Auto-detect API URL (same logic as api.ts)
 const getApiUrl = (): string => {
   if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL
+    return normalizeApiBase(import.meta.env.VITE_API_URL)
   }
   if (import.meta.env.PROD) {
     return 'https://quanlybenxebacninh-server.vercel.app/api'

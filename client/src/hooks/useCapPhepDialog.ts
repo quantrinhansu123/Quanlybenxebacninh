@@ -101,6 +101,8 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   // Prevent multiple initializations
   const isInitializedRef = useRef(false);
   const routeAutoFilledRef = useRef(false);
+  /** Tránh effect selectedVehicle ghi đè số ghế đã lấy từ AppSheet/init cùng một xe. */
+  const lastSeatVehicleIdRef = useRef<string | null>(null);
 
 
   const scheduleCacheKey = (rid: string, opId: string | undefined, source: ScheduleDataSource) =>
@@ -537,7 +539,16 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       }
 
-      // SoCho từ AppSheet «Xe»: chỉ trong useEffect (không await ở đây) — tránh chậm mở dialog; có cache + dedupe trong service.
+      if (plateToCheck && (!record.seatCount || record.seatCount === 0)) {
+        try {
+          const xeSeat = await fetchSeatFromAppsheetXeByPlate(plateToCheck);
+          if (xeSeat != null && xeSeat > 0) {
+            setSeatCount(xeSeat.toString());
+          }
+        } catch (e) {
+          console.warn("AppSheet Xe SoCho:", e);
+        }
+      }
 
       if (record.seatCount && record.seatCount > 0) setSeatCount(record.seatCount.toString());
     } catch (error) {
@@ -941,15 +952,30 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   }, [departureDate, tripCountsLoaded, loadDailyTripCounts]);
 
   useEffect(() => {
-    if (selectedVehicle) {
-      if ((!record.seatCount || record.seatCount === 0) && selectedVehicle.seatCapacity) {
-        setSeatCount(selectedVehicle.seatCapacity.toString());
-      } else if (record.seatCount && record.seatCount > 0) {
-        setSeatCount(record.seatCount.toString());
-      }
+    if (!selectedVehicle) return;
+    if (record.seatCount && record.seatCount > 0) {
+      setSeatCount(record.seatCount.toString());
+      lastSeatVehicleIdRef.current = selectedVehicle.id;
       if (selectedVehicle.bedCapacity !== undefined && selectedVehicle.bedCapacity !== null) {
         setBedCount(selectedVehicle.bedCapacity.toString());
       }
+      return;
+    }
+    const vid = selectedVehicle.id;
+    const vehicleChanged =
+      lastSeatVehicleIdRef.current !== null && lastSeatVehicleIdRef.current !== vid;
+    lastSeatVehicleIdRef.current = vid;
+
+    const cap = selectedVehicle.seatCapacity;
+    if (cap !== undefined && cap !== null && cap > 0) {
+      setSeatCount((prev) => {
+        const t = (prev || "").trim();
+        if (!vehicleChanged && t !== "") return prev;
+        return String(cap);
+      });
+    }
+    if (selectedVehicle.bedCapacity !== undefined && selectedVehicle.bedCapacity !== null) {
+      setBedCount(selectedVehicle.bedCapacity.toString());
     }
   }, [selectedVehicle, record.seatCount]);
 
