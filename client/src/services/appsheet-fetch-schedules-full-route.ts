@@ -39,34 +39,36 @@ export async function fetchFullAppsheetSchedulesForRoute(
   const { routeId: rid, routeCode, operatorId: opId, operators, onProgress: report } = params
   const operatorCode = opId ? operators.find((o) => o.id === opId)?.code?.trim() || '' : ''
 
-  const fixedRows = await fetchAppsheetTableWithChainDoc(
-    'fixedSchedules',
-    'full-fixed',
-    '① BieuDoChayXeChiTiet',
-    DOC_FULL.fixedLoad,
-    report,
-  )
-  const notificationsRows = await fetchAppsheetTableWithChainDoc(
-    'notifications',
-    'full-notifications',
-    '② THONGBAO_KHAITHAC',
-    DOC_FULL.notificationsLoad(routeCode),
-    report,
-  )
-  const busRows = await fetchAppsheetTableWithChainDoc(
-    'busSchedules',
-    'full-bus-sched',
-    '③ GIOCHAY_BUYT',
-    DOC_FULL.busSchedLoad,
-    report,
-  )
-  const busLookupRows = await fetchAppsheetTableWithChainDoc(
-    'busLookup',
-    'full-bus-lookup',
-    '④ BIEUDOCHAY_BUYT',
-    DOC_FULL.busLookupLoad,
-    report,
-  )
+  const [fixedRows, notificationsRows, busRows, busLookupRows] = await Promise.all([
+    fetchAppsheetTableWithChainDoc(
+      'fixedSchedules',
+      'full-fixed',
+      '① BieuDoChayXeChiTiet',
+      DOC_FULL.fixedLoad,
+      report,
+    ),
+    fetchAppsheetTableWithChainDoc(
+      'notifications',
+      'full-notifications',
+      '② THONGBAO_KHAITHAC',
+      DOC_FULL.notificationsLoad(routeCode),
+      report,
+    ),
+    fetchAppsheetTableWithChainDoc(
+      'busSchedules',
+      'full-bus-sched',
+      '③ GIOCHAY_BUYT',
+      DOC_FULL.busSchedLoad,
+      report,
+    ),
+    fetchAppsheetTableWithChainDoc(
+      'busLookup',
+      'full-bus-lookup',
+      '④ BIEUDOCHAY_BUYT',
+      DOC_FULL.busLookupLoad,
+      report,
+    ),
+  ])
 
   report?.({
     id: 'full-merge-fixed',

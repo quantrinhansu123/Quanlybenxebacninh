@@ -10,9 +10,14 @@ export const ENV = {
   busLookup: 'VITE_GTVT_APPSHEET_BUS_LOOKUP_ENDPOINT',
 } as const
 
-/** Gợi ý khi thiếu endpoint */
+/** Gợi ý khi thiếu endpoint (Vite nhúng VITE_* lúc build — production cần khai báo trên Vercel rồi redeploy). */
 export function missingEndpointHint(logicalTable: keyof typeof ENV): string {
-  return `\n\n⚠ Chưa cấu hình: ${ENV[logicalTable]} trong client/.env (tham chiếu client/.env.example).`
+  const v = ENV[logicalTable]
+  return `\n\n⚠ Chưa cấu hình: ${v}
+• Local: thêm vào client/.env hoặc client/.env.local (xem client/.env.example).
+• Vercel: biến phải bắt đầu VITE_ (không dùng GTVT_* của server — Vite không đưa vào bundle).
+• Có thể: VITE_GTVT_APPSHEET_BASE_URL + ${v}=tables/…/Action (path tương đối) HOẶC một URL đầy đủ trong ${v}.
+• Sau khi sửa env: Deploy lại (Rebuild).`
 }
 
 export const DOC_FULL = {

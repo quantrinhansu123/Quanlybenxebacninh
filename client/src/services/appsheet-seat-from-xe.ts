@@ -1,10 +1,17 @@
 /**
  * Đọc SoCho / SoChoNgoi từ bảng AppSheet «Xe» khi biển khớp BienSo (hoặc BienKiemSoat).
- * Ưu tiên Filter (nhẹ); fallback quét toàn bảng nếu định dạng cột khác với biển nhập.
+ * Chỉ dùng Filter (nhẹ) — không tải cả bảng ~19k dòng (tránh chậm / timeout).
+ * Cache ngắn + gộp request trùng biển.
  */
 import { appsheetConfig } from '@/config/appsheet.config'
 import { appsheetClient } from '@/services/appsheet-client.service'
 import { normPlate } from '@/utils/plate-utils'
+
+const CACHE_TTL_MS = 5 * 60 * 1000
+const MAX_CACHE_ENTRIES = 400
+
+const seatCache = new Map<string, { value: number | null; at: number }>()
+const inflight = new Map<string, Promise<number | null>>()
 
 function escSelector(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
@@ -24,9 +31,47 @@ function pickSeat(rows: Record<string, unknown>[]): number | null {
   return null
 }
 
-function rowPlate(row: Record<string, unknown>): string {
-  const raw = row['BienSo'] ?? row['BienKiemSoat']
-  return normPlate(typeof raw === 'string' ? raw : String(raw ?? ''))
+function cacheGet(key: string): number | null | undefined {
+  const hit = seatCache.get(key)
+  if (!hit) return undefined
+  if (Date.now() - hit.at > CACHE_TTL_MS) {
+    seatCache.delete(key)
+    return undefined
+  }
+  return hit.value
+}
+
+function cacheSet(key: string, value: number | null): void {
+  if (seatCache.size >= MAX_CACHE_ENTRIES) {
+    const first = seatCache.keys().next().value as string | undefined
+    if (first) seatCache.delete(first)
+  }
+  seatCache.set(key, { value, at: Date.now() })
+}
+
+async function findSeatBySelectors(
+  variants: string[],
+  signal: AbortSignal | undefined,
+): Promise<number | null> {
+  const cols = ['BienSo', 'BienKiemSoat'] as const
+  for (const v of variants) {
+    if (!v) continue
+    const results = await Promise.all(
+      cols.map(async (col) => {
+        const selector = `Filter(Xe, [${col}]="${escSelector(v)}")`
+        try {
+          const rows = await appsheetClient.findByName('vehicles', { selector, signal })
+          return pickSeat(rows)
+        } catch {
+          return null
+        }
+      }),
+    )
+    for (const n of results) {
+      if (n != null) return n
+    }
+  }
+  return null
 }
 
 /**
@@ -44,32 +89,26 @@ export async function fetchSeatFromAppsheetXeByPlate(
   if (!appsheetConfig.apiKey) return null
 
   const want = normPlate(trimmed)
-  const variants = Array.from(new Set([want, trimmed.replace(/\s+/g, ' ')]))
+  const cached = cacheGet(want)
+  if (cached !== undefined) return cached
 
-  for (const v of variants) {
-    if (!v) continue
-    for (const col of ['BienSo', 'BienKiemSoat'] as const) {
-      const selector = `Filter(Xe, [${col}]="${escSelector(v)}")`
-      try {
-        const rows = await appsheetClient.findByName('vehicles', { selector, signal })
-        const n = pickSeat(rows)
-        if (n != null) return n
-      } catch {
-        /* thử biến thể / cột khác */
-      }
+  const pending = inflight.get(want)
+  if (pending) return pending
+
+  const run = (async (): Promise<number | null> => {
+    const variants = Array.from(
+      new Set([want, trimmed.replace(/\s+/g, ' '), trimmed.toUpperCase()]),
+    )
+    try {
+      const n = await findSeatBySelectors(variants, signal)
+      const out = n ?? null
+      cacheSet(want, out)
+      return out
+    } finally {
+      inflight.delete(want)
     }
-  }
+  })()
 
-  try {
-    const rows = await appsheetClient.fetchByName('vehicles', signal)
-    for (const row of rows) {
-      if (rowPlate(row as Record<string, unknown>) !== want) continue
-      const n = int((row as Record<string, unknown>)['SoChoNgoi'] ?? (row as Record<string, unknown>)['SoCho'])
-      if (n != null && n > 0) return n
-    }
-  } catch {
-    return null
-  }
-
-  return null
+  inflight.set(want, run)
+  return run
 }

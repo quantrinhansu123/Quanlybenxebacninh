@@ -63,20 +63,22 @@ export async function fetchSchedulesFromAppsheetTbJoin(
   const { routeId: rid, routeCode, operatorId: opId, operators, onProgress: r } = params
   const operatorCode = opId ? operators.find((o) => o.id === opId)?.code?.trim() || '' : ''
 
-  const fixedRows = await fetchAppsheetTableWithChainDoc(
-    'fixedSchedules',
-    'tb-fixed',
-    '① BieuDoChayXeChiTiet',
-    DOC_TB.fixedLoad,
-    r,
-  )
-  const notificationsRows = await fetchAppsheetTableWithChainDoc(
-    'notifications',
-    'tb-notifications',
-    '② THONGBAO_KHAITHAC',
-    DOC_TB.notificationsLoad(routeCode),
-    r,
-  )
+  const [fixedRows, notificationsRows] = await Promise.all([
+    fetchAppsheetTableWithChainDoc(
+      'fixedSchedules',
+      'tb-fixed',
+      '① BieuDoChayXeChiTiet',
+      DOC_TB.fixedLoad,
+      r,
+    ),
+    fetchAppsheetTableWithChainDoc(
+      'notifications',
+      'tb-notifications',
+      '② THONGBAO_KHAITHAC',
+      DOC_TB.notificationsLoad(routeCode),
+      r,
+    ),
+  ])
 
   const filterDoc = DOC_TB.filterTb(routeCode)
   r?.({

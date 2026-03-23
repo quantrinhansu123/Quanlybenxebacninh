@@ -537,16 +537,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       }
 
-      if (plateToCheck && (!record.seatCount || record.seatCount === 0)) {
-        try {
-          const xeSeat = await fetchSeatFromAppsheetXeByPlate(plateToCheck);
-          if (xeSeat != null && xeSeat > 0) {
-            setSeatCount(xeSeat.toString());
-          }
-        } catch (e) {
-          console.warn("AppSheet Xe SoCho:", e);
-        }
-      }
+      // SoCho từ AppSheet «Xe»: chỉ trong useEffect (không await ở đây) — tránh chậm mở dialog; có cache + dedupe trong service.
 
       if (record.seatCount && record.seatCount > 0) setSeatCount(record.seatCount.toString());
     } catch (error) {

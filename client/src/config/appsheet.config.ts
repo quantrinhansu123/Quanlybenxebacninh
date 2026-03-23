@@ -1,9 +1,33 @@
 /**
  * AppSheet API config - reads from Vite env vars (VITE_ prefix required)
  * Used for frontend direct polling to AppSheet GTVT tables
+ *
+ * Mỗi *ENDPOINT có thể là URL đầy đủ HOẶC path tương đối (vd tables/Xe/Action)
+ * khi đã set VITE_GTVT_APPSHEET_BASE_URL — cùng kiểu với server (GTVT_APPSHEET_*).
+ * Lưu ý: biến server GTVT_* không có tiền tố VITE_ → Vite không đưa vào bundle trình duyệt.
  */
 // Strip {} from API key if present (AppSheet UI shows as {V2-xxx} but API accepts both)
 const rawKey = import.meta.env.VITE_GTVT_APPSHEET_API_KEY || ''
+
+const viteAppsheetBase = (
+  (import.meta.env.VITE_GTVT_APPSHEET_BASE_URL as string | undefined) || ''
+)
+  .trim()
+  .replace(/\/+$/, '')
+
+function isAbsoluteHttpUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s)
+}
+
+/** URL đầy đủ hoặc ghép BASE + path (giống server loadGtvtAppsheetConfig). */
+function resolveAppsheetEndpoint(value: string | undefined, base: string): string {
+  const v = (value || '').trim()
+  if (!v) return ''
+  if (isAbsoluteHttpUrl(v)) return v
+  if (!base) return ''
+  return `${base}/${v.replace(/^\/+/, '')}`
+}
+
 export const appsheetConfig = {
   apiKey: rawKey.replace(/^\{/, '').replace(/\}$/, ''),
   authHeader: 'ApplicationAccessKey',
@@ -28,16 +52,27 @@ export const appsheetConfig = {
   // fixedSchedules/busSchedules = BieuDoChayXeChiTiet / GIOCHAY_BUYT
   // notifications/busLookup = enrichment tables for join
   endpoints: {
-    vehicles: import.meta.env.VITE_GTVT_APPSHEET_VEHICLES_ENDPOINT || '',
-    xe: import.meta.env.VITE_GTVT_APPSHEET_VEHICLES_ENDPOINT || import.meta.env.VITE_GTVT_APPSHEET_XE_ENDPOINT || '',
-    badges: import.meta.env.VITE_GTVT_APPSHEET_BADGES_ENDPOINT || '',
-    operators: import.meta.env.VITE_GTVT_APPSHEET_OPERATORS_ENDPOINT || '',
-    fixedRoutes: import.meta.env.VITE_GTVT_APPSHEET_ROUTES_ENDPOINT || '',
-    busRoutes: import.meta.env.VITE_GTVT_APPSHEET_BUS_ROUTES_ENDPOINT || '',
-    fixedSchedules: import.meta.env.VITE_GTVT_APPSHEET_SCHEDULES_ENDPOINT || '',
-    busSchedules: import.meta.env.VITE_GTVT_APPSHEET_BUS_SCHEDULES_ENDPOINT || '',
-    notifications: import.meta.env.VITE_GTVT_APPSHEET_NOTIFICATIONS_ENDPOINT || '',
-    busLookup: import.meta.env.VITE_GTVT_APPSHEET_BUS_LOOKUP_ENDPOINT || '',
-    matinh: import.meta.env.VITE_GTVT_APPSHEET_MATINH_ENDPOINT || '',
+    vehicles: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_VEHICLES_ENDPOINT, viteAppsheetBase),
+    xe:
+      resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_VEHICLES_ENDPOINT, viteAppsheetBase) ||
+      resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_XE_ENDPOINT, viteAppsheetBase),
+    badges: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_BADGES_ENDPOINT, viteAppsheetBase),
+    operators: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_OPERATORS_ENDPOINT, viteAppsheetBase),
+    fixedRoutes: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_ROUTES_ENDPOINT, viteAppsheetBase),
+    busRoutes: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_BUS_ROUTES_ENDPOINT, viteAppsheetBase),
+    fixedSchedules: resolveAppsheetEndpoint(
+      import.meta.env.VITE_GTVT_APPSHEET_SCHEDULES_ENDPOINT,
+      viteAppsheetBase,
+    ),
+    busSchedules: resolveAppsheetEndpoint(
+      import.meta.env.VITE_GTVT_APPSHEET_BUS_SCHEDULES_ENDPOINT,
+      viteAppsheetBase,
+    ),
+    notifications: resolveAppsheetEndpoint(
+      import.meta.env.VITE_GTVT_APPSHEET_NOTIFICATIONS_ENDPOINT,
+      viteAppsheetBase,
+    ),
+    busLookup: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_BUS_LOOKUP_ENDPOINT, viteAppsheetBase),
+    matinh: resolveAppsheetEndpoint(import.meta.env.VITE_GTVT_APPSHEET_MATINH_ENDPOINT, viteAppsheetBase),
   } as Record<string, string>,
 }
