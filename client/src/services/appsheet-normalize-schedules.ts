@@ -37,12 +37,12 @@ export interface NormalizedAppSheetSchedule {
   calendarType: string
   effectiveFrom: string
   notificationNumber: string | null
-  /** URL PDF: TB_File sau enrich; khớp Số TB ↔ THONGBAO.SoThongBao → File (applyThongBaoFileBySoThongBao) */
+  /** URL PDF: TB_File sau enrich (Ref→ID_TB); merge PDF theo Ref/ID_TB + SoThongBao trong sync-utils */
   notificationFileUrl: string | null
   tripStatus: string
 }
 
-// Key arrays — match backend gtvt-normalize-schedules.service.ts exactly
+// Key arrays — AppSheet FE (notification keys khác BE, xem NOTIFICATION_KEYS)
 const ID_KEYS = ['firebase_id', 'firebaseId', 'ID_NutChay', 'id', 'schedule_id', 'ID_GioChay']
 const ROUTE_ID_KEYS = ['route_fb_id', 'routeFbId', 'route_firebase_id', 'Ref_Tuyen', 'TuyenBuyt']
 const ROUTE_CODE_KEYS = ['route_code', 'routeCode', 'MaTuyen', 'SoHieuTuyen', 'Ref_Tuyen']
@@ -67,8 +67,21 @@ const EFFECTIVE_FROM_KEYS = [
   'ngay_ban_hanh',
   'NgayApDung',
 ]
-const NOTIFICATION_KEYS = ['SoThongBao', 'so_thong_bao', 'notification_number', 'notificationNumber', 'QD_KhaiThac']
 const TRIP_STATUS_KEYS = ['trip_status', 'tripStatus', 'TrangThaiChuyen']
+
+/**
+ * AppSheet BieuDo: ưu tiên Ref_ThongBaoKhaiThac (khớp ID_TB THONGBAO), sau đó SoThongBao sau enrich.
+ * (Khác với BE gtvt-normalize — chỉ áp dụng pipeline FE AppSheet.)
+ */
+const NOTIFICATION_KEYS = [
+  'Ref_ThongBaoKhaiThac',
+  'ref_ThongBaoKhaiThac',
+  'SoThongBao',
+  'so_thong_bao',
+  'notification_number',
+  'notificationNumber',
+  'QD_KhaiThac',
+]
 
 /** Ref_Tuyen từ THONGBAO_KHAITHAC sau enrichRows (cùng key với route code cố định) */
 const TB_REF_TUYEN_KEYS = ['Ref_Tuyen', 'ref_Tuyen', 'ref_tuyen']

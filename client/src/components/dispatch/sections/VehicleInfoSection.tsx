@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { toast } from "react-toastify";
-import { Truck, AlertTriangle, CheckCircle, FileText, CloudDownload, Loader2 } from "lucide-react";
+import { Truck, AlertTriangle, CheckCircle, FileText, CloudDownload, Loader2, ChevronRight, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { formatVietnamTime } from "@/utils/timezone";
 import { Select } from "@/components/ui/select";
@@ -10,7 +10,47 @@ import { operationNoticeService } from "@/services/operation-notice.service";
 import { prefetchPdf } from "@/lib/pdf-cache";
 import { OperationNoticePdfViewer } from "../OperationNoticePdfViewer";
 import { ScheduleSourceToggle } from "../ScheduleSourceToggle";
-import type { DispatchRecord, Schedule, Vehicle, Operator, OperationNotice, Route, ScheduleDataSource } from "@/types";
+import type {
+  DispatchRecord,
+  Schedule,
+  Vehicle,
+  Operator,
+  OperationNotice,
+  Route,
+  ScheduleDataSource,
+  ScheduleAppSheetFetchStepRow,
+} from "@/types";
+import type { TbJoinScheduleDiagnostics } from "@/services/appsheet-fetch-schedules-tb-join";
+
+function tbFlowIssues(d: TbJoinScheduleDiagnostics): string[] {
+  const issues: string[] = [];
+  if (d.fixedRowCount === 0) {
+    issues.push("① BieuDoChayXeChiTiet: 0 dòng (endpoint / dữ liệu AppSheet).");
+  }
+  if (d.notificationRowCount === 0) {
+    issues.push("② THONGBAO_KHAITHAC: 0 dòng.");
+  }
+  if (d.idTbMatchingRouteCount === 0) {
+    issues.push(
+      `③ Không có ID_TB nào với Ref_Tuyen = «${d.routeCode}» trong TB (sai mã tuyến hoặc TB chưa khai thác).`,
+    );
+  }
+  if (d.idTbMatchingRouteCount > 0 && d.tbFilteredRowCount === 0) {
+    issues.push(
+      "④ Có TB nhưng BieuDo không có dòng: Ref_ThongBaoKhaiThac ∈ ID_TB và Chieu = Đi.",
+    );
+  }
+  if (d.tbFilteredRowCount > 0 && d.normalizedAfterNormalizeCount === 0) {
+    issues.push("⑤ Chuẩn hoá: 0 lịch (GioXuatBen / Chieu không hợp lệ).");
+  }
+  if (d.normalizedAfterNormalizeCount > 0 && d.afterOperatorFilterCount === 0) {
+    issues.push("⑥ Lọc đơn vị: 0 lịch (mã ĐV không khớp hoặc chưa chọn đơn vị).");
+  }
+  if (d.afterOperatorFilterCount > 0 && d.resolvedForDropdownCount === 0) {
+    issues.push("⑦ Gán operator: không map được mã ĐV ↔ đơn vị trong hệ thống.");
+  }
+  return issues;
+}
 
 interface VehicleInfoSectionProps {
   record: DispatchRecord;
@@ -34,6 +74,9 @@ interface VehicleInfoSectionProps {
   scheduleWarning?: string;
   onLoadSchedulesFromAppsheetTbJoin?: () => void | Promise<void>;
   isLoadingTbJoinSchedules?: boolean;
+  isLoadingAppsheetSchedules?: boolean;
+  scheduleFetchSteps?: ScheduleAppSheetFetchStepRow[];
+  scheduleTbDiagnostics?: TbJoinScheduleDiagnostics | null;
   scheduleDataSource?: ScheduleDataSource;
   onScheduleDataSourceChange?: (v: ScheduleDataSource) => void;
 }
@@ -60,9 +103,14 @@ export function VehicleInfoSection({
   scheduleWarning,
   onLoadSchedulesFromAppsheetTbJoin,
   isLoadingTbJoinSchedules = false,
+  isLoadingAppsheetSchedules = false,
+  scheduleFetchSteps = [],
+  scheduleTbDiagnostics = null,
   scheduleDataSource = "database",
   onScheduleDataSourceChange,
 }: VehicleInfoSectionProps) {
+  const isLoadingScheduleAppsheet = isLoadingTbJoinSchedules || isLoadingAppsheetSchedules;
+  const flowIssues = scheduleTbDiagnostics ? tbFlowIssues(scheduleTbDiagnostics) : [];
   const [noticePdfOpen, setNoticePdfOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<OperationNotice | null>(null);
   const [noticeLoading, setNoticeLoading] = useState(false);
@@ -316,10 +364,10 @@ export function VehicleInfoSection({
                 <button
                   type="button"
                   onClick={() => void onLoadSchedulesFromAppsheetTbJoin()}
-                  disabled={!routeId || isLoadingTbJoinSchedules}
+                  disabled={!routeId || isLoadingScheduleAppsheet}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  {isLoadingTbJoinSchedules ? (
+                  {isLoadingScheduleAppsheet ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
                   ) : (
                     <CloudDownload className="h-3.5 w-3.5 shrink-0" />
@@ -327,6 +375,76 @@ export function VehicleInfoSection({
                   Lấy từ AppSheet (TB khai thác → ID_TB → giờ, chiều Đi)
                 </button>
               )}
+              {scheduleDataSource === "appsheet" &&
+                (isLoadingScheduleAppsheet ||
+                  scheduleFetchSteps.length > 0 ||
+                  scheduleTbDiagnostics) && (
+                  <details
+                    className="group rounded-lg border border-slate-200 bg-slate-50/90 px-2 py-1.5 text-left"
+                    open={flowIssues.length > 0 || schedules.length === 0}
+                  >
+                    <summary className="cursor-pointer list-none flex items-center gap-1.5 text-xs font-semibold text-slate-700 select-none">
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-90" />
+                      {isLoadingScheduleAppsheet ? "Đang tải luồng biểu đồ…" : "Luồng dữ liệu biểu đồ giờ (AppSheet)"}
+                      {isLoadingScheduleAppsheet && (
+                        <Loader2 className="h-3 w-3 animate-spin text-slate-500 ml-1" />
+                      )}
+                    </summary>
+                    <div className="mt-2 space-y-2 pl-1 border-t border-slate-200/80 pt-2">
+                      {scheduleFetchSteps.length > 0 && (
+                        <ol className="space-y-1.5 text-[11px] leading-snug">
+                          {scheduleFetchSteps.map((row) => (
+                            <li key={row.id} className="flex gap-2 items-start">
+                              <span className="shrink-0 mt-0.5">
+                                {row.state === "loading" && (
+                                  <Loader2 className="h-3 w-3 animate-spin text-amber-600" />
+                                )}
+                                {row.state === "ok" && (
+                                  <CheckCircle className="h-3 w-3 text-emerald-600" />
+                                )}
+                                {row.state === "error" && (
+                                  <XCircle className="h-3 w-3 text-red-600" />
+                                )}
+                              </span>
+                              <span className="min-w-0">
+                                <span className="font-medium text-slate-800">{row.label}</span>
+                                {row.detail && (
+                                  <pre className="mt-0.5 whitespace-pre-wrap break-words text-[10px] text-slate-600 font-mono max-h-32 overflow-y-auto">
+                                    {row.detail}
+                                  </pre>
+                                )}
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                      {scheduleTbDiagnostics && (
+                        <div className="text-[10px] font-mono text-slate-700 space-y-0.5 bg-white/80 rounded px-2 py-1.5 border border-slate-100">
+                          <div>
+                            Mã tuyến: <span className="font-semibold">{scheduleTbDiagnostics.routeCode}</span>
+                          </div>
+                          <div>① BieuDo dòng: {scheduleTbDiagnostics.fixedRowCount}</div>
+                          <div>② TB dòng: {scheduleTbDiagnostics.notificationRowCount}</div>
+                          <div>③ ID_TB khớp Ref_Tuyen: {scheduleTbDiagnostics.idTbMatchingRouteCount}</div>
+                          <div>④ Sau lọc TB + Đi: {scheduleTbDiagnostics.tbFilteredRowCount}</div>
+                          <div>⑤ Sau chuẩn hoá: {scheduleTbDiagnostics.normalizedAfterNormalizeCount}</div>
+                          <div>⑥ Sau lọc ĐV: {scheduleTbDiagnostics.afterOperatorFilterCount}</div>
+                          <div>⑦ Dropdown: {scheduleTbDiagnostics.resolvedForDropdownCount}</div>
+                        </div>
+                      )}
+                      {flowIssues.length > 0 && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950 space-y-1">
+                          <div className="font-semibold">Có thể thiếu / nghẽn tại:</div>
+                          <ul className="list-disc pl-4 space-y-0.5">
+                            {flowIssues.map((msg, i) => (
+                              <li key={i}>{msg}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
             </div>
             {scheduleId && (() => {
               const selected = schedules.find(s => s.id === scheduleId);

@@ -100,9 +100,11 @@ export function enrichRows(
 }
 
 /**
- * Số TB trên dòng BieuDo: ưu tiên SoThongBao; nhiều sheet chỉ có QD_KhaiThao cùng nội dung với SoThongBao TB.
+ * Dòng BieuDo: ưu tiên Ref_ThongBaoKhaiThac (= ID_TB), sau đó SoThongBao / QD… (đồng bộ với appsheet-normalize-schedules NOTIFICATION_KEYS).
  */
 const SCHEDULE_SO_THONG_BAO_MATCH_KEYS = [
+  'Ref_ThongBaoKhaiThac',
+  'ref_ThongBaoKhaiThac',
   'SoThongBao',
   'so_thong_bao',
   'SoThongbao',
@@ -115,6 +117,7 @@ const SCHEDULE_SO_THONG_BAO_MATCH_KEYS = [
   'QDKhaiThac',
   'SoThongBao_TB',
 ]
+const THONGBAO_ID_TB_KEYS = ['ID_TB', 'id_tb', 'Id_Tb', 'id_TB']
 const THONGBAO_SO_THONG_BAO_KEYS = [
   'SoThongBao',
   'so_thong_bao',
@@ -252,10 +255,17 @@ function noticeEntriesWithFile(
 ): { keyNorm: string; file: string }[] {
   const out: { keyNorm: string; file: string }[] = []
   for (const n of notificationRows) {
-    const stb = pickSoThongBaoFromNoticeRow(n)
     const file = pickThongBaoFileUrlFromNoticeRow(n)
-    if (!stb?.trim() || !file?.trim()) continue
-    out.push({ keyNorm: normalizeNoticeNumberKey(stb), file: file.trim() })
+    if (!file?.trim()) continue
+    const f = file.trim()
+    const stb = pickSoThongBaoFromNoticeRow(n)
+    if (stb?.trim()) {
+      out.push({ keyNorm: normalizeNoticeNumberKey(stb), file: f })
+    }
+    const idTb = pickString(n, THONGBAO_ID_TB_KEYS)
+    if (idTb?.trim()) {
+      out.push({ keyNorm: normalizeNoticeNumberKey(idTb), file: f })
+    }
   }
   return out
 }

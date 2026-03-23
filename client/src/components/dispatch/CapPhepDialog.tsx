@@ -266,6 +266,9 @@ export function CapPhepDialog({
                   onScheduleDataSourceChange={hook.handleScheduleDataSourceChange}
                   onLoadSchedulesFromAppsheetTbJoin={hook.loadSchedulesFromAppsheetTbJoin}
                   isLoadingTbJoinSchedules={hook.isLoadingTbJoinSchedules}
+                  isLoadingAppsheetSchedules={hook.isLoadingAppsheetSchedules}
+                  scheduleFetchSteps={hook.scheduleFetchSteps}
+                  scheduleTbDiagnostics={hook.scheduleTbDiagnostics}
                 />
                 <DriverSection
                   drivers={hook.drivers}

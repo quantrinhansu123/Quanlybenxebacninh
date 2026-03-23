@@ -8,7 +8,6 @@ import { driverService } from "@/services/driver.service";
 import { operatorService } from "@/services/operator.service";
 import { scheduleApi } from "@/features/fleet/schedules";
 import { fetchSchedulesFromAppsheetTbJoin } from "@/services/appsheet-fetch-schedules-tb-join";
-import { fetchFullAppsheetSchedulesForRoute } from "@/services/appsheet-fetch-schedules-full-route";
 import { useUIStore } from "@/store/ui.store";
 import { useDispatchStore } from "@/store/dispatch.store";
 import { parseDatabaseTimeForEdit } from "@/lib/vietnam-time";
@@ -145,22 +144,28 @@ export function useChoXeVaoBenForm({
           return;
         }
 
-        const outcome = await fetchFullAppsheetSchedulesForRoute({
+        const outcome = await fetchSchedulesFromAppsheetTbJoin({
           routeId: rid,
           routeCode,
           operatorId: opId,
           operators,
         });
-        setSchedules(outcome.resolvedSchedules);
+        if (outcome.tbFilteredRawCount === 0) {
+          setSchedules([]);
+          schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
+          return;
+        }
+        const { resolvedSchedules, normalizedForSync } = outcome;
+        setSchedules(resolvedSchedules);
         schedulesCacheRef.current[cacheKey] = {
-          items: outcome.resolvedSchedules,
+          items: resolvedSchedules,
           source: "appsheet",
         };
 
         void (async () => {
           try {
-            if (outcome.normalizedForSync.length > 0) {
-              await scheduleApi.syncFromAppSheet(outcome.normalizedForSync as unknown[]);
+            if (normalizedForSync.length > 0) {
+              await scheduleApi.syncFromAppSheet(normalizedForSync as unknown[]);
             }
             const refreshed = await scheduleService.getAll(rid, opId, true, "Đi").catch(() => []);
             if (Array.isArray(refreshed) && refreshed.length > 0) {
@@ -291,10 +296,11 @@ export function useChoXeVaoBenForm({
     setIsLoadingTbJoinSchedules(true);
     setScheduleDataSource("appsheet");
     try {
+      const opId = vehicleOperatorId || undefined;
       const outcome = await fetchSchedulesFromAppsheetTbJoin({
         routeId,
         routeCode,
-        operatorId: vehicleOperatorId || undefined,
+        operatorId: opId,
         operators,
       });
 
@@ -305,7 +311,6 @@ export function useChoXeVaoBenForm({
         return;
       }
 
-      const opId = vehicleOperatorId || undefined;
       const appKey = scheduleCacheKey(routeId, opId, "appsheet");
       schedulesCacheRef.current[appKey] = {
         items: outcome.resolvedSchedules,
