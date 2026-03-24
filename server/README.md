@@ -106,6 +106,7 @@ Tất cả các endpoint (trừ `/api/auth/login`) đều yêu cầu authenticat
 
 ## Lưu ý
 
+- Giới hạn chuyến/ngày: API cấp phép **không chặn**; `GET /schedules/trip-limit` chỉ để tham khảo trên UI.
 - Database được tạo tự động, không cần migration
 - JWT_SECRET nên là chuỗi mạnh trong production (tạo bằng: `openssl rand -base64 32`)
 - CORS_ORIGIN phải khớp với URL frontend

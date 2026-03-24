@@ -135,7 +135,7 @@ export default function Login() {
           </div>
 
           {/* Login Form */}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" autoComplete="on">
             {error && (
               <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-sm text-red-600">
                 {error}
@@ -152,7 +152,9 @@ export default function Login() {
                   <User className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-stone-400" />
                   <Input
                     id="usernameOrEmail"
+                    name="usernameOrEmail"
                     type="text"
+                    autoComplete="username"
                     placeholder="Nhập tên đăng nhập hoặc email"
                     className="pl-11 h-12 bg-white border-stone-200 rounded-xl text-stone-800 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
                     {...register("usernameOrEmail")}
@@ -172,7 +174,9 @@ export default function Login() {
                   <Lock className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-stone-400" />
                   <Input
                     id="password"
+                    name="password"
                     type="password"
+                    autoComplete="current-password"
                     placeholder="Nhập mật khẩu"
                     className="pl-11 h-12 bg-white border-stone-200 rounded-xl text-stone-800 placeholder:text-stone-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
                     {...register("password")}

@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { toast } from "react-toastify";
 import { formatVietnamTime } from "@/utils/timezone";
 import { useCapPhepDialog } from "@/hooks/useCapPhepDialog";
+import { showPermitRelaxBanner } from "@/config/dispatch-dev-flags";
 import { Button } from "@/components/ui/button";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { DatePicker } from "@/components/DatePicker";
@@ -216,7 +217,7 @@ export function CapPhepDialogRedesign({
                   </Button>
                   <Button
                     onClick={hook.handleEligible}
-                    disabled={hook.isLoading}
+                    disabled={hook.eligibleButtonDisabled}
                     className="h-9 px-4 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white"
                   >
                     {hook.isLoading ? "Đang xử lý..." : "Đủ điều kiện"}
@@ -233,6 +234,14 @@ export function CapPhepDialogRedesign({
             </div>
           </div>
         </div>
+
+        {showPermitRelaxBanner && (
+          <div className="px-6 pb-3 -mt-1">
+            <div className="p-2 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-900">
+              Đã bật VITE_DISPATCH_PERMIT_RELAX_ELIGIBLE_CHECKS=true (banner nhắc). API cấp phép không chặn giới hạn chuyến.
+            </div>
+          </div>
+        )}
 
         {/* Content */}
         <div className="overflow-y-auto h-[calc(100vh-80px)]">

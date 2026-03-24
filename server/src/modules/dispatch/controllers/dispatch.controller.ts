@@ -28,7 +28,6 @@ import {
   DISPATCH_STATUS,
 } from '../dispatch-validation.js'
 import { validateStatusTransition } from '../../../shared/validation/dispatch-status.js'
-import { calculateTripLimit } from '../../../controllers/schedule.controller.js'
 import { db } from '../../../db/drizzle.js'
 import { vehicles as vehiclesTable } from '../../../db/schema/index.js'
 import { eq } from 'drizzle-orm'
@@ -221,32 +220,7 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
     const targetStatus = input.permitStatus === 'approved' ? DISPATCH_STATUS.PERMIT_ISSUED : DISPATCH_STATUS.PERMIT_REJECTED
     validateStatusTransition(currentRecord.status, targetStatus)
 
-    // Trip limit enforcement (only for approved permits)
-    if (input.permitStatus === 'approved' && (input.routeId || currentRecord.routeId)) {
-      const routeIdToCheck = input.routeId || currentRecord.routeId!
-      const vehiclePlate = currentRecord.vehiclePlateNumber
-      if (vehiclePlate) {
-        const depTime = input.plannedDepartureTime
-          ? new Date(input.plannedDepartureTime)
-          : getCurrentVietnamTimeAsDate()
-        const year = depTime.getFullYear()
-        const month = String(depTime.getMonth() + 1).padStart(2, '0')
-        const day = String(depTime.getDate()).padStart(2, '0')
-        const dateStr = `${year}-${month}-${day}`
-
-        const { maxTrips, canIssue } = await calculateTripLimit(routeIdToCheck, vehiclePlate, dateStr)
-
-        if (!canIssue) {
-          const msg = maxTrips === 0
-            ? `Tuyến không có biểu đồ giờ chiều đi hợp lệ cho ngày ${dateStr}. Không thể cấp phép.`
-            : `Xe ${vehiclePlate} đã đạt giới hạn ${maxTrips} chuyến/ngày trên tuyến này. Không thể cấp thêm phép.`
-          return res.status(400).json({
-            error: msg,
-            code: 'TRIP_LIMIT_EXCEEDED',
-          })
-        }
-      }
-    }
+    // Giới hạn chuyến/ngày: không chặn cấp phép (chỉ tham khảo qua GET /schedules/trip-limit nếu cần).
 
     const metadata = { ...(currentRecord.metadata as Record<string, unknown> || {}) }
     if (input.replacementVehicleId) metadata.replacementVehicleId = input.replacementVehicleId

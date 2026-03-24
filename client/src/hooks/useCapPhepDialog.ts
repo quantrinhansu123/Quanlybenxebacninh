@@ -13,6 +13,7 @@ import { type VehicleBadge } from "@/services/vehicle-badge.service";
 import { serviceChargeService } from "@/services/service-charge.service";
 import { quanlyDataService, type QuanLyVehicle, type QuanLyRoute, type QuanLyOperator, type QuanLyBadge } from "@/services/quanly-data.service";
 import { fetchSeatFromAppsheetXeByPlate } from "@/services/appsheet-seat-from-xe";
+import { relaxPermitEligibleChecks } from "@/config/dispatch-dev-flags";
 import { useUIStore } from "@/store/ui.store";
 import type { Shift } from "@/services/shift.service";
 import {
@@ -734,38 +735,43 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   const handleEligible = useCallback(async () => {
     setHasAttemptedSubmit(true);
 
-    // Validate document conditions - block permit if documents are invalid
-    if (!checkAllDocumentsValid()) {
-      const results = getDocumentsCheckResults();
-      const invalidDocs = results
-        .filter(r => r.status === 'expired' || r.status === 'missing')
-        .map(r => r.name);
-      const errorMessage = `Xe không đủ điều kiện. Các giấy tờ sau không hợp lệ:\n• ${invalidDocs.join('\n• ')}\n\nVui lòng nhấn "Không đủ ĐK" để ghi nhận lý do.`;
-      toast.error(errorMessage, {
-        autoClose: 7000,
-        style: { whiteSpace: 'pre-line' }
-      });
-      return;
+    if (!relaxPermitEligibleChecks) {
+      // Validate document conditions - block permit if documents are invalid
+      if (!checkAllDocumentsValid()) {
+        const results = getDocumentsCheckResults();
+        const invalidDocs = results
+          .filter(r => r.status === 'expired' || r.status === 'missing')
+          .map(r => r.name);
+        const errorMessage = `Xe không đủ điều kiện. Các giấy tờ sau không hợp lệ:\n• ${invalidDocs.join('\n• ')}\n\nVui lòng nhấn "Không đủ ĐK" để ghi nhận lý do.`;
+        toast.error(errorMessage, {
+          autoClose: 7000,
+          style: { whiteSpace: 'pre-line' }
+        });
+        return;
+      }
+
+      const { isValid, errors, fieldErrors } = validatePermitFields();
+      setValidationErrors(fieldErrors);
+
+      if (!isValid) {
+        const errorMessage = errors.length === 1
+          ? `Vui lòng điền: ${errors[0]}`
+          : `Vui lòng điền các trường sau:\n• ${errors.join("\n• ")}`;
+        toast.error(errorMessage, {
+          autoClose: 5000,
+          style: { whiteSpace: 'pre-line' }
+        });
+        return;
+      }
+
+      if (totalAmount === 0) {
+        setShowZeroAmountConfirm(true);
+        return;
+      }
+    } else {
+      setValidationErrors({});
     }
 
-    const { isValid, errors, fieldErrors } = validatePermitFields();
-    setValidationErrors(fieldErrors);
-    
-    if (!isValid) {
-      const errorMessage = errors.length === 1
-        ? `Vui lòng điền: ${errors[0]}`
-        : `Vui lòng điền các trường sau:\n• ${errors.join("\n• ")}`;
-      toast.error(errorMessage, {
-        autoClose: 5000,
-        style: { whiteSpace: 'pre-line' }
-      });
-      return;
-    }
-    
-    if (totalAmount === 0) {
-      setShowZeroAmountConfirm(true);
-      return;
-    }
     await submitPermit();
   }, [validatePermitFields, totalAmount, submitPermit, checkAllDocumentsValid, getDocumentsCheckResults]);
 
@@ -906,6 +912,11 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
 
   // Trip limit check: when route + date changes
   useEffect(() => {
+    if (relaxPermitEligibleChecks) {
+      setTripLimitWarning("");
+      setTripLimitData(null);
+      return;
+    }
     if (!routeId || !departureDate || !record.vehiclePlateNumber) {
       setTripLimitWarning("");
       setTripLimitData(null);
@@ -938,7 +949,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       });
     return () => { cancelled = true; };
-  }, [routeId, departureDate, record.vehiclePlateNumber, isUsingAppsheetSchedules]);
+  }, [routeId, departureDate, record.vehiclePlateNumber, isUsingAppsheetSchedules, relaxPermitEligibleChecks]);
 
   useEffect(() => {
     calculateTotal();
@@ -1125,6 +1136,11 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     return '';
   }, [permitType, record.vehiclePlateNumber, getBadgeRoutesForVehicle, routeId, schedules, routes]);
 
+  const eligibleButtonDisabled = useMemo(() => {
+    if (relaxPermitEligibleChecks) return isLoading;
+    return isLoading || !!noValidScheduleWarning || !!tripLimitWarning;
+  }, [isLoading, noValidScheduleWarning, tripLimitWarning]);
+
   // Compute busy vehicle plates from active dispatch records
   const busyVehiclePlates = useMemo(() => {
     if (!cachedDispatchRecords) return new Set<string>();
@@ -1184,5 +1200,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     isLoadingAppsheetSchedules,
     scheduleFetchSteps,
     scheduleTbDiagnostics,
+    relaxPermitEligibleChecks,
+    eligibleButtonDisabled,
   };
 }

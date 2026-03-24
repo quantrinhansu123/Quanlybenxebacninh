@@ -557,7 +557,7 @@ export async function calculateTripLimit(
   const currentTrips = Number(approvedCount[0]?.count || 0)
   const remaining = Math.max(0, maxTrips - currentTrips)
 
-  // maxTrips===0 means no valid schedules for this date → block
+  // maxTrips===0 means no valid schedules for this date → canIssue false (chỉ cảnh báo UI; cấp phép không chặn theo trip limit ở dispatch.controller)
   return { maxTrips, currentTrips, remaining, canIssue: maxTrips > 0 && remaining > 0 }
 }
 
