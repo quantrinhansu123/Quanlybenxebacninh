@@ -152,7 +152,6 @@ export default function Login() {
                   <User className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-stone-400" />
                   <Input
                     id="usernameOrEmail"
-                    name="usernameOrEmail"
                     type="text"
                     autoComplete="username"
                     placeholder="Nhập tên đăng nhập hoặc email"
@@ -174,7 +173,6 @@ export default function Login() {
                   <Lock className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-stone-400" />
                   <Input
                     id="password"
-                    name="password"
                     type="password"
                     autoComplete="current-password"
                     placeholder="Nhập mật khẩu"

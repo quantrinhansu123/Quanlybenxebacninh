@@ -14,6 +14,8 @@ import { serviceChargeService } from "@/services/service-charge.service";
 import { quanlyDataService, type QuanLyVehicle, type QuanLyRoute, type QuanLyOperator, type QuanLyBadge } from "@/services/quanly-data.service";
 import { fetchSeatFromAppsheetXeByPlate } from "@/services/appsheet-seat-from-xe";
 import { relaxPermitEligibleChecks } from "@/config/dispatch-dev-flags";
+import { getApiUrl } from "@/lib/api";
+import axios from "axios";
 import { useUIStore } from "@/store/ui.store";
 import type { Shift } from "@/services/shift.service";
 import {
@@ -668,6 +670,13 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       onClose();
     } catch (error: unknown) {
       console.error("Failed to issue permit:", error);
+      if (axios.isAxiosError(error) && !error.response) {
+        toast.error(
+          `Không kết nối được API (${getApiUrl()}). Bật backend (vd. npm run dev:server), đúng APP_PORT; hoặc sửa VITE_API_URL cho khớp (mặc định cổng 3000).`,
+          { autoClose: 8000 },
+        );
+        return;
+      }
       const axiosError = error as { response?: { data?: { code?: string; error?: string } } };
       const errorData = axiosError.response?.data;
       if (errorData?.code === 'TRIP_LIMIT_EXCEEDED') {

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
 import { vehicleBadges, vehicles, dispatchRecords, auditLogs, routes, operators } from '../db/schema/index.js'
-import { eq, ne, and, or, sql } from 'drizzle-orm'
+import { eq, ne, and, sql } from 'drizzle-orm'
 import { dashboardService } from '../services/dashboard.service.js'
 
 // Constants

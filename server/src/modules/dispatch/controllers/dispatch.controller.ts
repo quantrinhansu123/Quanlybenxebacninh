@@ -31,6 +31,7 @@ import { validateStatusTransition } from '../../../shared/validation/dispatch-st
 import { db } from '../../../db/drizzle.js'
 import { vehicles as vehiclesTable } from '../../../db/schema/index.js'
 import { eq } from 'drizzle-orm'
+import { isUuidString } from '../../../utils/uuid-string.js'
 
 /**
  * Helper to get current Vietnam time as Date object
@@ -135,10 +136,21 @@ export const createDispatchRecord = async (req: AuthRequest, res: Response) => {
       userId,
     })
 
+    let scheduleIdForInsert: string | null = null
+    const createMeta: Record<string, unknown> = {}
+    if (input.scheduleId?.trim()) {
+      const sid = input.scheduleId.trim()
+      if (isUuidString(sid)) {
+        scheduleIdForInsert = sid
+      } else {
+        createMeta.appsheetScheduleId = sid
+      }
+    }
+
     const insertData = {
       vehicleId: input.vehicleId,
       driverId: input.driverId,
-      scheduleId: input.scheduleId || null,
+      scheduleId: scheduleIdForInsert,
       routeId: input.routeId || null,
       entryTime: entryTimeForDB,
       entryBy: userId || null,
@@ -146,6 +158,7 @@ export const createDispatchRecord = async (req: AuthRequest, res: Response) => {
       transportOrderCode: input.transportOrderCode || null,
       status: DISPATCH_STATUS.ENTERED,
       notes: input.notes || null,
+      ...(Object.keys(createMeta).length > 0 ? { metadata: createMeta } : {}),
       ...buildDenormalizedFields(denormData),
       entryByName: denormData.user?.fullName || null,
     }
@@ -195,7 +208,7 @@ export const recordPassengerDrop = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Đã ghi nhận trả khách', dispatch: record })
+    return res.json({ message: 'Đã ghi nhận trả khách', dispatch: mapDispatchToAPI(record) })
   } catch (error: unknown) {
     console.error('Error recording passenger drop:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
@@ -226,6 +239,15 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
     if (input.replacementVehicleId) metadata.replacementVehicleId = input.replacementVehicleId
     else if (input.replacementVehicleId === '') delete metadata.replacementVehicleId
 
+    if (input.scheduleId?.trim()) {
+      const sid = input.scheduleId.trim()
+      if (isUuidString(sid)) {
+        delete metadata.appsheetScheduleId
+      } else {
+        metadata.appsheetScheduleId = sid
+      }
+    }
+
     const updateData: Record<string, unknown> = {
       boardingPermitTime: getCurrentVietnamTimeAsDate(),
       boardingPermitBy: userId || null,
@@ -240,7 +262,10 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
       const routeData = await fetchRouteData(input.routeId)
       if (routeData) Object.assign(updateData, buildRouteDenormalizedFields(routeData))
     }
-    if (input.scheduleId) updateData.scheduleId = input.scheduleId
+    if (input.scheduleId?.trim()) {
+      const sid = input.scheduleId.trim()
+      updateData.scheduleId = isUuidString(sid) ? sid : null
+    }
 
     if (input.permitStatus === 'approved') {
       updateData.transportOrderCode = input.transportOrderCode
@@ -258,7 +283,7 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
 
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
-    return res.json({ message: 'Đã xử lý cấp phép', dispatch: record })
+    return res.json({ message: 'Đã xử lý cấp phép', dispatch: mapDispatchToAPI(record) })
   } catch (error: unknown) {
     console.error('Error issuing permit:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
@@ -310,7 +335,7 @@ export const processPayment = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Đã xử lý thanh toán', dispatch: record })
+    return res.json({ message: 'Đã xử lý thanh toán', dispatch: mapDispatchToAPI(record) })
   } catch (error: unknown) {
     console.error('Error processing payment:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
@@ -354,7 +379,7 @@ export const issueDepartureOrder = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Đã điều lệnh xuất bến', dispatch: record })
+    return res.json({ message: 'Đã điều lệnh xuất bến', dispatch: mapDispatchToAPI(record) })
   } catch (error: unknown) {
     console.error('Error issuing departure order:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })
@@ -394,7 +419,7 @@ export const recordExit = async (req: AuthRequest, res: Response) => {
     const record = await updateWithStatusCheck(id, updateData, currentRecord.status)
     if (!record) return res.status(409).json({ error: 'Record đã được cập nhật bởi người khác. Vui lòng tải lại trang.' })
 
-    return res.json({ message: 'Đã ghi nhận xuất bến', dispatch: record })
+    return res.json({ message: 'Đã ghi nhận xuất bến', dispatch: mapDispatchToAPI(record) })
   } catch (error: unknown) {
     console.error('Error recording exit:', error)
     if (isValidationError(error)) return res.status(400).json({ error: getErrorMessage(error) })

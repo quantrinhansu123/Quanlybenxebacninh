@@ -4,8 +4,34 @@ import jwt, { SignOptions } from 'jsonwebtoken'
 import { db } from '../db/drizzle.js'
 import { users } from '../db/schema/users.js'
 import { locations } from '../db/schema/locations.js'
-import { eq, ilike } from 'drizzle-orm'
+import { eq, ilike, or, sql } from 'drizzle-orm'
 import { loginSchema, registerSchema } from '../utils/validation.js'
+import { getDbSchemaMismatchHint } from '../types/common.js'
+
+/** Tên bến phụ trách — tách khỏi login để không JOIN locations (tránh 500 nếu bảng locations lỗi/thiếu). */
+async function fetchBenPhuTrachName(benPhuTrachId: string | null | undefined): Promise<string | null> {
+  if (!benPhuTrachId || !db) return null
+  try {
+    const [row] = await db
+      .select({ name: locations.name })
+      .from(locations)
+      .where(eq(locations.id, benPhuTrachId))
+      .limit(1)
+    return row?.name ?? null
+  } catch {
+    return null
+  }
+}
+
+const loginUserColumns = {
+  id: users.id,
+  email: users.email,
+  passwordHash: users.passwordHash,
+  name: users.name,
+  role: users.role,
+  isActive: users.isActive,
+  benPhuTrach: users.benPhuTrach,
+} as const
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -40,35 +66,37 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     console.log(`📝 Login attempt: ${normalizedLogin}`)
 
     // ========================================
-    // 2. Query user directly from users table (case-insensitive)
+    // 2. Query users (không JOIN locations — tránh 500 khi locations/RLS/FK lệch)
+    //    Email khớp nguyên chuỗi hoặc phần trước @ (vd dieudo ↔ dieudo@x.com)
     // ========================================
-    console.log(`🔍 Querying users table WHERE email (case-insensitive) = '${normalizedLogin}'`)
+    console.log(`🔍 Querying users for login: ${normalizedLogin}`)
     let userResult
     try {
-      // Use ilike for case-insensitive exact match (no wildcards = exact match)
       userResult = await db
-        .select({
-          user: users,
-          locationName: locations.name
-        })
+        .select(loginUserColumns)
         .from(users)
-        .leftJoin(locations, eq(users.benPhuTrach, locations.id))
-        .where(ilike(users.email, normalizedLogin))
+        .where(
+          or(
+            ilike(users.email, normalizedLogin),
+            sql`split_part(lower(${users.email}), '@', 1) = ${normalizedLogin}`
+          )
+        )
         .limit(1)
-    } catch (dbError: any) {
+    } catch (dbError: unknown) {
       console.error('❌ Database query error:', dbError)
-      console.error('   Error code:', dbError?.code)
-      console.error('   Error message:', dbError?.message)
-      console.error('   Error stack:', dbError?.stack)
-      // Re-throw with more context
-      const errorMessage = dbError?.message || 'Unknown database error'
-      const errorCode = dbError?.code || 'UNKNOWN'
-      throw new Error(`Database query failed [${errorCode}]: ${errorMessage}`)
+      const hint = getDbSchemaMismatchHint(dbError)
+      const msg =
+        hint ||
+        (dbError instanceof Error ? dbError.message : 'Database query failed')
+      res.status(500).json({
+        error: 'Database error',
+        details: process.env.NODE_ENV === 'production' ? undefined : msg,
+      })
+      return
     }
 
-    const userRow = userResult[0]
-    const user = userRow?.user
-    const benPhuTrachName = userRow?.locationName
+    const user = userResult[0]
+    const benPhuTrachName = await fetchBenPhuTrachName(user?.benPhuTrach)
 
     if (!user) {
       console.error(`❌ User not found: ${normalizedLogin}`)
@@ -222,8 +250,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Use email as username if not provided (compatibility)
     const userEmail = email || username
 
-    // Check if email already exists
-    const [existingUser] = await db.select().from(users).where(eq(users.email, userEmail))
+    // Check if email already exists (chỉ select id — tránh quét cả hàng nếu thiếu cột phụ)
+    const [existingUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, userEmail))
+      .limit(1)
 
     if (existingUser) {
       res.status(409).json({ error: 'Email already exists' })
@@ -301,24 +333,18 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       return
     }
 
-    // Query user by ID with location join
-    const [userRow] = await db
-      .select({
-        user: users,
-        locationName: locations.name
-      })
+    const [user] = await db
+      .select(loginUserColumns)
       .from(users)
-      .leftJoin(locations, eq(users.benPhuTrach, locations.id))
       .where(eq(users.id, userId))
       .limit(1)
-
-    const user = userRow?.user
-    const benPhuTrachName = userRow?.locationName
 
     if (!user) {
       res.status(404).json({ error: 'User not found' })
       return
     }
+
+    const benPhuTrachName = await fetchBenPhuTrachName(user.benPhuTrach)
 
     res.json({
       id: user.id,
@@ -327,7 +353,7 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
       email: user.email,
       role: user.role,
       benPhuTrach: user.benPhuTrach,
-      benPhuTrachName: benPhuTrachName,
+      benPhuTrachName,
     })
   } catch (error) {
     console.error('Get current user error:', error)
@@ -351,8 +377,11 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       return
     }
 
-    // Get user
-    const [user] = await db.select().from(users).where(eq(users.id, userId))
+    const [user] = await db
+      .select({ id: users.id, email: users.email, phone: users.phone, name: users.name })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
 
     if (!user) {
       res.status(404).json({ error: 'User not found' })
@@ -361,7 +390,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
     // Validate and prepare update data
     const { fullName, email, phone } = req.body
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updatedAt: new Date(),
     }
 
@@ -372,7 +401,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     if (email !== undefined && email !== user.email) {
       // Check if new email already exists
       const [emailExists] = await db
-        .select()
+        .select({ id: users.id })
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
         .limit(1)
@@ -396,16 +425,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       .where(eq(users.id, userId))
       .returning()
 
-    // Re-query to get the latest benPhuTrachName just in case
-    const [refreshedUserRow] = await db
-      .select({
-        user: users,
-        locationName: locations.name
-      })
-      .from(users)
-      .leftJoin(locations, eq(users.benPhuTrach, locations.id))
-      .where(eq(users.id, userId))
-      .limit(1)
+    const benPhuTrachName = await fetchBenPhuTrachName(updatedUser.benPhuTrach)
 
     res.json({
       id: updatedUser.id,
@@ -415,7 +435,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       phone: updatedUser.phone,
       role: updatedUser.role,
       benPhuTrach: updatedUser.benPhuTrach,
-      benPhuTrachName: refreshedUserRow?.locationName || null,
+      benPhuTrachName,
     })
   } catch (error) {
     console.error('Update profile error:', error)
