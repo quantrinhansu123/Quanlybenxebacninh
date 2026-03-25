@@ -107,6 +107,7 @@ Tất cả các endpoint (trừ `/api/auth/login`) đều yêu cầu authenticat
 ## Lưu ý
 
 - Giới hạn chuyến/ngày: API cấp phép **không chặn**; `GET /schedules/trip-limit` chỉ để tham khảo trên UI.
+- Lỗi liệt kê nhiều cột / login 500: bảng **dispatch_records** hoặc **users** thiếu cột. Supabase SQL Editor: **`009-dispatch-records-drizzle-parity.sql`**, **`010-users-drizzle-parity.sql`**. Có thể thêm `001-add-missing-columns.sql` (operators) nếu cần.
 - Database được tạo tự động, không cần migration
 - JWT_SECRET nên là chuỗi mạnh trong production (tạo bằng: `openssl rand -base64 32`)
 - CORS_ORIGIN phải khớp với URL frontend

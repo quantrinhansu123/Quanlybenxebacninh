@@ -211,7 +211,7 @@ export function CapPhepDialog({
         {showPermitRelaxBanner && (
           <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pb-3">
             <div className="p-2 bg-violet-50 border border-violet-200 rounded-lg text-xs text-violet-900">
-              Đã bật VITE_DISPATCH_PERMIT_RELAX_ELIGIBLE_CHECKS=true (banner nhắc). API cấp phép không chặn giới hạn chuyến.
+              Chế độ cấp phép nới lỏng kiểm tra UI. (Banner tùy chọn: VITE_DISPATCH_PERMIT_RELAX_BANNER=true.)
             </div>
           </div>
         )}

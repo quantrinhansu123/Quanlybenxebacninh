@@ -13,27 +13,14 @@ export function normalizeApiBase(raw: string): string {
   return `${u}/api`
 }
 
-// Auto-detect API URL based on environment
-// In production/Vercel, use VITE_API_URL from env vars
-// In local dev, fallback to localhost if VITE_API_URL not set
-function isLocalApiHost(raw: string): boolean {
-  try {
-    const u = new URL(raw.includes('://') ? raw : `http://${raw}`)
-    const h = u.hostname.toLowerCase()
-    return h === 'localhost' || h === '127.0.0.1'
-  } catch {
-    return false
-  }
-}
-
 /** Base URL axios (có `/api`). Dùng khi cần hiển thị trong toast/debug. */
 export const getApiUrl = (): string => {
   const raw = import.meta.env.VITE_API_URL?.trim()
 
   if (import.meta.env.DEV) {
-    // Gọi thẳng localhost hay để trống → dùng relative `/api` (Vite proxy → VITE_DEV_API_PORT / 3000).
-    // Tránh .env.local nhầm :3006 trong khi backend chạy :3000.
-    if (!raw || isLocalApiHost(raw)) {
+    // Trống → `/api` trên origin Vite (5173) + proxy trong vite.config (VITE_DEV_API_PORT, mặc định 3000).
+    // Đã set VITE_API_URL (kể cả http://localhost:3006/api) → dùng đúng URL đó, không bỏ qua cổng.
+    if (!raw) {
       return '/api'
     }
     return normalizeApiBase(raw)

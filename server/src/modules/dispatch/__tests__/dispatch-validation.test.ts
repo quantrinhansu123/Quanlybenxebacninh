@@ -145,13 +145,17 @@ describe('Dispatch Validation', () => {
       expect(result.seatCount).toBe(45);
     });
 
-    it('should throw error for approved permit without transport order code', () => {
-      const invalidData = {
+    it('should allow approved permit without transport order code (server fills from record if needed)', () => {
+      const validData = {
         permitStatus: 'approved',
         seatCount: 45,
       };
 
-      expect(() => validateIssuePermit(invalidData)).toThrow();
+      const result = validateIssuePermit(validData);
+
+      expect(result.permitStatus).toBe('approved');
+      expect(result.transportOrderCode).toBeUndefined();
+      expect(result.seatCount).toBe(45);
     });
 
     it('should allow rejected permit without transport order code', () => {

@@ -654,10 +654,18 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
 
       const permitShiftId = getShiftIdFromCurrentShift();
 
+      const parsedSeats = parseInt(seatCount, 10);
+      const seatCountForApi =
+        Number.isFinite(parsedSeats) && parsedSeats > 0
+          ? parsedSeats
+          : record.seatCount && record.seatCount > 0
+            ? record.seatCount
+            : 1;
+
       await dispatchService.issuePermit(record.id, {
-        transportOrderCode,
+        transportOrderCode: transportOrderCode?.trim() || undefined,
         plannedDepartureTime,
-        seatCount: parseInt(seatCount),
+        seatCount: seatCountForApi,
         permitStatus: "approved",
         routeId: routeId || undefined,
         scheduleId: scheduleId || undefined,

@@ -122,16 +122,7 @@ export function validatePassengerDrop(data: unknown): PassengerDropInput {
 }
 
 export function validateIssuePermit(data: unknown): IssuePermitInput {
-  const result = issuePermitSchema.parse(data)
-  // Additional validation: transport order code required for approval
-  if (result.permitStatus === 'approved' && !result.transportOrderCode) {
-    throw new z.ZodError([{
-      code: 'custom',
-      message: 'Transport order code is required for approval',
-      path: ['transportOrderCode'],
-    }])
-  }
-  return result
+  return issuePermitSchema.parse(data)
 }
 
 export function validatePayment(data: unknown): PaymentInput {

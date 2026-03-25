@@ -268,9 +268,10 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
     }
 
     if (input.permitStatus === 'approved') {
-      updateData.transportOrderCode = input.transportOrderCode
+      const code = input.transportOrderCode?.trim()
+      updateData.transportOrderCode = code || currentRecord.transportOrderCode || null
       updateData.plannedDepartureTime = input.plannedDepartureTime ? toDate(input.plannedDepartureTime) : null
-      updateData.seatCount = input.seatCount
+      updateData.seatCount = input.seatCount ?? currentRecord.seatCount ?? null
       updateData.status = DISPATCH_STATUS.PERMIT_ISSUED
       updateData.rejectionReason = input.rejectionReason || null
     } else {
