@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { FileText, X, XCircle, CheckCircle, Calendar, AlertTriangle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useCapPhepDialog } from "@/hooks/useCapPhepDialog";
 import { showPermitRelaxBanner } from "@/config/dispatch-dev-flags";
@@ -139,8 +140,13 @@ export function CapPhepDialog({
                 <h1 className="text-xl font-bold text-gray-900">
                   {readOnly ? "Xem Cấp phép" : "Cấp phép lên nốt"}
                 </h1>
-                <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-3 text-sm flex-wrap">
                   <span className="font-semibold text-blue-600">{record.vehiclePlateNumber || "---"}</span>
+                  {hook.plateBadgeKindLabel ? (
+                    <Badge variant="secondary" className="text-[11px] font-semibold" title="Loại phù hiệu (GTVT)">
+                      {hook.plateBadgeKindLabel}
+                    </Badge>
+                  ) : null}
                   {record.entryTime && (
                     <span className="text-gray-500">
                       Vào bến: {format(new Date(record.entryTime), "HH:mm dd/MM")}
@@ -277,6 +283,7 @@ export function CapPhepDialog({
                   isLoadingAppsheetSchedules={hook.isLoadingAppsheetSchedules}
                   scheduleFetchSteps={hook.scheduleFetchSteps}
                   scheduleTbDiagnostics={hook.scheduleTbDiagnostics}
+                  plateBadgeKindLabel={hook.plateBadgeKindLabel}
                 />
                 <DriverSection
                   drivers={hook.drivers}

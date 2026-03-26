@@ -4,6 +4,7 @@ import { Truck, AlertTriangle, CheckCircle, FileText, CloudDownload, Loader2, Ch
 import { format } from "date-fns";
 import { formatVietnamTime } from "@/utils/timezone";
 import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { GlassCard, SectionHeader, FormField, StyledInput, StyledSelect } from "@/components/shared/styled-components";
 import { operationNoticeService } from "@/services/operation-notice.service";
@@ -79,6 +80,8 @@ interface VehicleInfoSectionProps {
   scheduleTbDiagnostics?: TbJoinScheduleDiagnostics | null;
   scheduleDataSource?: ScheduleDataSource;
   onScheduleDataSourceChange?: (v: ScheduleDataSource) => void;
+  /** Buýt / Tuyến cố định — theo phù hiệu xe */
+  plateBadgeKindLabel?: string | null;
 }
 
 export function VehicleInfoSection({
@@ -108,6 +111,7 @@ export function VehicleInfoSection({
   scheduleTbDiagnostics = null,
   scheduleDataSource = "database",
   onScheduleDataSourceChange,
+  plateBadgeKindLabel = null,
 }: VehicleInfoSectionProps) {
   const isLoadingScheduleAppsheet = isLoadingTbJoinSchedules || isLoadingAppsheetSchedules;
   const flowIssues = scheduleTbDiagnostics ? tbFlowIssues(scheduleTbDiagnostics) : [];
@@ -250,11 +254,22 @@ export function VehicleInfoSection({
       <div className="p-5 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Biển số vào bến">
-            <StyledInput
-              value={record.vehiclePlateNumber || "---"}
-              readOnly
-              className="bg-gray-100 cursor-not-allowed font-medium"
-            />
+            <div className="flex items-stretch gap-2">
+              <StyledInput
+                value={record.vehiclePlateNumber || "---"}
+                readOnly
+                className="bg-gray-100 cursor-not-allowed font-medium flex-1 min-w-0"
+              />
+              {plateBadgeKindLabel ? (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 self-center px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
+                  title="Loại phù hiệu (GTVT)"
+                >
+                  {plateBadgeKindLabel}
+                </Badge>
+              ) : null}
+            </div>
             <span className="text-xs text-gray-500 mt-1 block">
               Để sửa biển số, vui lòng edit Entry
             </span>

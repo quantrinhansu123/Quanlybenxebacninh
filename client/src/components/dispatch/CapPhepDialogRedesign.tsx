@@ -11,6 +11,7 @@ import { formatVietnamTime } from "@/utils/timezone";
 import { useCapPhepDialog } from "@/hooks/useCapPhepDialog";
 import { showPermitRelaxBanner } from "@/config/dispatch-dev-flags";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { DatePicker } from "@/components/DatePicker";
 import { 
@@ -188,10 +189,15 @@ export function CapPhepDialogRedesign({
                 <h1 className="text-xl font-bold text-slate-800">
                   {readOnly ? "Xem cấp phép" : "Cấp phép lên nốt"}
                 </h1>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-slate-500 flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-slate-700">{record.vehiclePlateNumber}</span>
+                  {hook.plateBadgeKindLabel ? (
+                    <Badge variant="secondary" className="text-[11px] font-semibold" title="Loại phù hiệu (GTVT)">
+                      {hook.plateBadgeKindLabel}
+                    </Badge>
+                  ) : null}
                   {record.entryTime && (
-                    <span className="ml-2">• Vào bến {formatVietnamTime(record.entryTime, "HH:mm dd/MM")}</span>
+                    <span>• Vào bến {formatVietnamTime(record.entryTime, "HH:mm dd/MM")}</span>
                   )}
                 </p>
               </div>
@@ -272,8 +278,15 @@ export function CapPhepDialogRedesign({
                       {/* Biển số đăng ký */}
                       <div>
                         <label className="text-sm font-medium text-slate-500 mb-1.5 block">Biển số ĐK</label>
-                        <div className="h-11 px-4 flex items-center bg-white rounded-lg border border-slate-200 text-base font-semibold text-slate-700">
-                          {record.vehiclePlateNumber || "---"}
+                        <div className="min-h-11 px-3 flex items-center gap-2 flex-wrap bg-white rounded-lg border border-slate-200">
+                          <span className="text-base font-semibold text-slate-700">
+                            {record.vehiclePlateNumber || "---"}
+                          </span>
+                          {hook.plateBadgeKindLabel ? (
+                            <Badge variant="secondary" className="text-[11px] font-semibold shrink-0" title="Loại phù hiệu (GTVT)">
+                              {hook.plateBadgeKindLabel}
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
                       

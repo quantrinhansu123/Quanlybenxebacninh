@@ -9,6 +9,12 @@ import type { DispatchRecord, DispatchStatus, Vehicle } from "@/types";
 import type { DisplayStatus } from "@/components/dispatch/common";
 import { useAuthStore } from "@/store/auth.store";
 
+/** Phù hiệu xe buýt — route_code thường không khớp routeLocMap (tuyến cố định), nên không được loại khi lọc theo bến. */
+function isBusBadgeType(badgeType: string | undefined): boolean {
+  const t = (badgeType || "").toLowerCase();
+  return t.includes("buýt") || t.includes("buyt") || t.includes("bus") || t.includes("xe buýt");
+}
+
 export type DialogType =
   | "entry"
   | "edit"
@@ -85,8 +91,11 @@ export function useDieuDo() {
           if (!plate) continue;
 
           if (userLoc) {
-            const rData = routeLocMap.get(b.route_code) || { start: '', end: '' };
-            if (rData.start === userLoc || rData.end === userLoc) {
+            const rData = routeLocMap.get(b.route_code) || { start: "", end: "" };
+            const matchesBen =
+              rData.start === userLoc || rData.end === userLoc;
+            // Buýt: route_code / điểm đầu-cuối trong API quanly-data không bám theo cùng logic tuyến cố định → vẫn đưa vào DS biển số.
+            if (matchesBen || isBusBadgeType(b.badge_type)) {
               validPlates.add(plate);
             }
           } else {
@@ -275,10 +284,10 @@ export function useDieuDo() {
   const vehicleOptions = useMemo(() => {
     const options = vehicles
       .filter((v) => {
-        // Only show vehicles with valid badges (Buýt / Tuyến cố định)
-        // Entry mode: require at least 1 non-expired badge
+        // Buýt / TCD từ quanly-data: hasValidBadge = có ngày hết hạn và chưa hết hạn.
+        // Một số phù hiệu buýt thiếu expiry trên DB → chỉ hasBadge; vẫn cho vào danh sách vào bến.
         if (dialogType === "entry") {
-          if (!v.hasValidBadge) return false;
+          if (!v.hasValidBadge && !v.hasBadge) return false;
           return true;
         }
         // Other modes: keep using hasBadge (backward compat)

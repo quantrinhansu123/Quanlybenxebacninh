@@ -12,7 +12,7 @@ import { vehicleService } from "@/services/vehicle.service";
 import { type VehicleBadge } from "@/services/vehicle-badge.service";
 import { serviceChargeService } from "@/services/service-charge.service";
 import { quanlyDataService, type QuanLyVehicle, type QuanLyRoute, type QuanLyOperator, type QuanLyBadge } from "@/services/quanly-data.service";
-import { fetchSeatFromAppsheetXeByPlate } from "@/services/appsheet-seat-from-xe";
+import { fetchXeCapacitiesFromAppsheetByPlate } from "@/services/appsheet-seat-from-xe";
 import { relaxPermitEligibleChecks } from "@/config/dispatch-dev-flags";
 import { getApiUrl } from "@/lib/api";
 import axios from "axios";
@@ -544,12 +544,15 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
 
       if (plateToCheck && (!record.seatCount || record.seatCount === 0)) {
         try {
-          const xeSeat = await fetchSeatFromAppsheetXeByPlate(plateToCheck);
-          if (xeSeat != null && xeSeat > 0) {
-            setSeatCount(xeSeat.toString());
+          const caps = await fetchXeCapacitiesFromAppsheetByPlate(plateToCheck);
+          if (caps.seat != null && caps.seat > 0) {
+            setSeatCount(caps.seat.toString());
+          }
+          if (caps.bed != null && caps.bed > 0) {
+            setBedCount(caps.bed.toString());
           }
         } catch (e) {
-          console.warn("AppSheet Xe SoCho:", e);
+          console.warn("AppSheet Xe SoCho/SoGiuong:", e);
         }
       }
 
@@ -590,6 +593,34 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       badge.license_plate_sheet && normalizePlate(badge.license_plate_sheet) === normalizedPlate
     );
   }, [record.vehiclePlateNumber, selectedVehicle, vehicleBadges]);
+
+  /** Nhãn hiển thị cạnh biển số: Buýt / Tuyến cố định (theo phù hiệu GTVT). */
+  const plateBadgeKindLabel = useMemo((): string | null => {
+    const plate = record.vehiclePlateNumber?.trim();
+    if (!plate || !vehicleBadges.length) return null;
+    const np = normalizePlate(plate);
+    const types = new Set<string>();
+    for (const b of vehicleBadges) {
+      if (!b.license_plate_sheet || normalizePlate(b.license_plate_sheet) !== np) continue;
+      const bt = (b.badge_type || "").trim();
+      if (bt) types.add(bt);
+    }
+    if (types.size === 0) return null;
+    const list = [...types];
+    const isBus = (s: string) => /buýt|buyt|bus/i.test(s.toLowerCase());
+    const isFixed = (s: string) =>
+      /tuyến cố định|tuyen co dinh|cố định|co dinh/i.test(s.toLowerCase());
+    let hasBus = false;
+    let hasFixed = false;
+    for (const s of list) {
+      if (isBus(s)) hasBus = true;
+      if (isFixed(s)) hasFixed = true;
+    }
+    if (hasBus && hasFixed) return "Buýt · Tuyến cố định";
+    if (hasBus) return "Buýt";
+    if (hasFixed) return "Tuyến cố định";
+    return list.join(", ");
+  }, [record.vehiclePlateNumber, vehicleBadges]);
 
   const getDocumentStatus = (expiryDate?: string): { status: DocumentStatus; daysRemaining?: number } => {
     if (!expiryDate) return { status: 'missing' };
@@ -1007,18 +1038,23 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     }
   }, [selectedVehicle, record.seatCount]);
 
-  /** Bảng AppSheet «Xe»: BienSo ↔ biển vào bến → SoCho / SoChoNgoi (ưu tiên hơn ghế mặc định từ DB xe khi đã có trên GTVT). */
+  /** Bảng AppSheet «Xe»: BienSo → SoCho/SoChoNgoi + SoGiuong (đồng bộ với GTVT; ghế chỉ ghi đè khi đơn chưa có seatCount). */
   useEffect(() => {
-    if (record.seatCount && record.seatCount > 0) return;
     const plate = record.vehiclePlateNumber?.trim() || selectedVehicle?.plateNumber?.trim();
     if (!plate) return;
     const ac = new AbortController();
     let cancelled = false;
     void (async () => {
       try {
-        const n = await fetchSeatFromAppsheetXeByPlate(plate, ac.signal);
+        const caps = await fetchXeCapacitiesFromAppsheetByPlate(plate, ac.signal);
         if (cancelled || ac.signal.aborted) return;
-        if (n != null && n > 0) setSeatCount(String(n));
+        const needSeat = !(record.seatCount && record.seatCount > 0);
+        if (needSeat && caps.seat != null && caps.seat > 0) {
+          setSeatCount(String(caps.seat));
+        }
+        if (caps.bed != null && caps.bed > 0) {
+          setBedCount(String(caps.bed));
+        }
       } catch {
         /* ignore */
       }
@@ -1219,5 +1255,6 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     scheduleTbDiagnostics,
     relaxPermitEligibleChecks,
     eligibleButtonDisabled,
+    plateBadgeKindLabel,
   };
 }
