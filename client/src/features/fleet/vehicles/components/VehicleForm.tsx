@@ -26,6 +26,7 @@ import { useState, useEffect, useMemo } from "react"
 import api from "@/lib/api"
 import { prepareImageForUpload } from "@/lib/image-compression"
 import { quanlyDataService } from "@/services/quanly-data.service"
+import { useAuthStore } from "@/store/auth.store"
 
 const vehicleSchema = z.object({
   plateNumber: z.string().min(1, "Biển số là bắt buộc"),
@@ -85,6 +86,7 @@ export function VehicleForm({
   mode,
   onClose,
 }: VehicleFormProps) {
+  const currentUser = useAuthStore((s) => s.user)
   const [autoRegister, setAutoRegister] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [vehicleImage, setVehicleImage] = useState<string | null>(null)
@@ -93,6 +95,9 @@ export function VehicleForm({
   const [provinces, setProvinces] = useState<Province[]>([])
   const [vehicleBadges, setVehicleBadges] = useState<VehicleBadge[]>([])
   const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([])
+  const [routeStationMap, setRouteStationMap] = useState<Map<string, { startPoint: string; endPoint: string }>>(
+    new Map(),
+  )
   // In edit mode, only allow editing insurance, inspection, and GPS fields
   const isFieldLocked = mode === "edit"
 
@@ -106,7 +111,26 @@ export function VehicleForm({
     loadProvinces()
     loadVehicleBadges()
     loadVehicleTypes()
+    loadRouteStations()
   }, [])
+
+  const loadRouteStations = async () => {
+    try {
+      const data = await quanlyDataService.getAll(['routes'])
+      const routeMap = new Map<string, { startPoint: string; endPoint: string }>()
+      if (data.routes) {
+        for (const r of data.routes as Array<{ code?: string; startPoint?: string; endPoint?: string }>) {
+          const code = (r.code || '').trim().toUpperCase()
+          if (!code) continue
+          routeMap.set(code, { startPoint: r.startPoint || '', endPoint: r.endPoint || '' })
+        }
+      }
+      setRouteStationMap(routeMap)
+    } catch (e) {
+      // Nếu không tải được routes thì fallback: không lọc theo bến phụ trách
+      setRouteStationMap(new Map())
+    }
+  }
 
   useEffect(() => {
     if (vehicle) {
@@ -153,6 +177,10 @@ export function VehicleForm({
             issue_date: b.issue_date,
             expiry_date: b.expiry_date,
             status: b.status,
+            // Needed for station filter + label enrichment
+            route_code: (b as any).route_code || "",
+            route_name: (b as any).route_name || "",
+            itinerary: (b as any).itinerary || "",
           })) as VehicleBadge[]
         }
       }
@@ -240,7 +268,23 @@ export function VehicleForm({
       return true
     }
 
+    const userLoc = (currentUser?.benPhuTrachName || '').trim().toLowerCase()
+    const shouldFilterByStation = !!userLoc && routeStationMap.size > 0
+
     vehicleBadges.forEach(badge => {
+      if (shouldFilterByStation) {
+        const rc = (badge.route_code || '').trim().toUpperCase()
+        const stationEntry = rc ? routeStationMap.get(rc) : undefined
+        const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
+        const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
+        // Không có route info → ẩn để tránh lộ dữ liệu ngoài bến phụ trách
+        if (!dep && !arr) {
+          // Fallback: thử match theo route_name / itinerary nếu có
+          const hint = `${badge.route_name || ''} ${badge.itinerary || ''}`.trim().toLowerCase()
+          if (!hint || !hint.includes(userLoc)) return
+        }
+        if (dep !== userLoc && arr !== userLoc) return
+      }
       const plate = badge.license_plate_sheet
       if (plate && isValidPlateNumber(plate) && !uniquePlates.has(plate)) {
         uniquePlates.set(plate, badge)
@@ -249,11 +293,28 @@ export function VehicleForm({
 
     return Array.from(uniquePlates.entries()).map(([plate, badge]) => ({
       value: plate,
-      label: badge.badge_type
-        ? `${plate} (${badge.badge_type}${badge.badge_color ? ' - ' + badge.badge_color : ''})`
-        : plate
+      label: (() => {
+        const parts: string[] = []
+        if (badge.badge_type) {
+          parts.push(badge.badge_type)
+          if (badge.badge_color) parts.push(badge.badge_color)
+        }
+        const meta = parts.length > 0 ? ` (${parts.join(' - ')})` : ''
+
+        const rc = (badge.route_code || '').trim().toUpperCase()
+        const st = rc ? routeStationMap.get(rc) : undefined
+        const dep = (st?.startPoint || '').trim()
+        const arr = (st?.endPoint || '').trim()
+        const stationLabelFromMap = dep || arr ? ` — ${[dep, arr].filter(Boolean).join(' ⇄ ')}` : ''
+        const stationLabelFallback = !stationLabelFromMap
+          ? ` — ${(badge.route_name || badge.itinerary || badge.route_code || '').trim()}`
+          : ''
+        const stationLabel = stationLabelFromMap || stationLabelFallback
+
+        return `${plate}${meta}${stationLabel}`
+      })()
     }))
-  }, [vehicleBadges])
+  }, [vehicleBadges, currentUser?.benPhuTrachName, routeStationMap])
 
   // Flag to show hint when no badge options available
   const showPlateNumberHint = vehicleBadges.length === 0
