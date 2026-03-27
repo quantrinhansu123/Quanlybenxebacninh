@@ -106,7 +106,9 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   const routeAutoFilledRef = useRef(false);
   /** Tránh effect selectedVehicle ghi đè số ghế đã lấy từ AppSheet/init cùng một xe. */
   const lastSeatVehicleIdRef = useRef<string | null>(null);
-
+  /** Luôn đọc dispatch hiện tại trong loadInitialData (effect init [] dễ bắt snapshot record cũ — URL ?dispatch=&action=permit). */
+  const recordRef = useRef(record);
+  recordRef.current = record;
 
   const scheduleCacheKey = (rid: string, opId: string | undefined, source: ScheduleDataSource) =>
     `${opId ? `${rid}_${opId}` : rid}::${source}`;
@@ -404,6 +406,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   }, [vehicleBadges, routes]);
 
   const loadInitialData = useCallback(async () => {
+    const record = recordRef.current;
     try {
       // Use unified endpoint - 1 request instead of 4, with frontend caching
       // Add timeout to prevent infinite loading state
@@ -499,7 +502,11 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
           if ((!record.seatCount || record.seatCount === 0) && vehicle.seatCapacity) {
             setSeatCount(vehicle.seatCapacity.toString());
           }
-          if (vehicle.bedCapacity !== undefined && vehicle.bedCapacity !== null) {
+          if (
+            vehicle.bedCapacity !== undefined &&
+            vehicle.bedCapacity !== null &&
+            vehicle.bedCapacity > 0
+          ) {
             setBedCount(vehicle.bedCapacity.toString());
           }
           if (vehicle.operatorId) {
@@ -556,12 +563,15 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       }
 
-      if (record.seatCount && record.seatCount > 0) setSeatCount(record.seatCount.toString());
+      {
+        const r = recordRef.current;
+        if (r.seatCount && r.seatCount > 0) setSeatCount(r.seatCount.toString());
+      }
     } catch (error) {
       console.error("Failed to load initial data:", error);
       toast.error("Không thể tải dữ liệu. Vui lòng thử lại.");
     }
-  }, [record]);
+  }, []);
 
   const normalizePlate = (plate: string): string => plate.replace(/[.\-\s]/g, '').toUpperCase();
 
@@ -1015,7 +1025,11 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     if (record.seatCount && record.seatCount > 0) {
       setSeatCount(record.seatCount.toString());
       lastSeatVehicleIdRef.current = selectedVehicle.id;
-      if (selectedVehicle.bedCapacity !== undefined && selectedVehicle.bedCapacity !== null) {
+      if (
+        selectedVehicle.bedCapacity !== undefined &&
+        selectedVehicle.bedCapacity !== null &&
+        selectedVehicle.bedCapacity > 0
+      ) {
         setBedCount(selectedVehicle.bedCapacity.toString());
       }
       return;
@@ -1033,7 +1047,11 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         return String(cap);
       });
     }
-    if (selectedVehicle.bedCapacity !== undefined && selectedVehicle.bedCapacity !== null) {
+    if (
+      selectedVehicle.bedCapacity !== undefined &&
+      selectedVehicle.bedCapacity !== null &&
+      selectedVehicle.bedCapacity > 0
+    ) {
       setBedCount(selectedVehicle.bedCapacity.toString());
     }
   }, [selectedVehicle, record.seatCount]);
