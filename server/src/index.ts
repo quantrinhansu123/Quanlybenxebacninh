@@ -116,6 +116,7 @@ app.use('/api/vehicles', vehicleRoutes)
 app.use('/api/operators', operatorRoutes)
 app.use('/api/locations', locationRoutes)
 app.use('/api/routes', routeRoutes)
+
 app.use('/api/schedules', scheduleRoutes)
 app.use('/api/vehicle-types', vehicleTypeRoutes)
 app.use('/api/shifts', shiftRoutes)
