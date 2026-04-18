@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
+import { useNavigate } from "react-router-dom"
 import { Map, Search, List, MapPin } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -15,6 +16,7 @@ import { provinceService, type Province } from "@/services/province.service"
 import { toast } from "react-toastify"
 
 export default function QuanLyTinhThanh() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<"v1" | "v2">("v1")
   const [provincesV1, setProvincesV1] = useState<Province[]>([])
   const [provincesV2, setProvincesV2] = useState<Province[]>([])
@@ -139,7 +141,11 @@ export default function QuanLyTinhThanh() {
                   </TableRow>
                 ) : (
                   filteredProvinces.map((province, index) => (
-                    <TableRow key={province.code} className="hover:bg-slate-50/50">
+                    <TableRow 
+                      key={province.code} 
+                      className="hover:bg-slate-50/50 cursor-pointer"
+                      onClick={() => navigate(`/quan-ly-tinh-thanh/${province.code}?version=${activeTab}`)}
+                    >
                       <TableCell className="text-center text-slate-500">
                         {index + 1}
                       </TableCell>

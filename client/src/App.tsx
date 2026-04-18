@@ -47,6 +47,7 @@ const QuanLyNhanSu = lazy(() => import("@/pages/QuanLyNhanSu"))
 const QuanLyTuyen = lazy(() => import("@/pages/QuanLyTuyen"))
 const QuanLyBenDen = lazy(() => import("@/pages/QuanLyBenDen"))
 const QuanLyTinhThanh = lazy(() => import("@/pages/QuanLyTinhThanh"))
+const QuanLyQuanHuyen = lazy(() => import("@/pages/QuanLyQuanHuyen"))
 
 // Service & Formula Management
 const QuanLyDichVu = lazy(() => import("@/pages/QuanLyDichVu"))
@@ -328,6 +329,18 @@ function App() {
               <MainLayout>
                 <Suspense fallback={<PageLoader />}>
                   <QuanLyTinhThanh />
+                </Suspense>
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/quan-ly-tinh-thanh/:provinceCode"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Suspense fallback={<PageLoader />}>
+                  <QuanLyQuanHuyen />
                 </Suspense>
               </MainLayout>
             </ProtectedRoute>
