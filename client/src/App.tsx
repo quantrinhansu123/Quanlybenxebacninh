@@ -46,6 +46,7 @@ const QuanLyNhanSu = lazy(() => import("@/pages/QuanLyNhanSu"))
 // Route & Location Management
 const QuanLyTuyen = lazy(() => import("@/pages/QuanLyTuyen"))
 const QuanLyBenDen = lazy(() => import("@/pages/QuanLyBenDen"))
+const QuanLyTinhThanh = lazy(() => import("@/pages/QuanLyTinhThanh"))
 
 // Service & Formula Management
 const QuanLyDichVu = lazy(() => import("@/pages/QuanLyDichVu"))
@@ -315,6 +316,18 @@ function App() {
               <MainLayout>
                 <Suspense fallback={<PageLoader />}>
                   <QuanLyTuyen />
+                </Suspense>
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/quan-ly-tinh-thanh"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Suspense fallback={<PageLoader />}>
+                  <QuanLyTinhThanh />
                 </Suspense>
               </MainLayout>
             </ProtectedRoute>
