@@ -532,37 +532,10 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       }
 
 
-      // Fallback: Try to get seatCapacity from RTDB lookup if not found from Supabase
-      const plateToCheck = record.vehiclePlateNumber;
-      const foundVehicleSeatCapacity = vehiclesData.find((v: Vehicle) => v.id === record.vehicleId)?.seatCapacity;
-      const needSeatCapacity = !vehicleFound || !foundVehicleSeatCapacity;
+      // Note: We deliberately removed the blocking RTDB/AppSheet seat capacity lookup here.
+      // It is now handled completely asynchronously by the useEffect below to prevent 
+      // the dialog from freezing for 10+ seconds while querying AppSheet's API.
       
-      if (plateToCheck && needSeatCapacity && (!record.seatCount || record.seatCount === 0)) {
-        try {
-          // Use direct RTDB lookup - works for ALL vehicles, not just those with badges
-          const lookupResult = await vehicleService.lookupByPlate(plateToCheck);
-          if (lookupResult?.seatCapacity && lookupResult.seatCapacity > 0) {
-            setSeatCount(lookupResult.seatCapacity.toString());
-          }
-        } catch (lookupError) {
-          console.warn("Could not lookup vehicle seat capacity:", lookupError);
-        }
-      }
-
-      if (plateToCheck && (!record.seatCount || record.seatCount === 0)) {
-        try {
-          const caps = await fetchXeCapacitiesFromAppsheetByPlate(plateToCheck);
-          if (caps.seat != null && caps.seat > 0) {
-            setSeatCount(caps.seat.toString());
-          }
-          if (caps.bed != null && caps.bed > 0) {
-            setBedCount(caps.bed.toString());
-          }
-        } catch (e) {
-          console.warn("AppSheet Xe SoCho/SoGiuong:", e);
-        }
-      }
-
       {
         const r = recordRef.current;
         if (r.seatCount && r.seatCount > 0) setSeatCount(r.seatCount.toString());
@@ -1056,7 +1029,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     }
   }, [selectedVehicle, record.seatCount]);
 
-  /** Bảng AppSheet «Xe»: BienSo → SoCho/SoChoNgoi + SoGiuong (đồng bộ với GTVT; ghế chỉ ghi đè khi đơn chưa có seatCount). */
+  /** Lấy ghế từ RTDB và AppSheet (bất đồng bộ để không block UI). */
   useEffect(() => {
     const plate = record.vehiclePlateNumber?.trim() || selectedVehicle?.plateNumber?.trim();
     if (!plate) return;
@@ -1064,10 +1037,26 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     let cancelled = false;
     void (async () => {
       try {
+        const needSeat = !(record.seatCount && record.seatCount > 0);
+        if (!needSeat) return;
+
+        // 1. Thử RTDB trước (cực nhanh)
+        try {
+          const lookupResult = await vehicleService.lookupByPlate(plate);
+          if (cancelled || ac.signal.aborted) return;
+          if (lookupResult?.seatCapacity && lookupResult.seatCapacity > 0) {
+            setSeatCount(String(lookupResult.seatCapacity));
+            return; // Đã có số ghế, không cần gọi AppSheet nữa (trừ khi cần lấy giường, tạm bỏ qua để tối ưu)
+          }
+        } catch {
+          /* ignore */
+        }
+
+        // 2. Không có trong RTDB thì gọi AppSheet
         const caps = await fetchXeCapacitiesFromAppsheetByPlate(plate, ac.signal);
         if (cancelled || ac.signal.aborted) return;
-        const needSeat = !(record.seatCount && record.seatCount > 0);
-        if (needSeat && caps.seat != null && caps.seat > 0) {
+        
+        if (caps.seat != null && caps.seat > 0) {
           setSeatCount(String(caps.seat));
         }
         if (caps.bed != null && caps.bed > 0) {
