@@ -1,6 +1,10 @@
 import api from '@/lib/api'
 import type { DispatchRecord, DispatchInput, DispatchStatus } from '@/types'
 
+let pendingGetAllPromise: Promise<DispatchRecord[]> | null = null;
+let lastGetAllTime = 0;
+let cachedGetAllData: DispatchRecord[] | null = null;
+
 export const dispatchService = {
   getAll: async (
     status?: DispatchStatus,
@@ -18,9 +22,37 @@ export const dispatchService = {
       if (entryBy) params.append('entryBy', entryBy)
 
       const queryString = params.toString()
+      
+      // If there are no filters, we can deduplicate and cache (for 10 seconds)
+      const isUnfiltered = !queryString;
+      if (isUnfiltered) {
+        if (cachedGetAllData && (Date.now() - lastGetAllTime < 10000)) {
+          return cachedGetAllData;
+        }
+        if (pendingGetAllPromise) {
+          return pendingGetAllPromise;
+        }
+      }
+
       const url = queryString ? `/dispatch?${queryString}` : '/dispatch'
-      const response = await api.get<DispatchRecord[]>(url)
-      return response.data
+      
+      const fetchPromise = api.get<DispatchRecord[]>(url).then(res => {
+        if (isUnfiltered) {
+          cachedGetAllData = res.data;
+          lastGetAllTime = Date.now();
+        }
+        return res.data;
+      }).finally(() => {
+        if (isUnfiltered) {
+          pendingGetAllPromise = null;
+        }
+      });
+
+      if (isUnfiltered) {
+        pendingGetAllPromise = fetchPromise;
+      }
+
+      return fetchPromise
     } catch (error) {
       console.error('Error fetching dispatch records:', error)
       return []

@@ -415,7 +415,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       );
 
       const dataPromise = Promise.all([
-        quanlyDataService.getAll(undefined, true), // Force refresh to avoid stale route names (BXxxx)
+        quanlyDataService.getAll(), // Use fast in-memory cache
         record.routeId ? scheduleService.getAll(record.routeId, undefined, true) : Promise.resolve([]),
         record.id ? serviceChargeService.getAll(record.id) : Promise.resolve([]),
       ]);

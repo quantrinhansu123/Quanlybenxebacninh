@@ -75,8 +75,8 @@ export interface QuanLyData {
 
 // Frontend cache
 let dataCache: QuanLyData | null = null
-let dataCacheTime = 0
-const FE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes frontend cache - stable numbers
+let dataCacheTime: number = 0
+let pendingRequest: Promise<QuanLyData> | null = null
 
 export const quanlyDataService = {
   /**
@@ -89,7 +89,8 @@ export const quanlyDataService = {
       const now = Date.now()
       
       // Return cached data if valid
-      if (!forceRefresh && dataCache && (now - dataCacheTime) < FE_CACHE_TTL) {
+      const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+      if (!forceRefresh && dataCache && (now - dataCacheTime) < CACHE_TTL) {
         // Filter cached data if specific includes requested
         if (include && include.length > 0) {
           const filtered: QuanLyData = { meta: dataCache.meta }
@@ -101,6 +102,12 @@ export const quanlyDataService = {
         }
         return dataCache
       }
+
+      // Deduplicate requests for the full dataset (no specific includes)
+      const isFullRequest = !include || include.length === 4
+      if (!forceRefresh && isFullRequest && pendingRequest) {
+        return pendingRequest
+      }
       
       const params: Record<string, string> = {}
       if (include && include.length > 0) {
@@ -110,15 +117,24 @@ export const quanlyDataService = {
         params.refresh = 'true'
       }
       
-      const response = await api.get<QuanLyData>('/quanly-data', { params })
-      
-      // Cache the response if it includes all data
-      if (!include || include.length === 4) {
-        dataCache = response.data
-        dataCacheTime = now
+      const fetchPromise = api.get<QuanLyData>('/quanly-data', { params }).then(response => {
+        // Cache the response if it includes all data
+        if (isFullRequest) {
+          dataCache = response.data
+          dataCacheTime = Date.now()
+        }
+        return response.data
+      }).finally(() => {
+        if (isFullRequest) {
+          pendingRequest = null
+        }
+      })
+
+      if (isFullRequest) {
+        pendingRequest = fetchPromise
       }
-      
-      return response.data
+
+      return fetchPromise
     } catch (error) {
       console.error('Error fetching quanly data:', error)
       // Return stale cache on error
