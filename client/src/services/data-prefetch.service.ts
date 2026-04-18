@@ -30,16 +30,17 @@ export async function prefetchAppData(): Promise<void> {
   prefetchPromise = (async () => {
     try {
       // Priority 1: Critical data for main pages (parallel)
+      // Dashboard is highest priority. Move heavy quanly/dispatch to Priority 2.
       await Promise.all([
-        quanlyDataService.getAll().catch(err => console.warn('[Prefetch] quanlyData failed:', err)),
         dashboardService.getDashboardData().catch(err => console.warn('[Prefetch] dashboard failed:', err)),
-        dispatchService.getAll().catch(err => console.warn('[Prefetch] dispatch failed:', err)),
       ])
 
       console.log(`[Prefetch] Critical data loaded in ${Date.now() - startTime}ms`)
 
       // Priority 2: Secondary data (parallel, non-blocking)
       Promise.all([
+        quanlyDataService.getAll().catch(err => console.warn('[Prefetch] quanlyData failed:', err)),
+        dispatchService.getAll().catch(err => console.warn('[Prefetch] dispatch failed:', err)),
         driverService.getAll().catch(err => console.warn('[Prefetch] drivers failed:', err)),
         routeService.getLegacy().catch(err => console.warn('[Prefetch] routes failed:', err)),
       ]).then(() => {

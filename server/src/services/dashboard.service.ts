@@ -315,31 +315,32 @@ export class DashboardService {
 
   /**
    * Get count of invalid vehicles (expired documents)
+   * Runs both COUNT queries in parallel instead of sequentially
    */
   private async getInvalidVehiclesCount(todayStr: string): Promise<number> {
     if (!db) throw new Error('[Dashboard] Database not initialized');
 
-    // Count vehicles with expired registration/insurance
-    const vehicleCount = await db.select({
-      count: sql<number>`COUNT(*)::int`,
-    })
-    .from(vehicles)
-    .where(
-      or(
-        and(isNotNull(vehicles.registrationExpiry), lt(vehicles.registrationExpiry, todayStr)),
-        and(isNotNull(vehicles.insuranceExpiry), lt(vehicles.insuranceExpiry, todayStr)),
-        and(isNotNull(vehicles.roadWorthinessExpiry), lt(vehicles.roadWorthinessExpiry, todayStr))
-      )
-    );
-
-    // Count vehicle badges with expired dates
-    const badgeCount = await db.select({
-      count: sql<number>`COUNT(*)::int`,
-    })
-    .from(vehicleBadges)
-    .where(
-      and(isNotNull(vehicleBadges.expiryDate), lt(vehicleBadges.expiryDate, todayStr))
-    );
+    // Run both counts in PARALLEL (was sequential — saved 1 DB round-trip)
+    const [vehicleCount, badgeCount] = await Promise.all([
+      db.select({
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(vehicles)
+      .where(
+        or(
+          and(isNotNull(vehicles.registrationExpiry), lt(vehicles.registrationExpiry, todayStr)),
+          and(isNotNull(vehicles.insuranceExpiry), lt(vehicles.insuranceExpiry, todayStr)),
+          and(isNotNull(vehicles.roadWorthinessExpiry), lt(vehicles.roadWorthinessExpiry, todayStr))
+        )
+      ),
+      db.select({
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(vehicleBadges)
+      .where(
+        and(isNotNull(vehicleBadges.expiryDate), lt(vehicleBadges.expiryDate, todayStr))
+      ),
+    ]);
 
     return (vehicleCount[0]?.count || 0) + (badgeCount[0]?.count || 0);
   }
@@ -540,19 +541,7 @@ export class DashboardService {
     const todayStart = new Date(todayStr + 'T00:00:00+07:00');
     const todayEnd = new Date(todayStr + 'T23:59:59.999+07:00');
 
-    // Get total count for percentage calculation
-    const totalResult = await db.select({
-      total: sql<number>`COUNT(*)::int`,
-    })
-    .from(dispatchRecords)
-    .where(and(
-      gte(dispatchRecords.entryTime, todayStart),
-      lte(dispatchRecords.entryTime, todayEnd)
-    ));
-
-    const total = totalResult[0]?.total || 1;
-
-    // Get route breakdown with LEFT JOIN
+    // Single query: get route breakdown + total via window function (was 2 sequential queries)
     const result = await db.select({
       routeId: sql<string>`COALESCE(${dispatchRecords.routeId}::text, 'unknown')`,
       routeName: sql<string>`
@@ -564,6 +553,7 @@ export class DashboardService {
         END
       `,
       count: sql<number>`COUNT(*)::int`,
+      total: sql<number>`SUM(COUNT(*)) OVER()::int`,
     })
     .from(dispatchRecords)
     .leftJoin(routes, eq(dispatchRecords.routeId, routes.id))
@@ -575,6 +565,8 @@ export class DashboardService {
     .orderBy(sql`3 DESC`)
     .limit(6);
 
+    const total = result[0]?.total || 1;
+
     return result.map(r => ({
       routeId: r.routeId,
       routeName: r.routeName,
@@ -583,18 +575,45 @@ export class DashboardService {
     }));
   }
 
+  private isRevalidating = false;
+
   /**
    * Get all dashboard data - OPTIMIZED: SQL aggregation + caching
+   * Uses stale-while-revalidate pattern to avoid blocking requests
    */
   async getAllData(): Promise<DashboardAllData> {
     const now = Date.now();
 
     // Return cached data if valid
-    if (dashboardCache.data && (now - dashboardCache.timestamp) < CACHE_TTL) {
-      console.log('[Dashboard] Returning cached data');
-      return dashboardCache.data;
+    if (dashboardCache.data) {
+      if ((now - dashboardCache.timestamp) < CACHE_TTL) {
+        console.log('[Dashboard] Returning cached data');
+        return dashboardCache.data;
+      }
+      
+      // Stale-while-revalidate (up to 5 minutes stale)
+      if ((now - dashboardCache.timestamp) < CACHE_TTL * 5) {
+        console.log('[Dashboard] Returning stale cached data, revalidating in background');
+        this.revalidateCache().catch(e => console.error('[Dashboard] Background revalidation error:', e));
+        return dashboardCache.data;
+      }
     }
 
+    // Cache is missing or too stale, fetch synchronously
+    return this.fetchAndCacheData();
+  }
+
+  private async revalidateCache() {
+    if (this.isRevalidating) return;
+    this.isRevalidating = true;
+    try {
+      await this.fetchAndCacheData();
+    } finally {
+      this.isRevalidating = false;
+    }
+  }
+
+  private async fetchAndCacheData(): Promise<DashboardAllData> {
     const startTime = Date.now();
 
     // Use SQL aggregation for stats, charts, weekly, route (OPTIMIZED)
@@ -620,7 +639,7 @@ export class DashboardService {
     };
 
     // Update cache
-    dashboardCache = { data, timestamp: now };
+    dashboardCache = { data, timestamp: Date.now() };
 
     console.log(`[Dashboard] Generated all data in ${Date.now() - startTime}ms (SQL aggregation)`);
     return data;

@@ -21,7 +21,7 @@ const isServerless = !!process.env.VERCEL
 
 const client = connectionString
   ? postgres(connectionString, {
-      max: isServerless ? 3 : 10,
+      max: isServerless ? 5 : 10,
       idle_timeout: isServerless ? 10 : 30,
       connect_timeout: isServerless ? 5 : 15,
       prepare: false, // Required for Supabase Transaction Mode
