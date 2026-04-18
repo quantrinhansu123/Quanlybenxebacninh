@@ -209,6 +209,18 @@ export function useDieuDo() {
     updateUrlParams(record, "permit", true);
   };
 
+  const getShiftIdFromCurrentShift = (): string | undefined => {
+    const { currentShift, shifts } = useUIStore.getState();
+    if (!currentShift || currentShift === '<Trống>') return undefined;
+    if (shifts.length === 0) return undefined;
+    const match = currentShift.match(/^(.+?)\s*\(/);
+    const shiftName = match ? match[1].trim() : undefined;
+    if (!shiftName) return undefined;
+    return shifts.find(s => s.name === shiftName)?.id;
+  };
+
+
+
   const handleRecordExit = async (record: DispatchRecord) => {
     if (window.confirm("Cho xe ra bến?")) {
       try {

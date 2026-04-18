@@ -29,9 +29,9 @@ import {
 import { ChoXeVaoBenDialog } from "@/components/dispatch/ChoXeVaoBenDialog";
 import { XeTraKhachDialog } from "@/components/dispatch/XeTraKhachDialog";
 import { CapPhepDialog } from "@/components/dispatch/CapPhepDialog";
+import { CapLenhXuatBenDialog } from "@/components/dispatch/CapLenhXuatBenDialog";
 import { ThanhToanTheoThangDialog } from "@/components/dispatch/ThanhToanTheoThangDialog";
 import { ChoXeRaBenDialog } from "@/components/dispatch/ChoXeRaBenDialog";
-import { CapLenhXuatBenDialog } from "@/components/dispatch/CapLenhXuatBenDialog";
 import { ChoNhieuXeRaBenDialog } from "@/components/dispatch/ChoNhieuXeRaBenDialog";
 import { BusPlusIcon, BusEnterIcon } from "@/components/dispatch/icons";
 import {
@@ -169,7 +169,7 @@ export default function DieuDo() {
                 onClick={() => {
                   if (status === "in-station") handleAction(record, "permit");
                   else if (status === "permit-issued") navigateWithReturn(`/thanh-toan/${record.id}`);
-                  else if (status === "paid") handleAction(record, "depart");
+                  else if (status === "paid") handleAction(record, "departure-order");
                 }}
                 actionButtons={getActionButtons(record, status)}
               />

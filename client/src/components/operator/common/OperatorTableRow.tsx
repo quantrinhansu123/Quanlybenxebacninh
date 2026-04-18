@@ -52,10 +52,10 @@ export const OperatorTableRow = memo(function OperatorTableRow({
           <span className="text-slate-600">{operator.phone || "-"}</span>
         </div>
       </td>
-      <td className="px-6 py-4 text-center">
-        <div className="flex items-center justify-center gap-2">
-          <User className="h-4 w-4 text-slate-400" />
-          <span className="text-slate-600">
+      <td className="px-6 py-4 text-left">
+        <div className="flex items-center justify-start gap-2">
+          <User className="h-4 w-4 text-slate-400 flex-shrink-0" />
+          <span className="text-slate-600 text-left">
             {operator.representativeName || "-"}
           </span>
         </div>

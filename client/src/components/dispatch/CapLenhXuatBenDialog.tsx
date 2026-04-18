@@ -24,7 +24,7 @@ export function CapLenhXuatBenDialog({
   onClose,
   onSuccess
 }: CapLenhXuatBenDialogProps) {
-  const [passengersDeparting, setPassengersDeparting] = useState("8")
+  const [passengersDeparting, setPassengersDeparting] = useState("0")
   const [isLoading, setIsLoading] = useState(false)
   const [signAndTransmit, setSignAndTransmit] = useState(true)
   const [printRepresentation, setPrintRepresentation] = useState(false)

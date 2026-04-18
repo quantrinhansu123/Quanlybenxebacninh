@@ -1114,10 +1114,10 @@ export default function QuanLyPhuHieuXe() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-center text-base">Số phù hiệu</TableHead>
-                <TableHead className="text-center text-base">Biển số</TableHead>
+                <TableHead className="text-center text-base w-[120px]">Số phù hiệu</TableHead>
+                <TableHead className="text-center text-base w-[120px]">Biển số</TableHead>
                 <TableHead className="text-center text-base">Tên đơn vị</TableHead>
-                <TableHead className="text-center text-base">Loại phù hiệu</TableHead>
+                <TableHead className="text-center text-base w-[150px]">Loại phù hiệu</TableHead>
                 <TableHead className="text-center text-base">Ngày cấp</TableHead>
                 <TableHead className="text-center text-base">Ngày hết hạn</TableHead>
                 <TableHead className="text-center text-base">Trạng thái</TableHead>
@@ -1140,10 +1140,10 @@ export default function QuanLyPhuHieuXe() {
               ) : (
                 paginatedBadges.map((badge) => (
                   <TableRow key={badge.id}>
-                    <TableCell className="font-medium text-center text-base">
+                    <TableCell className="font-medium text-center text-base w-[120px]">
                       {badge.badge_number}
                     </TableCell>
-                    <TableCell className="text-center text-base">
+                    <TableCell className="text-center text-base w-[120px]">
                       {badge.license_plate_sheet || "N/A"}
                     </TableCell>
                     <TableCell className="align-middle text-center text-base max-w-[240px] px-3 py-2">
@@ -1154,7 +1154,7 @@ export default function QuanLyPhuHieuXe() {
                         {resolveOperatorDisplayName(badge) || "—"}
                       </span>
                     </TableCell>
-                    <TableCell className="text-center text-base">
+                    <TableCell className="text-center text-base w-[150px]">
                       {badge.badge_type || "N/A"}
                     </TableCell>
                     <TableCell className="text-center text-base">
@@ -1562,9 +1562,9 @@ export default function QuanLyPhuHieuXe() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-center w-12">STT</TableHead>
-                      <TableHead className="text-center">Số phù hiệu</TableHead>
-                      <TableHead className="text-center">Biển số xe</TableHead>
-                      <TableHead className="text-center">Loại PH</TableHead>
+                      <TableHead className="text-center w-[120px]">Số phù hiệu</TableHead>
+                      <TableHead className="text-center w-[120px]">Biển số xe</TableHead>
+                      <TableHead className="text-center w-[150px]">Loại PH</TableHead>
                       <TableHead className="text-center">Màu PH</TableHead>
                       <TableHead className="text-center">Ngày cấp</TableHead>
                       <TableHead className="text-center">Ngày hết hạn</TableHead>
@@ -1575,9 +1575,9 @@ export default function QuanLyPhuHieuXe() {
                     {importData.slice(0, 100).map((badge, index) => (
                       <TableRow key={index}>
                         <TableCell className="text-center">{index + 1}</TableCell>
-                        <TableCell className="text-center font-medium">{badge.badge_number}</TableCell>
-                        <TableCell className="text-center">{badge.license_plate_sheet}</TableCell>
-                        <TableCell className="text-center">{badge.badge_type || "-"}</TableCell>
+                        <TableCell className="text-center font-medium w-[120px]">{badge.badge_number}</TableCell>
+                        <TableCell className="text-center w-[120px]">{badge.license_plate_sheet}</TableCell>
+                        <TableCell className="text-center w-[150px]">{badge.badge_type || "-"}</TableCell>
                         <TableCell className="text-center">{badge.badge_color || "-"}</TableCell>
                         <TableCell className="text-center">{badge.issue_date || "-"}</TableCell>
                         <TableCell className="text-center">{badge.expiry_date || "-"}</TableCell>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
   ChevronDown,
@@ -37,6 +37,8 @@ import { useCachedQuery, CACHE_TTL, useQueryCache } from "@/lib/query-cache";
 export default function ThanhToan() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo") || "/dieu-do";
   const setTitle = useUIStore((state) => state.setTitle);
   const invalidateCache = useQueryCache((state) => state.invalidate);
 
@@ -303,7 +305,7 @@ export default function ThanhToan() {
       // Invalidate cache to ensure list view shows updated data
       invalidateCache('thanhtoan-dispatch-list');
       toast.success("Thanh toán thành công!");
-      navigate("/thanh-toan");
+      navigate(returnTo);
     } catch (error: any) {
       console.error("[ThanhToan] Failed to process payment:", error);
       const serverError = error.response?.data?.error || "Không thể xử lý thanh toán";
@@ -342,7 +344,7 @@ export default function ThanhToan() {
       // Invalidate cache to ensure list view shows updated data
       invalidateCache('thanhtoan-dispatch-list');
       toast.success("Đã hủy bỏ record thành công");
-      navigate("/thanh-toan");
+      navigate(returnTo);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || "Không thể hủy bỏ record");

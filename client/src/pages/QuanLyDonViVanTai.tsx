@@ -329,7 +329,7 @@ export default function QuanLyDonViVanTai() {
                     <th className="px-6 py-4 text-center text-xs font-semibold text-white uppercase tracking-wider">
                       Số điện thoại
                     </th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-white uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       Người đại diện
                     </th>
                     <th className="px-6 py-4 text-center text-xs font-semibold text-white uppercase tracking-wider">

@@ -5,6 +5,12 @@ let pendingGetAllPromise: Promise<DispatchRecord[]> | null = null;
 let lastGetAllTime = 0;
 let cachedGetAllData: DispatchRecord[] | null = null;
 
+const clearCache = () => {
+  pendingGetAllPromise = null;
+  lastGetAllTime = 0;
+  cachedGetAllData = null;
+};
+
 export const dispatchService = {
   getAll: async (
     status?: DispatchStatus,
@@ -66,6 +72,7 @@ export const dispatchService = {
 
   create: async (input: DispatchInput): Promise<DispatchRecord> => {
     const response = await api.post<DispatchRecord>('/dispatch', input)
+    clearCache()
     return response.data
   },
 
@@ -78,6 +85,7 @@ export const dispatchService = {
       passengersArrived,
       routeId,
     })
+    clearCache()
     return response.data
   },
 
@@ -96,6 +104,7 @@ export const dispatchService = {
     }
   ): Promise<DispatchRecord> => {
     const response = await api.post<DispatchRecord>(`/dispatch/${id}/permit`, data)
+    clearCache()
     return response.data
   },
 
@@ -109,6 +118,7 @@ export const dispatchService = {
     }
   ): Promise<DispatchRecord> => {
     const response = await api.post<DispatchRecord>(`/dispatch/${id}/payment`, data)
+    clearCache()
     return response.data
   },
 
@@ -121,6 +131,7 @@ export const dispatchService = {
       passengersDeparting,
       departureOrderShiftId,
     })
+    clearCache()
     return response.data
   },
 
@@ -135,6 +146,7 @@ export const dispatchService = {
       passengersDeparting,
       exitShiftId,
     })
+    clearCache()
     return response.data
   },
 
@@ -142,6 +154,7 @@ export const dispatchService = {
     const response = await api.patch<{ dispatch: DispatchRecord }>(`/dispatch/${id}/entry-image`, {
       entryImageUrl,
     })
+    clearCache()
     return response.data.dispatch
   },
 
@@ -175,6 +188,7 @@ export const dispatchService = {
     passengerCount: number
   ): Promise<DispatchRecord> => {
     await dispatchService.issueDepartureOrder(id, passengerCount)
+    // issueDepartureOrder already calls clearCache
     return dispatchService.recordExit(id)
   },
 
@@ -189,15 +203,18 @@ export const dispatchService = {
     }
   ): Promise<DispatchRecord> => {
     const response = await api.put<DispatchRecord>(`/dispatch/${id}`, data)
+    clearCache()
     return response.data
   },
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/dispatch/${id}`)
+    clearCache()
   },
 
   cancel: async (id: string, reason?: string): Promise<DispatchRecord> => {
     const response = await api.post<{ dispatch: DispatchRecord }>(`/dispatch/${id}/cancel`, { reason })
+    clearCache()
     return response.data.dispatch
   },
 }
