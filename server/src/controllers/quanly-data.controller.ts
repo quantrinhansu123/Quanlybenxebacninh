@@ -496,12 +496,8 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     const includes = include ? (include as string).split(',') : ['badges', 'vehicles', 'operators', 'routes']
     
     const response: Record<string, any> = {}
+    let finalFilteredBadges = data.badges
     if (includes.includes('badges')) {
-      // Filter badges by station (phân quyền theo bến)
-      // For "Buýt": dùng danh_muc_tuyen_bus + badges.tuyen_bus_code
-      //   - locations.code / ma_ben = danh_muc_tuyen_bus.diem_dau
-      //   - danh_muc_tuyen_bus.id_tuyen = badges.tuyen_bus_code
-      // For "Tuyến cố định": filter by routes.startPoint/endPoint matches location.name (như cũ)
       let filteredBadges = data.badges
       if (stationCode || stationName) {
         // ===== 1) Buýt: build allowed id_tuyen via danh_muc_tuyen_bus (matched by ma_ben/diem_dau) =====
@@ -568,9 +564,28 @@ export const getQuanLyData = async (req: Request, res: Response) => {
           `${filteredBusCount}/${busCount} Buýt badges, ${filteredFixedRouteCount}/${fixedRouteCount} Tuyến cố định badges`
         )
       }
+      finalFilteredBadges = filteredBadges
       response.badges = filteredBadges
     }
-    if (includes.includes('vehicles')) response.vehicles = data.vehicles
+    
+    if (includes.includes('vehicles')) {
+      // Optimizaton: Only return vehicles that match the filtered badges + manually allowed plates
+      // This prevents sending 17MB of 10,000+ un-badged vehicles over the wire
+      const allowedPlatesForStation = new Set<string>()
+      for (const b of finalFilteredBadges) {
+        if (b.license_plate_sheet) {
+          allowedPlatesForStation.add(normalizePlate(b.license_plate_sheet))
+        }
+      }
+      // Only include vehicles that have a matching badge for this station, or have any valid badge (fallback)
+      if (stationCode || stationName) {
+        response.vehicles = data.vehicles.filter(v => 
+          allowedPlatesForStation.has(normalizePlate(v.plateNumber)) || v.hasValidBadge
+        )
+      } else {
+        response.vehicles = data.vehicles
+      }
+    }
     if (includes.includes('operators')) response.operators = data.operators
     if (includes.includes('routes')) response.routes = data.routes
     

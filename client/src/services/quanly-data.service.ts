@@ -103,11 +103,22 @@ export const quanlyDataService = {
         return dataCache
       }
 
-      // Deduplicate requests for the full dataset (no specific includes)
-      const isFullRequest = !include || include.length === 4
-      if (!forceRefresh && isFullRequest && pendingRequest) {
-        return pendingRequest
+      // If a full request is already pending and we aren't forcing a refresh,
+      // wait for it and then filter its result, avoiding redundant network requests.
+      if (!forceRefresh && pendingRequest) {
+        const fullData = await pendingRequest
+        if (include && include.length > 0 && include.length < 4) {
+          const filtered: QuanLyData = { meta: fullData.meta }
+          if (include.includes('badges') && fullData.badges) filtered.badges = fullData.badges
+          if (include.includes('vehicles') && fullData.vehicles) filtered.vehicles = fullData.vehicles
+          if (include.includes('operators') && fullData.operators) filtered.operators = fullData.operators
+          if (include.includes('routes') && fullData.routes) filtered.routes = fullData.routes
+          return filtered
+        }
+        return fullData
       }
+      
+      const isFullRequest = !include || include.length === 4
       
       const params: Record<string, string> = {}
       if (include && include.length > 0) {

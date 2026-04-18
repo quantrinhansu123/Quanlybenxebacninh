@@ -70,7 +70,7 @@ export function useDieuDo() {
   const loadVehicles = async () => {
     try {
       // Fetch vehicles, badges and routes to pre-filter vehicles based on user location
-      const data = await quanlyDataService.getAll(['vehicles', 'badges', 'routes']);
+      const data = await quanlyDataService.getAll();
 
       const routeLocMap = new Map<string, { start: string, end: string }>();
       if (data.routes) {
