@@ -10,7 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { useUIStore } from "@/store/ui.store"
 import { provinceService, type Province } from "@/services/province.service"
 import { toast } from "react-toastify"
@@ -36,7 +35,7 @@ export default function QuanLyTinhThanh() {
         provinceService.getProvincesV1(),
         provinceService.getProvincesV2()
       ])
-      
+
       // Sắp xếp theo tên
       setProvincesV1(v1.sort((a, b) => a.name.localeCompare(b.name)))
       setProvincesV2(v2.sort((a, b) => a.name.localeCompare(b.name)))
@@ -52,8 +51,8 @@ export default function QuanLyTinhThanh() {
   const filteredProvinces = useMemo(() => {
     if (!searchQuery) return currentData
     const q = searchQuery.toLowerCase()
-    return currentData.filter(p => 
-      p.name.toLowerCase().includes(q) || 
+    return currentData.filter(p =>
+      p.name.toLowerCase().includes(q) ||
       p.code.toLowerCase().includes(q)
     )
   }, [currentData, searchQuery])
@@ -82,21 +81,19 @@ export default function QuanLyTinhThanh() {
         <div className="flex bg-white rounded-xl shadow-sm border border-slate-100 p-1 w-max">
           <button
             onClick={() => setActiveTab("v1")}
-            className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "v1"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-            }`}
+            className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === "v1"
+              ? "bg-slate-800 text-white shadow-md"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
           >
             Trước sáp nhập (63 tỉnh)
           </button>
           <button
             onClick={() => setActiveTab("v2")}
-            className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "v2"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-            }`}
+            className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === "v2"
+              ? "bg-slate-800 text-white shadow-md"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
           >
             Sau sáp nhập 2025 (34 tỉnh)
           </button>
@@ -124,20 +121,19 @@ export default function QuanLyTinhThanh() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[80px] text-center">STT</TableHead>
-                  <TableHead className="w-[150px] text-center">Mã Tỉnh</TableHead>
                   <TableHead>Tên Tỉnh / Thành phố</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-12 text-slate-500">
+                    <TableCell colSpan={2} className="text-center py-12 text-slate-500">
                       Đang tải danh sách...
                     </TableCell>
                   </TableRow>
                 ) : filteredProvinces.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-12 text-slate-500">
+                    <TableCell colSpan={2} className="text-center py-12 text-slate-500">
                       Không tìm thấy dữ liệu phù hợp
                     </TableCell>
                   </TableRow>
@@ -146,9 +142,6 @@ export default function QuanLyTinhThanh() {
                     <TableRow key={province.code} className="hover:bg-slate-50/50">
                       <TableCell className="text-center text-slate-500">
                         {index + 1}
-                      </TableCell>
-                      <TableCell className="font-medium text-center text-orange-600">
-                        {province.code}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center text-slate-700">
