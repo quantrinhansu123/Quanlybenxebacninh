@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
-import { Map, Search, List, MapPin } from "lucide-react"
+import { Map, Search, List, MapPin, Download } from "lucide-react"
+import * as XLSX from "xlsx"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
@@ -59,6 +61,22 @@ export default function QuanLyTinhThanh() {
     )
   }, [currentData, searchQuery])
 
+  const handleExportExcel = () => {
+    const dataToExport = filteredProvinces.map((p, index) => ({
+      "STT": index + 1,
+      "Tên Tỉnh / Thành phố": p.name
+    }))
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "DanhSach")
+    
+    const maxWidths = [5, 40]
+    worksheet["!cols"] = maxWidths.map(w => ({ wch: w }))
+
+    XLSX.writeFile(workbook, `Danh_Sach_Tinh_Thanh_${activeTab}.xlsx`)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-teal-50">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
@@ -77,6 +95,14 @@ export default function QuanLyTinhThanh() {
               </p>
             </div>
           </div>
+          <Button 
+            variant="outline" 
+            className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+            onClick={handleExportExcel}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Tải Excel
+          </Button>
         </div>
 
         {/* Tabs */}

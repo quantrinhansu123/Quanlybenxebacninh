@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useParams, useNavigate, useSearchParams } from "react-router-dom"
-import { MapPin, Search, ArrowLeft, Building2 } from "lucide-react"
+import { MapPin, Search, ArrowLeft, Building2, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
@@ -82,6 +83,23 @@ export default function QuanLyQuanHuyen() {
     )
   }, [dataList, searchQuery])
 
+  const handleExportExcel = () => {
+    const areaType = activeTab === "v1" ? "Quan_Huyen" : "Phuong_Xa"
+    const dataToExport = filteredData.map((item, index) => ({
+      "STT": index + 1,
+      "Tên": item.name
+    }))
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, "DanhSach")
+    
+    const maxWidths = [5, 40]
+    worksheet["!cols"] = maxWidths.map(w => ({ wch: w }))
+
+    XLSX.writeFile(workbook, `Danh_Sach_${areaType}_${provinceData?.name || provinceCode}.xlsx`)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-teal-50">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
@@ -108,6 +126,14 @@ export default function QuanLyQuanHuyen() {
               </p>
             </div>
           </div>
+          <Button 
+            variant="outline" 
+            className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+            onClick={handleExportExcel}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Tải Excel
+          </Button>
         </div>
 
         {/* Tabs */}
