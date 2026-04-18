@@ -196,10 +196,12 @@ export const cacheTags = {
   STATIC: 'static', // For rarely changing data
 }
 
-// Auto cleanup every 5 minutes
-setInterval(() => {
-  const cleaned = cache.cleanup()
-  if (cleaned > 0) {
-    console.log(`[Cache] Cleaned ${cleaned} expired entries`)
-  }
-}, 5 * 60 * 1000)
+// Auto cleanup every 5 minutes (skip on serverless — short-lived instances don't benefit)
+if (!process.env.VERCEL) {
+  setInterval(() => {
+    const cleaned = cache.cleanup()
+    if (cleaned > 0) {
+      console.log(`[Cache] Cleaned ${cleaned} expired entries`)
+    }
+  }, 5 * 60 * 1000)
+}

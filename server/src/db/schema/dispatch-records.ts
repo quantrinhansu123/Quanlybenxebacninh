@@ -114,6 +114,7 @@ export const dispatchRecords = pgTable('dispatch_records', {
   vehicleIdx: index('dispatch_vehicle_idx').on(table.vehicleId),
   driverIdx: index('dispatch_driver_idx').on(table.driverId),
   operatorIdx: index('dispatch_operator_idx').on(table.operatorId),
+  routeIdx: index('dispatch_route_idx').on(table.routeId),
   statusIdx: index('dispatch_status_idx').on(table.status),
   entryTimeIdx: index('dispatch_entry_time_idx').on(table.entryTime),
   createdAtIdx: index('dispatch_created_at_idx').on(table.createdAt),

@@ -73,47 +73,27 @@ export async function fetchDenormalizedData(params: {
     operatorCode: null,
   }
 
-  // For legacy vehicles, we can't fetch from Supabase - return empty data
-  // The vehicle info should be passed from frontend or stored elsewhere
-  if (!isLegacyVehicle && !isBadgeVehicle && params.vehicleId) {
-    try {
-      const [vehicle] = await db
-        .select({
-          id: vehicles.id,
-          plateNumber: vehicles.plateNumber,
-          seatCount: vehicles.seatCount,
-          operatorId: vehicles.operatorId,
-        })
-        .from(vehicles)
-        .where(eq(vehicles.id, params.vehicleId))
-        .limit(1)
-
-      if (vehicle) {
-        let operatorData = null
-        if (vehicle.operatorId) {
-          const [op] = await db
-            .select({ id: operators.id, name: operators.name, code: operators.code })
-            .from(operators)
-            .where(eq(operators.id, vehicle.operatorId))
-            .limit(1)
-          operatorData = op
-        }
-
-        vehicleData = {
-          plateNumber: vehicle.plateNumber || '',
-          seatCount: vehicle.seatCount || null,
-          operatorId: vehicle.operatorId || null,
-          operatorName: operatorData?.name || null,
-          operatorCode: operatorData?.code || null,
-        }
-      }
-    } catch (error) {
-      console.warn(`[fetchDenormalizedData] Failed to fetch vehicle ${params.vehicleId}:`, error)
-    }
-  }
-
-  // Fetch other entities in parallel
-  const [driverResult, routeResult, userResult] = await Promise.all([
+  // Fetch vehicle+operator in a single LEFT JOIN, and driver/route/user in parallel
+  // This eliminates the N+1 pattern (vehicle query → operator query)
+  const [vehicleWithOperatorResult, driverResult, routeResult, userResult] = await Promise.all([
+    (!isLegacyVehicle && !isBadgeVehicle && params.vehicleId)
+      ? db.select({
+            id: vehicles.id,
+            plateNumber: vehicles.plateNumber,
+            seatCount: vehicles.seatCount,
+            operatorId: vehicles.operatorId,
+            operatorName: operators.name,
+            operatorCode: operators.code,
+          })
+          .from(vehicles)
+          .leftJoin(operators, eq(vehicles.operatorId, operators.id))
+          .where(eq(vehicles.id, params.vehicleId))
+          .limit(1)
+          .catch((error) => {
+            console.warn(`[fetchDenormalizedData] Failed to fetch vehicle ${params.vehicleId}:`, error)
+            return [] as { id: string; plateNumber: string | null; seatCount: number | null; operatorId: string | null; operatorName: string | null; operatorCode: string | null }[]
+          })
+      : Promise.resolve([]),
     params.driverId
       ? db.select({ id: drivers.id, name: drivers.fullName })
           .from(drivers)
@@ -139,6 +119,17 @@ export async function fetchDenormalizedData(params: {
           .limit(1)
       : Promise.resolve([]),
   ])
+
+  const vehicleRow = vehicleWithOperatorResult[0]
+  if (vehicleRow) {
+    vehicleData = {
+      plateNumber: vehicleRow.plateNumber || '',
+      seatCount: vehicleRow.seatCount || null,
+      operatorId: vehicleRow.operatorId || null,
+      operatorName: vehicleRow.operatorName || null,
+      operatorCode: vehicleRow.operatorCode || null,
+    }
+  }
 
   const driver = driverResult[0]
   const route = routeResult[0]
