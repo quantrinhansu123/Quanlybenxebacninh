@@ -2,24 +2,17 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "react-toastify";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { scheduleService } from "@/services/schedule.service";
-import { scheduleApi } from "@/features/fleet/schedules";
-import {
-  fetchSchedulesFromAppsheetTbJoin,
-  type TbJoinScheduleDiagnostics,
-} from "@/services/appsheet-fetch-schedules-tb-join";
 import { dispatchService } from "@/services/dispatch.service";
 import { vehicleService } from "@/services/vehicle.service";
 import { type VehicleBadge } from "@/services/vehicle-badge.service";
 import { serviceChargeService } from "@/services/service-charge.service";
 import { quanlyDataService, type QuanLyVehicle, type QuanLyRoute, type QuanLyOperator, type QuanLyBadge } from "@/services/quanly-data.service";
-import { fetchXeCapacitiesFromAppsheetByPlate } from "@/services/appsheet-seat-from-xe";
 import { relaxPermitEligibleChecks } from "@/config/dispatch-dev-flags";
 import { getApiUrl } from "@/lib/api";
 import axios from "axios";
 import { useUIStore } from "@/store/ui.store";
 import type { Shift } from "@/services/shift.service";
 import {
-  upsertScheduleProgressRow,
   type DispatchRecord,
   type Route,
   type Schedule,
@@ -28,9 +21,6 @@ import {
   type ServiceCharge,
   type Operator,
   type VehicleDocuments,
-  type ScheduleDataSource,
-  type ScheduleAppSheetFetchStepRow,
-  type AppSheetScheduleProgressEvent,
 } from "@/types";
 
 type DocumentStatus = 'valid' | 'expired' | 'expiring_soon' | 'missing';
@@ -78,212 +68,41 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
   const [showZeroAmountConfirm, setShowZeroAmountConfirm] = useState(false);
   const [dailyTripCounts, setDailyTripCounts] = useState<Record<number, number>>({});
   const [tripCountsLoaded, setTripCountsLoaded] = useState(false);
-  const schedulesCacheRef = useRef<
-    Record<string, { items: Schedule[]; source: "database" | "appsheet" }>
-  >({});
+  const schedulesCacheRef = useRef<Record<string, Schedule[]>>({});
   const [cachedDispatchRecords, setCachedDispatchRecords] = useState<DispatchRecord[] | null>(null);
   const [scheduleWarning, setScheduleWarning] = useState("");
   const [tripLimitWarning, setTripLimitWarning] = useState("");
   const [tripLimitData, setTripLimitData] = useState<{ maxTrips: number; currentTrips: number } | null>(null);
-  const [isUsingAppsheetSchedules, setIsUsingAppsheetSchedules] = useState(false);
-  const [scheduleDataSource, setScheduleDataSource] = useState<ScheduleDataSource>("database");
-  const [isLoadingTbJoinSchedules, setIsLoadingTbJoinSchedules] = useState(false);
-
-  const [scheduleFetchSteps, setScheduleFetchSteps] = useState<ScheduleAppSheetFetchStepRow[]>([]);
-  const [scheduleTbDiagnostics, setScheduleTbDiagnostics] = useState<TbJoinScheduleDiagnostics | null>(
-    null,
-  );
-  const [isLoadingAppsheetSchedules, setIsLoadingAppsheetSchedules] = useState(false);
-
-  const reportAppsheetScheduleProgress = useCallback((e: AppSheetScheduleProgressEvent) => {
-    setScheduleFetchSteps((prev) => upsertScheduleProgressRow(prev, e));
-  }, []);
 
   const { currentShift } = useUIStore();
 
   // Prevent multiple initializations
   const isInitializedRef = useRef(false);
   const routeAutoFilledRef = useRef(false);
-  /** Tránh effect selectedVehicle ghi đè số ghế đã lấy từ AppSheet/init cùng một xe. */
   const lastSeatVehicleIdRef = useRef<string | null>(null);
-  /** Luôn đọc dispatch hiện tại trong loadInitialData (effect init [] dễ bắt snapshot record cũ — URL ?dispatch=&action=permit). */
   const recordRef = useRef(record);
   recordRef.current = record;
-
-  const scheduleCacheKey = (rid: string, opId: string | undefined, source: ScheduleDataSource) =>
-    `${opId ? `${rid}_${opId}` : rid}::${source}`;
 
   const loadSchedules = useCallback(
     async (rid: string, opId?: string) => {
       try {
-        const src = scheduleDataSource;
-        const cacheKey = scheduleCacheKey(rid, opId, src);
+        const cacheKey = opId ? `${rid}_${opId}` : rid;
         const cached = schedulesCacheRef.current[cacheKey];
         if (cached) {
-          setSchedules(cached.items);
-          setIsUsingAppsheetSchedules(cached.source === "appsheet");
-          if (src === "appsheet") {
-            setScheduleFetchSteps([]);
-            setScheduleTbDiagnostics(null);
-          }
+          setSchedules(cached);
           return;
         }
-
-        if (src === "database") {
-          const dbData = await scheduleService.getAll(rid, opId, true, "Đi");
-          const list = Array.isArray(dbData) ? dbData : [];
-          setSchedules(list);
-          setIsUsingAppsheetSchedules(false);
-          schedulesCacheRef.current[cacheKey] = { items: list, source: "database" };
-          return;
-        }
-
-        const routeCode = routes.find((r) => r.id === rid)?.routeCode?.trim() || "";
-        if (!routeCode) {
-          setSchedules([]);
-          setIsUsingAppsheetSchedules(true);
-          setScheduleFetchSteps([]);
-          setScheduleTbDiagnostics(null);
-          schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
-          return;
-        }
-
-        try {
-          setIsLoadingAppsheetSchedules(true);
-          setScheduleFetchSteps([]);
-          setScheduleTbDiagnostics(null);
-          const outcome = await fetchSchedulesFromAppsheetTbJoin({
-            routeId: rid,
-            routeCode,
-            operatorId: opId,
-            operators,
-            onProgress: reportAppsheetScheduleProgress,
-          });
-          setScheduleTbDiagnostics(outcome.diagnostics);
-          if (outcome.tbFilteredRawCount === 0) {
-            setSchedules([]);
-            setIsUsingAppsheetSchedules(true);
-            schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
-            return;
-          }
-          const { resolvedSchedules, normalizedForSync } = outcome;
-          setSchedules(resolvedSchedules);
-          setIsUsingAppsheetSchedules(true);
-          schedulesCacheRef.current[cacheKey] = {
-            items: resolvedSchedules,
-            source: "appsheet",
-          };
-
-          void (async () => {
-            try {
-              if (normalizedForSync.length > 0) {
-                await scheduleApi.syncFromAppSheet(normalizedForSync as unknown[]);
-              }
-              const refreshed = await scheduleService.getAll(rid, opId, true, "Đi").catch(() => []);
-              if (Array.isArray(refreshed) && refreshed.length > 0) {
-                const dbKey = scheduleCacheKey(rid, opId, "database");
-                schedulesCacheRef.current[dbKey] = { items: refreshed, source: "database" };
-              }
-            } catch {
-              /* giữ UI AppSheet */
-            }
-          })();
-        } catch (error) {
-          console.error("Failed to load schedules:", error);
-          toast.error(
-            error instanceof Error ? error.message : "Không tải được lịch từ AppSheet",
-          );
-        } finally {
-          setIsLoadingAppsheetSchedules(false);
-        }
+        const dbData = await scheduleService.getAll(rid, opId, true, "Đi");
+        const list = Array.isArray(dbData) ? dbData : [];
+        setSchedules(list);
+        schedulesCacheRef.current[cacheKey] = list;
       } catch (error) {
         console.error("Failed to load schedules:", error);
+        setSchedules([]);
       }
     },
-    [routes, operators, scheduleDataSource, reportAppsheetScheduleProgress],
+    [],
   );
-
-  /**
-   * AppSheet: Ref_Tuyen (mã tuyến) ↔ THONGBAO_KHAITHAC.Ref_Tuyen → ID_TB;
-   * BieuDoChayXeChiTiet.Ref_ThongBaoKhaiThac = ID_TB; Chieu = Đi; giờ từ GioXuatBen.
-   */
-  const loadSchedulesFromAppsheetTbJoin = useCallback(async () => {
-    const rid = routeId;
-    const opId = selectedOperatorId || undefined;
-    if (!rid) {
-      toast.warn("Chọn tuyến trước");
-      return;
-    }
-    const routeCode = routes.find((r) => r.id === rid)?.routeCode?.trim() || "";
-    if (!routeCode) {
-      toast.error("Tuyến không có mã (route_code)");
-      return;
-    }
-
-    setIsLoadingTbJoinSchedules(true);
-    setScheduleDataSource("appsheet");
-    try {
-      setScheduleFetchSteps([]);
-      setScheduleTbDiagnostics(null);
-      const outcome = await fetchSchedulesFromAppsheetTbJoin({
-        routeId: rid,
-        routeCode,
-        operatorId: opId,
-        operators,
-        onProgress: reportAppsheetScheduleProgress,
-      });
-      setScheduleTbDiagnostics(outcome.diagnostics);
-
-      if (outcome.tbFilteredRawCount === 0) {
-        setSchedules([]);
-        setScheduleId("");
-        setIsUsingAppsheetSchedules(true);
-        toast.info("Không có nút chạy cố định khớp TB khai thác (Ref_Tuyen → ID_TB) chiều Đi");
-        return;
-      }
-
-      const { resolvedSchedules, normalizedForSync } = outcome;
-      const appKey = scheduleCacheKey(rid, opId, "appsheet");
-      schedulesCacheRef.current[appKey] = { items: resolvedSchedules, source: "appsheet" };
-      setSchedules(resolvedSchedules);
-      setScheduleId("");
-      setIsUsingAppsheetSchedules(true);
-      toast.success(
-        resolvedSchedules.length > 0
-          ? `Đã tải ${resolvedSchedules.length} biểu đồ giờ từ AppSheet (theo TB khai thác)`
-          : "Đã lọc theo TB khai thác nhưng chưa gán được đơn vị — chọn đơn vị hoặc bỏ lọc nhà xe",
-      );
-
-      void (async () => {
-        try {
-          if (normalizedForSync.length > 0) {
-            await scheduleApi.syncFromAppSheet(normalizedForSync as unknown[]);
-          }
-          const refreshed = await scheduleService.getAll(rid, opId, true, "Đi").catch(() => []);
-          if (Array.isArray(refreshed) && refreshed.length > 0) {
-            const dbKey = scheduleCacheKey(rid, opId, "database");
-            schedulesCacheRef.current[dbKey] = { items: refreshed, source: "database" };
-          }
-        } catch {
-          /* giữ danh sách TB trên UI */
-        }
-      })();
-    } catch (e) {
-      console.error("[loadSchedulesFromAppsheetTbJoin]", e);
-      toast.error("Không tải được lịch từ AppSheet");
-    } finally {
-      setIsLoadingTbJoinSchedules(false);
-    }
-  }, [routeId, selectedOperatorId, routes, operators, reportAppsheetScheduleProgress]);
-
-  const handleScheduleDataSourceChange = useCallback((next: ScheduleDataSource) => {
-    setScheduleDataSource(next);
-    setScheduleId("");
-    if (next === "database") {
-      setScheduleFetchSteps([]);
-      setScheduleTbDiagnostics(null);
-    }
-  }, []);
 
   const calculateTotal = useCallback(() => {
     const total = serviceCharges.reduce((sum, charge) => sum + charge.totalAmount, 0);
@@ -531,11 +350,8 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       }
 
+      void vehicleFound; // suppress unused variable warning
 
-      // Note: We deliberately removed the blocking RTDB/AppSheet seat capacity lookup here.
-      // It is now handled completely asynchronously by the useEffect below to prevent 
-      // the dialog from freezing for 10+ seconds while querying AppSheet's API.
-      
       {
         const r = recordRef.current;
         if (r.seatCount && r.seatCount > 0) setSeatCount(r.seatCount.toString());
@@ -916,11 +732,6 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       setScheduleWarning("");
       return;
     }
-    // When schedules are still sourced from AppSheet (non-UUID ids), skip DB validate.
-    if (isUsingAppsheetSchedules) {
-      setScheduleWarning("");
-      return;
-    }
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       scheduleId.trim(),
     );
@@ -953,12 +764,6 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       setTripLimitData(null);
       return;
     }
-    if (isUsingAppsheetSchedules) {
-      // DB schedules chưa sẵn sàng; tránh chặn luồng cấp phép bằng trip-limit sai.
-      setTripLimitWarning("");
-      setTripLimitData(null);
-      return;
-    }
 
     let cancelled = false;
     scheduleService.checkTripLimit(routeId, record.vehiclePlateNumber, departureDate)
@@ -980,7 +785,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
         }
       });
     return () => { cancelled = true; };
-  }, [routeId, departureDate, record.vehiclePlateNumber, isUsingAppsheetSchedules, relaxPermitEligibleChecks]);
+  }, [routeId, departureDate, record.vehiclePlateNumber, relaxPermitEligibleChecks]);
 
   useEffect(() => {
     calculateTotal();
@@ -1028,49 +833,6 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
       setBedCount(selectedVehicle.bedCapacity.toString());
     }
   }, [selectedVehicle, record.seatCount]);
-
-  /** Lấy ghế từ RTDB và AppSheet (bất đồng bộ để không block UI). */
-  useEffect(() => {
-    const plate = record.vehiclePlateNumber?.trim() || selectedVehicle?.plateNumber?.trim();
-    if (!plate) return;
-    const ac = new AbortController();
-    let cancelled = false;
-    void (async () => {
-      try {
-        const needSeat = !(record.seatCount && record.seatCount > 0);
-        if (!needSeat) return;
-
-        // 1. Thử RTDB trước (cực nhanh)
-        try {
-          const lookupResult = await vehicleService.lookupByPlate(plate);
-          if (cancelled || ac.signal.aborted) return;
-          if (lookupResult?.seatCapacity && lookupResult.seatCapacity > 0) {
-            setSeatCount(String(lookupResult.seatCapacity));
-            return; // Đã có số ghế, không cần gọi AppSheet nữa (trừ khi cần lấy giường, tạm bỏ qua để tối ưu)
-          }
-        } catch {
-          /* ignore */
-        }
-
-        // 2. Không có trong RTDB thì gọi AppSheet
-        const caps = await fetchXeCapacitiesFromAppsheetByPlate(plate, ac.signal);
-        if (cancelled || ac.signal.aborted) return;
-        
-        if (caps.seat != null && caps.seat > 0) {
-          setSeatCount(String(caps.seat));
-        }
-        if (caps.bed != null && caps.bed > 0) {
-          setBedCount(String(caps.bed));
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-      ac.abort();
-    };
-  }, [record.seatCount, record.vehiclePlateNumber, selectedVehicle?.plateNumber]);
 
   // Auto-fill routeId: only from active badge routes (no fallback to expired badges or dispatch records)
   useEffect(() => {
@@ -1155,8 +917,7 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     }
   }, [scheduleId, schedules]);
 
-  // Remap scheduleId when schedules list is replaced (AppSheet fallback -> DB refresh)
-  // Match by HH:mm (departureTime) because DB ids differ from AppSheet firebaseId.
+  // Remap scheduleId when schedules list is replaced (match by HH:mm departureTime)
   useEffect(() => {
     if (!scheduleId) return;
     const exists = schedules.some((s) => s.id === scheduleId);
@@ -1248,18 +1009,11 @@ export function useCapPhepDialog(record: DispatchRecord, onClose: () => void, on
     noValidScheduleWarning,
     tripLimitWarning,
     tripLimitData,
-    scheduleDataSource,
-    handleScheduleDataSourceChange,
     // Methods
     submitPermit, handleEligible, handleNotEligibleConfirm,
     handleDocumentDialogSuccess, handleAddServiceSuccess, handleAddDriverSuccess,
     getDocumentsCheckResults, checkAllDocumentsValid, getOverallStatus,
     getBadgeRoutesForVehicle,
-    loadSchedulesFromAppsheetTbJoin,
-    isLoadingTbJoinSchedules,
-    isLoadingAppsheetSchedules,
-    scheduleFetchSteps,
-    scheduleTbDiagnostics,
     relaxPermitEligibleChecks,
     eligibleButtonDisabled,
     plateBadgeKindLabel,

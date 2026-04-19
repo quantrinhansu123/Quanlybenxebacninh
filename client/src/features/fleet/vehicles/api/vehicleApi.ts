@@ -52,27 +52,6 @@ export const vehicleApi = {
       return []
     }
   },
-
-  /** Push AppSheet-polled vehicles to backend for DB persistence (chunked) */
-  syncFromAppSheet: async (vehicles: unknown[]): Promise<void> => {
-    if (!vehicles.length) return
-    // Add unstable/metadata fields here (not in normalizer, to avoid breaking per-record diff)
-    const now = new Date().toISOString()
-    const withMeta = (vehicles as Record<string, unknown>[]).map(v => ({
-      ...v,
-      firebaseId: v.plateNumber, // Use plate as stable ID
-      source: 'appsheet',
-      syncedAt: now,
-    }))
-    try {
-      for (let i = 0; i < withMeta.length; i += SYNC_CHUNK_SIZE) {
-        const chunk = withMeta.slice(i, i + SYNC_CHUNK_SIZE)
-        await api.post('/vehicles/appsheet-sync', { vehicles: chunk })
-      }
-    } catch (error) {
-      console.warn('AppSheet vehicle sync to DB failed:', error)
-    }
-  },
 }
 
 // Re-export for backward compatibility

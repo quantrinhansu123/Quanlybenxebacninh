@@ -53,10 +53,6 @@ export function ChoXeVaoBenDialog({
     handleSubmit,
     handleClose,
     handlePermitDialogClose,
-    loadSchedulesFromAppsheetTbJoin,
-    isLoadingTbJoinSchedules,
-    scheduleDataSource,
-    handleScheduleDataSourceChange,
   } = useChoXeVaoBenForm({ open, editRecord, onSuccess, onClose });
 
   // Handle browser back button - close dialog instead of navigating away
@@ -143,14 +139,6 @@ export function ChoXeVaoBenDialog({
                 onPassengersArrivedChange={setPassengersArrived}
                 onTransportOrderCodeChange={setTransportOrderCode}
                 onRefreshTransportOrder={handleRefreshTransportOrder}
-                onLoadSchedulesFromAppsheetTbJoin={
-                  confirmPassengerDrop ? loadSchedulesFromAppsheetTbJoin : undefined
-                }
-                isLoadingTbJoinSchedules={isLoadingTbJoinSchedules}
-                scheduleDataSource={scheduleDataSource}
-                onScheduleDataSourceChange={
-                  confirmPassengerDrop ? handleScheduleDataSourceChange : undefined
-                }
               />
 
               <TransportOrderPreview

@@ -312,7 +312,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         // Get vehicle type name from vehicle_types table
         const vehicleTypeName = v.vehicleTypeId ? (vehicleTypeMap.get(v.vehicleTypeId) || '') : ''
 
-        // Get vehicle category from metadata (synced from AppSheet LoaiPhuongTien)
+        // Get vehicle category from metadata
         const vehicleCategory = (v.metadata as any)?.vehicle_category || ''
 
         // Get badge expiry date for inspection display

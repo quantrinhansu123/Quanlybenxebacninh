@@ -10,12 +10,6 @@ import type { DispatchDBRecord, DispatchRecord } from './dispatch-types.js'
 /**
  * Map Drizzle database record to API response format
  */
-const metaScheduleId = (record: DispatchDBRecord): string | null => {
-  const m = record.metadata as Record<string, unknown> | null | undefined
-  const v = m?.appsheetScheduleId
-  return typeof v === 'string' && v.trim() ? v.trim() : null
-}
-
 export function mapDispatchToAPI(record: DispatchDBRecord): DispatchRecord {
   return {
     id: record.id,
@@ -33,7 +27,7 @@ export function mapDispatchToAPI(record: DispatchDBRecord): DispatchRecord {
     vehiclePlateNumber: record.vehiclePlateNumber || '',
     driverId: record.driverId || '',
     driverName: record.driverFullName || '',
-    scheduleId: record.scheduleId || metaScheduleId(record),
+    scheduleId: record.scheduleId,
     routeId: record.routeId || null,
     route: record.routeName ? {
       id: record.routeId!,

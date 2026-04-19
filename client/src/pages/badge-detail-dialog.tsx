@@ -43,13 +43,25 @@ import {
 } from "@/components/ui/table"
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { type VehicleBadge } from "@/services/vehicle-badge.service"
-import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
-import {
-  normalizeScheduleRows,
-  type NormalizedAppSheetSchedule,
-} from "@/services/appsheet-normalize-schedules"
-import { normalizeBusScheduleRows } from "@/services/appsheet-normalize-bus-schedules"
 import { isOpenableDocumentUrl, normalizePdfHref } from "@/utils/pdf-href"
+
+// Local type for schedule diagram rows (previously from AppSheet, now empty)
+type NormalizedAppSheetSchedule = {
+  firebaseId: string
+  routeCode?: string
+  tbRefTuyen?: string
+  routeFirebaseId?: string
+  departureTime?: string
+  direction?: string
+  frequencyType?: "daily" | "weekly" | "specific"
+  daysOfWeek: number[]
+  daysOfMonth: number[]
+  calendarType?: string
+  effectiveFrom?: string
+  notificationNumber?: string
+  notificationFileUrl?: string
+  tripStatus?: string
+}
 import { Button } from "@/components/ui/button"
 import { InlinePdfViewer } from "@/components/pdf/InlinePdfViewer"
 
@@ -162,24 +174,13 @@ export default function BadgeDetailDialog({
   operatorName = "",
 }: BadgeDetailDialogProps) {
   const [tab, setTab] = useState<"info" | "diagram">("info")
-  const [fixedSchedules, setFixedSchedules] = useState<NormalizedAppSheetSchedule[]>([])
-  const [busSchedules, setBusSchedules] = useState<NormalizedAppSheetSchedule[]>([])
+  const [fixedSchedules] = useState<NormalizedAppSheetSchedule[]>([])
+  const [busSchedules] = useState<NormalizedAppSheetSchedule[]>([])
 
-  const isFixedBadge = !!badge && badge.badge_type !== "Buýt"
-  const isBusBadge = !!badge && badge.badge_type === "Buýt"
-
-  const { isPolling: fixedPolling, error: fixedScheduleError } = useAppSheetPolling({
-    endpointKey: "fixedSchedules",
-    normalize: normalizeScheduleRows,
-    onData: (data) => setFixedSchedules(data as NormalizedAppSheetSchedule[]),
-    enabled: open && isFixedBadge,
-  })
-  const { isPolling: busPolling, error: busScheduleError } = useAppSheetPolling({
-    endpointKey: "busSchedules",
-    normalize: normalizeBusScheduleRows,
-    onData: (data) => setBusSchedules(data as NormalizedAppSheetSchedule[]),
-    enabled: open && isBusBadge,
-  })
+  const fixedPolling = false
+  const fixedScheduleError = null
+  const busPolling = false
+  const busScheduleError = null
 
   useEffect(() => {
     setTab("info")
@@ -595,7 +596,7 @@ function BadgeDiagramTabContent({
                   <TableCell className="text-center text-xs">
                     {s.daysOfMonth.length ? s.daysOfMonth.join(", ") : "—"}
                   </TableCell>
-                  <TableCell className="text-center text-xs">{formatCalendar(s.calendarType)}</TableCell>
+                  <TableCell className="text-center text-xs">{formatCalendar(s.calendarType ?? "")}</TableCell>
                   <TableCell className="text-center text-xs whitespace-nowrap">
                     {formatDate(s.effectiveFrom)}
                   </TableCell>

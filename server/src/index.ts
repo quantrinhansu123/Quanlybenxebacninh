@@ -28,7 +28,6 @@ import provinceRoutes from './routes/province.routes.js'
 import chatRoutes from './modules/chat/chat.routes.js'
 import quanlyDataRoutes from './routes/quanly-data.routes.js'
 import operationNoticeRoutes from './routes/operation-notice.routes.js'
-import gtvtSyncRoutes from './routes/gtvt-sync.routes.js'
 import userRoutes from './routes/user.routes.js'
 import webhookRoutes from './routes/webhook.routes.js'
 
@@ -56,7 +55,6 @@ const allRoutes: RouteMount[] = [
   { path: '/api/chat', router: chatRoutes },
   { path: '/api/quanly-data', router: quanlyDataRoutes },
   { path: '/api/operation-notices', router: operationNoticeRoutes },
-  { path: '/api/integrations/gtvt', router: gtvtSyncRoutes },
   { path: '/api/users', router: userRoutes },
   { path: '/api/webhooks', router: webhookRoutes },
 ]
@@ -100,7 +98,6 @@ export const routeGroups = {
   ] as RouteMount[],
   webhooks: [
     { path: '/api/webhooks', router: webhookRoutes },
-    { path: '/api/integrations/gtvt', router: gtvtSyncRoutes },
     { path: '/api/upload', router: uploadRoutes },
     { path: '/api/operation-notices', router: operationNoticeRoutes },
   ] as RouteMount[],

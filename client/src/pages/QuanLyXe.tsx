@@ -26,16 +26,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog"
 import { vehicleService, VehicleForm, VehicleView } from "@/features/fleet/vehicles"
-import { vehicleBadgeService } from "@/features/fleet/vehicle-badges"
-import { operatorService } from "@/features/fleet/operators"
-import { routeService } from "@/features/fleet/routes"
 import { quanlyDataService } from "@/services/quanly-data.service"
-import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
-import { normalizeVehicleRows, type NormalizedAppSheetVehicle } from "@/services/appsheet-normalize-vehicles"
-import { normalizeBadgeRows, type NormalizedAppSheetBadge } from "@/services/appsheet-normalize-badges"
-import { normalizeOperatorRows, type NormalizedAppSheetOperator } from "@/services/appsheet-normalize-operators"
-import { normalizeFixedRouteRows } from "@/services/appsheet-normalize-fixed-routes"
-import { normalizeBusRouteRows } from "@/services/appsheet-normalize-bus-routes"
+
 import type { Vehicle } from "@/types"
 import { useUIStore } from "@/store/ui.store"
 import { useAuthStore } from "@/store/auth.store"
@@ -120,96 +112,6 @@ export default function QuanLyXe() {
 
   // Handle browser back button for dialog
   const { handleDialogOpenChange } = useDialogHistory(dialogOpen, setDialogOpen, "vehicleDialogOpen")
-
-  // AppSheet polling: auto-update vehicles every 10s from GTVT
-  const normPlate = (p: string) => (p || '').replace(/[\s.\-]/g, '').toUpperCase()
-
-  const handleAppSheetData = useCallback((data: NormalizedAppSheetVehicle[], _isInitial: boolean) => {
-    setVehicles(prev => {
-      const plateMap = new Map(prev.map(v => [normPlate(v.plateNumber), v]))
-      let changed = false
-
-      for (const av of data) {
-        const existing = plateMap.get(av.plateNumber)
-        if (existing) {
-          // Only update AppSheet-sourced fields, never overwrite user edits
-          if (av.seatCapacity && av.seatCapacity !== (existing as any).seatCapacity) {
-            (existing as any).seatCapacity = av.seatCapacity
-            changed = true
-          }
-        }
-        // Don't add new vehicles from AppSheet - they need operator resolution
-      }
-
-      return changed ? [...plateMap.values()] : prev
-    })
-  }, [])
-
-  const { lastPollAt } = useAppSheetPolling({
-    endpointKey: 'vehicles',
-    normalize: normalizeVehicleRows,
-    onData: handleAppSheetData,
-    onSyncToDb: (data) => vehicleService.syncFromAppSheet(data),
-    getKey: (v) => v.plateNumber,
-    enabled: true,
-  })
-
-  // Badge polling: sync PHUHIEUXE to DB + build plate→operatorRef lookup
-  const [plateToOperatorRef, setPlateToOperatorRef] = useState<Map<string, string>>(new Map())
-
-  useAppSheetPolling({
-    endpointKey: 'badges',
-    normalize: normalizeBadgeRows,
-    onData: (data: NormalizedAppSheetBadge[]) => {
-      // Build plate → operatorRef map for resolution chain
-      const map = new Map<string, string>()
-      for (const b of data) {
-        if (b.plateNumber && b.operatorRef) map.set(b.plateNumber, b.operatorRef)
-      }
-      setPlateToOperatorRef(map)
-    },
-    onSyncToDb: (data) => vehicleBadgeService.syncFromAppSheet(data),
-    getKey: (b) => b.badgeNumber,
-    enabled: true,
-  })
-
-  // Operator polling: sync THONGTINDONVIVANTAI to DB + build ref→name lookup
-  const [operatorRefMap, setOperatorRefMap] = useState<Map<string, { name: string; province: string }>>(new Map())
-
-  useAppSheetPolling({
-    endpointKey: 'operators',
-    normalize: normalizeOperatorRows,
-    onData: (data: NormalizedAppSheetOperator[]) => {
-      // Build firebaseId → {name, province} for resolution chain
-      const map = new Map<string, { name: string; province: string }>()
-      for (const op of data) {
-        if (op.firebaseId) map.set(op.firebaseId, { name: op.name, province: op.province || '' })
-      }
-      setOperatorRefMap(map)
-    },
-    onSyncToDb: (data) => operatorService.syncFromAppSheet(data),
-    getKey: (op) => op.firebaseId,
-    enabled: true,
-  })
-
-  // Route polling: sync DANHMUCTUYENCODINH + DANHMUCTUYENBUYT to DB (no UI state needed)
-  useAppSheetPolling({
-    endpointKey: 'fixedRoutes',
-    normalize: normalizeFixedRouteRows,
-    onData: () => { },
-    onSyncToDb: (data) => routeService.syncFromAppSheet(data),
-    getKey: (r) => (r as any).routeCode,
-    enabled: true,
-  })
-
-  useAppSheetPolling({
-    endpointKey: 'busRoutes',
-    normalize: normalizeBusRouteRows,
-    onData: () => { },
-    onSyncToDb: (data) => routeService.syncFromAppSheet(data),
-    getKey: (r) => (r as any).firebaseId,
-    enabled: true,
-  })
 
   useEffect(() => {
     setTitle("Quản lý xe")
@@ -302,19 +204,10 @@ export default function QuanLyXe() {
     }
   }
 
-  // Resolution chain: plate → badge.operatorRef → operator.name
-  // Falls back to backend-provided operatorName if AppSheet data not yet loaded
+  // Resolution chain: falls back to backend-provided operatorName
   const resolveOperatorName = useCallback((vehicle: Vehicle): string => {
-    const plate = (vehicle.plateNumber || '').replace(/[\s.\-]/g, '').toUpperCase()
-    if (plate && plateToOperatorRef.size > 0 && operatorRefMap.size > 0) {
-      const ref = plateToOperatorRef.get(plate)
-      if (ref) {
-        const op = operatorRefMap.get(ref)
-        if (op?.name) return op.name
-      }
-    }
     return getOperatorName(vehicle)
-  }, [plateToOperatorRef, operatorRefMap])
+  }, [])
 
   // Filter base for dropdown options: only badge vehicles when badge filter is on
   const badgeBaseVehicles = useMemo(() =>
@@ -683,11 +576,6 @@ export default function QuanLyXe() {
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
             Hiển thị <strong className="text-slate-700">{paginatedVehicles.length}</strong> trong tổng số <strong className="text-slate-700">{filteredVehicles.length.toLocaleString()}</strong> xe
-            {lastPollAt && (
-              <span className="ml-3 text-xs text-slate-400">
-                GTVT cập nhật: {format(lastPollAt, "HH:mm:ss")}
-              </span>
-            )}
           </span>
           {totalPages > 1 && (
             <span>Trang {currentPage} / {totalPages}</span>

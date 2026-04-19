@@ -3,10 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useUIStore } from '@/store/ui.store'
 import { prefetchAppData } from '@/services/data-prefetch.service'
-import { useAppSheetPolling } from '@/hooks/use-appsheet-polling'
-import { normalizeScheduleRows } from '@/services/appsheet-normalize-schedules'
-import { normalizeBusScheduleRows } from '@/services/appsheet-normalize-bus-schedules'
-import { scheduleApi } from '@/features/fleet/schedules'
+
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -16,24 +13,6 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading, checkAuth } = useAuthStore()
   const { initializeShiftIfNeeded } = useUIStore()
   const hasPrefetched = useRef(false)
-  const shouldEnableScheduleSync = isAuthenticated && !isLoading
-
-  // Global schedule sync: schedules were wired in the worker but never subscribed anywhere.
-  useAppSheetPolling({
-    endpointKey: 'fixedSchedules',
-    normalize: normalizeScheduleRows,
-    onData: () => {},
-    onSyncToDb: (data) => scheduleApi.syncFromAppSheet(data),
-    enabled: shouldEnableScheduleSync,
-  })
-
-  useAppSheetPolling({
-    endpointKey: 'busSchedules',
-    normalize: normalizeBusScheduleRows,
-    onData: () => {},
-    onSyncToDb: (data) => scheduleApi.syncFromAppSheet(data),
-    enabled: shouldEnableScheduleSync,
-  })
 
   useEffect(() => {
     checkAuth()

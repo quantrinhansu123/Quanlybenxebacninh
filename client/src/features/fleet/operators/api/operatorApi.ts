@@ -37,19 +37,6 @@ export const operatorApi = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/operators/${id}`)
   },
-
-  /** Push AppSheet-polled operators to backend for DB persistence (chunked) */
-  syncFromAppSheet: async (operators: unknown[]): Promise<void> => {
-    if (!operators.length) return
-    try {
-      for (let i = 0; i < operators.length; i += SYNC_CHUNK_SIZE) {
-        const chunk = (operators as Record<string, unknown>[]).slice(i, i + SYNC_CHUNK_SIZE)
-        await api.post('/vehicles/operators/appsheet-sync', { operators: chunk })
-      }
-    } catch (error) {
-      console.warn('AppSheet operator sync to DB failed:', error)
-    }
-  },
 }
 
 // Re-export for backward compatibility

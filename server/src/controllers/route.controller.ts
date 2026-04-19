@@ -427,21 +427,17 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
     }
 
     // Build query conditions
-    const baseCondition = eq(routes.source, 'appsheet')
-    let whereCondition = baseCondition
+    let whereCondition: any = undefined
 
     if (shouldFilterByStation && stationName) {
-      const stationCondition = or(
+      whereCondition = or(
         sql`TRIM(${routes.departureStation}) = ${stationName}`,
         sql`TRIM(${routes.arrivalStation}) = ${stationName}`
       )
-      if (stationCondition) {
-        whereCondition = and(baseCondition, stationCondition) || baseCondition
-      }
       console.log(`[Routes] Filtering by station: ${stationName}`)
     }
 
-    // Get routes from database — only AppSheet-synced routes (exclude legacy ETL/manual)
+    // Get routes from database
     const routesData = await db
       .select()
       .from(routes)
@@ -452,7 +448,7 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
 
     const routesFormatted = routesData.map((route) => ({
       id: route.id,
-      // Use actual DB routeCode (preserves BUS- prefix) — matches AppSheet normalizer keys
+      // Use actual DB routeCode (preserves BUS- prefix)
       routeCode: (route.routeCode || '').trim(),
       routeName: getDisplayRouteName(route.departureStation, route.arrivalStation, route.routeCode, route.routeCodeOld, route.routeType),
       routeCodeOld: route.routeCodeOld || '',

@@ -1,2 +1,2 @@
 /** Nguồn danh sách biểu đồ giờ khi chọn tuyến */
-export type ScheduleDataSource = 'database' | 'appsheet'
+export type ScheduleDataSource = 'database'

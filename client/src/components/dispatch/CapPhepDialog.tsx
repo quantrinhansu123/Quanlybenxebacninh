@@ -276,13 +276,6 @@ export function CapPhepDialog({
                   schedules={hook.schedules}
                   departureTime={hook.departureTime}
                   scheduleWarning={hook.scheduleWarning}
-                  scheduleDataSource={hook.scheduleDataSource}
-                  onScheduleDataSourceChange={hook.handleScheduleDataSourceChange}
-                  onLoadSchedulesFromAppsheetTbJoin={hook.loadSchedulesFromAppsheetTbJoin}
-                  isLoadingTbJoinSchedules={hook.isLoadingTbJoinSchedules}
-                  isLoadingAppsheetSchedules={hook.isLoadingAppsheetSchedules}
-                  scheduleFetchSteps={hook.scheduleFetchSteps}
-                  scheduleTbDiagnostics={hook.scheduleTbDiagnostics}
                   plateBadgeKindLabel={hook.plateBadgeKindLabel}
                 />
                 <DriverSection

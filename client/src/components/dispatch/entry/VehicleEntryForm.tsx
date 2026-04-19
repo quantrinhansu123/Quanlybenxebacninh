@@ -1,12 +1,11 @@
-import { RefreshCw, CloudDownload, Loader2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Autocomplete } from "@/components/ui/autocomplete";
 import { DateTimePicker } from "@/components/DatePicker";
-import type { Route, Schedule, ScheduleDataSource } from "@/types";
-import { ScheduleSourceToggle } from "../ScheduleSourceToggle";
+import type { Route, Schedule } from "@/types";
 
 interface VehicleEntryFormProps {
   vehicleOptions: Array<{ id: string; plateNumber: string }>;
@@ -29,10 +28,6 @@ interface VehicleEntryFormProps {
   onPassengersArrivedChange: (value: string) => void;
   onTransportOrderCodeChange: (value: string) => void;
   onRefreshTransportOrder: () => void;
-  onLoadSchedulesFromAppsheetTbJoin?: () => void | Promise<void>;
-  isLoadingTbJoinSchedules?: boolean;
-  scheduleDataSource?: ScheduleDataSource;
-  onScheduleDataSourceChange?: (v: ScheduleDataSource) => void;
 }
 
 export function VehicleEntryForm({
@@ -55,10 +50,6 @@ export function VehicleEntryForm({
   onPassengersArrivedChange,
   onTransportOrderCodeChange,
   onRefreshTransportOrder,
-  onLoadSchedulesFromAppsheetTbJoin,
-  isLoadingTbJoinSchedules = false,
-  scheduleDataSource = "database",
-  onScheduleDataSourceChange,
 }: VehicleEntryFormProps) {
   return (
     <div className="space-y-8">
@@ -142,16 +133,6 @@ export function VehicleEntryForm({
                 Biểu đồ giờ
               </Label>
               <div className="flex flex-col gap-2 mt-1">
-                {onScheduleDataSourceChange && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600">Nguồn:</span>
-                    <ScheduleSourceToggle
-                      value={scheduleDataSource}
-                      onChange={onScheduleDataSourceChange}
-                      disabled={!routeId}
-                    />
-                  </div>
-                )}
                 <Select
                   id="schedule"
                   value={scheduleId}
@@ -165,21 +146,6 @@ export function VehicleEntryForm({
                     </option>
                   ))}
                 </Select>
-                {onLoadSchedulesFromAppsheetTbJoin && (
-                  <button
-                    type="button"
-                    onClick={() => void onLoadSchedulesFromAppsheetTbJoin()}
-                    disabled={!routeId || isLoadingTbJoinSchedules}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 disabled:pointer-events-none"
-                  >
-                    {isLoadingTbJoinSchedules ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                    ) : (
-                      <CloudDownload className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    Lấy từ AppSheet (TB khai thác → ID_TB → giờ, chiều Đi)
-                  </button>
-                )}
               </div>
             </div>
 

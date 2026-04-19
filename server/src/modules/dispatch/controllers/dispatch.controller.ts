@@ -139,12 +139,7 @@ export const createDispatchRecord = async (req: AuthRequest, res: Response) => {
     let scheduleIdForInsert: string | null = null
     const createMeta: Record<string, unknown> = {}
     if (input.scheduleId?.trim()) {
-      const sid = input.scheduleId.trim()
-      if (isUuidString(sid)) {
-        scheduleIdForInsert = sid
-      } else {
-        createMeta.appsheetScheduleId = sid
-      }
+      scheduleIdForInsert = input.scheduleId.trim()
     }
 
     const insertData = {
@@ -238,15 +233,6 @@ export const issuePermit = async (req: AuthRequest, res: Response) => {
     const metadata = { ...(currentRecord.metadata as Record<string, unknown> || {}) }
     if (input.replacementVehicleId) metadata.replacementVehicleId = input.replacementVehicleId
     else if (input.replacementVehicleId === '') delete metadata.replacementVehicleId
-
-    if (input.scheduleId?.trim()) {
-      const sid = input.scheduleId.trim()
-      if (isUuidString(sid)) {
-        delete metadata.appsheetScheduleId
-      } else {
-        metadata.appsheetScheduleId = sid
-      }
-    }
 
     const updateData: Record<string, unknown> = {
       boardingPermitTime: getCurrentVietnamTimeAsDate(),

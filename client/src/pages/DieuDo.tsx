@@ -43,8 +43,7 @@ import {
   VehicleCard,
 } from "@/components/dispatch/common";
 import { useDieuDo } from "@/hooks/useDieuDo";
-import { useDispatchStore } from "@/store/dispatch.store";
-import { ScheduleSourceToggle } from "@/components/dispatch/ScheduleSourceToggle";
+
 import { cn } from "@/lib/utils";
 import type { DispatchRecord } from "@/types";
 
@@ -75,9 +74,6 @@ export default function DieuDo() {
     isMonthlyPaymentVehicle,
     getVehicleStatus,
   } = useDieuDo();
-
-  const scheduleDataSource = useDispatchStore((s) => s.scheduleDataSource);
-  const setScheduleDataSource = useDispatchStore((s) => s.setScheduleDataSource);
 
   const getActionButtons = (record: DispatchRecord, status: DisplayStatus) => {
     const buttons: React.ReactNode[] = [];
@@ -216,13 +212,6 @@ export default function DieuDo() {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex flex-wrap items-center gap-2 px-1">
-              <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Biểu đồ giờ (vào bến):</span>
-              <ScheduleSourceToggle
-                value={scheduleDataSource}
-                onChange={setScheduleDataSource}
-              />
-            </div>
             <div className="relative flex-1 lg:w-80">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
               <Input placeholder="Tìm biển số, tuyến, tài xế..." className="pl-12 h-12 bg-white/80 backdrop-blur border-slate-200 text-slate-900 placeholder:text-slate-400 rounded-xl" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />

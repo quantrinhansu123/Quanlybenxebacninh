@@ -6,8 +6,7 @@ import { scheduleService } from "@/services/schedule.service";
 import { dispatchService } from "@/services/dispatch.service";
 import { driverService } from "@/services/driver.service";
 import { operatorService } from "@/services/operator.service";
-import { scheduleApi } from "@/features/fleet/schedules";
-import { fetchSchedulesFromAppsheetTbJoin } from "@/services/appsheet-fetch-schedules-tb-join";
+
 import { useUIStore } from "@/store/ui.store";
 import { useDispatchStore } from "@/store/dispatch.store";
 import { parseDatabaseTimeForEdit } from "@/lib/vietnam-time";
@@ -18,7 +17,6 @@ import type {
   DispatchInput,
   DispatchRecord,
   Operator,
-  ScheduleDataSource,
 } from "@/types";
 import type { Shift } from "@/services/shift.service";
 
@@ -50,23 +48,16 @@ export function useChoXeVaoBenForm({
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [vehicleOperatorId, setVehicleOperatorId] = useState("");
-  const [isLoadingTbJoinSchedules, setIsLoadingTbJoinSchedules] = useState(false);
-  const scheduleDataSource = useDispatchStore((s) => s.scheduleDataSource);
-  const setScheduleDataSource = useDispatchStore((s) => s.setScheduleDataSource);
-  const schedulesCacheRef = useRef<
-    Record<string, { items: Schedule[]; source: ScheduleDataSource }>
-  >({});
+
+  const schedulesCacheRef = useRef<Record<string, { items: Schedule[] }>>({});
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [transportOrderDisplay] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showPermitDialog, setShowPermitDialog] = useState(false);
   const [permitDispatchRecord, setPermitDispatchRecord] = useState<DispatchRecord | null>(null);
-  const [hasUserModified, setHasUserModified] = useState(false);  // Prevents vehicleId reset after user clears
+  const [hasUserModified, setHasUserModified] = useState(false);
   const { currentShift } = useUIStore();
-
-  const scheduleCacheKey = (rid: string, opId: string | undefined, source: ScheduleDataSource) =>
-    `${opId ? `${rid}_${opId}` : rid}::${source}`;
 
   const getShiftIdFromCurrentShift = (): string | undefined => {
     if (!currentShift || currentShift === "<Trống>") {
@@ -122,65 +113,22 @@ export function useChoXeVaoBenForm({
     async (rid: string) => {
       const opId = vehicleOperatorId || undefined;
       try {
-        const cacheKey = scheduleCacheKey(rid, opId, scheduleDataSource);
+        const cacheKey = `${opId ? `${rid}_${opId}` : rid}`;
         const hit = schedulesCacheRef.current[cacheKey];
         if (hit) {
           setSchedules(hit.items);
           return;
         }
 
-        if (scheduleDataSource === "database") {
-          const data = await scheduleService.getAll(rid, opId, true, "Đi");
-          const list = Array.isArray(data) ? data : [];
-          setSchedules(list);
-          schedulesCacheRef.current[cacheKey] = { items: list, source: "database" };
-          return;
-        }
-
-        const routeCode = routes.find((r) => r.id === rid)?.routeCode?.trim() || "";
-        if (!routeCode) {
-          setSchedules([]);
-          schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
-          return;
-        }
-
-        const outcome = await fetchSchedulesFromAppsheetTbJoin({
-          routeId: rid,
-          routeCode,
-          operatorId: opId,
-          operators,
-        });
-        if (outcome.tbFilteredRawCount === 0) {
-          setSchedules([]);
-          schedulesCacheRef.current[cacheKey] = { items: [], source: "appsheet" };
-          return;
-        }
-        const { resolvedSchedules, normalizedForSync } = outcome;
-        setSchedules(resolvedSchedules);
-        schedulesCacheRef.current[cacheKey] = {
-          items: resolvedSchedules,
-          source: "appsheet",
-        };
-
-        void (async () => {
-          try {
-            if (normalizedForSync.length > 0) {
-              await scheduleApi.syncFromAppSheet(normalizedForSync as unknown[]);
-            }
-            const refreshed = await scheduleService.getAll(rid, opId, true, "Đi").catch(() => []);
-            if (Array.isArray(refreshed) && refreshed.length > 0) {
-              const dbKey = scheduleCacheKey(rid, opId, "database");
-              schedulesCacheRef.current[dbKey] = { items: refreshed, source: "database" };
-            }
-          } catch {
-            /* ignore */
-          }
-        })();
+        const data = await scheduleService.getAll(rid, opId, true, "Đi");
+        const list = Array.isArray(data) ? data : [];
+        setSchedules(list);
+        schedulesCacheRef.current[cacheKey] = { items: list };
       } catch (error) {
         console.error("Failed to load schedules:", error);
       }
     },
-    [scheduleDataSource, routes, operators, vehicleOperatorId],
+    [routes, vehicleOperatorId],
   );
 
   useEffect(() => {
@@ -191,7 +139,6 @@ export function useChoXeVaoBenForm({
     }
   }, [routeId, loadSchedules]);
 
-  // Auto-generate transport order code when vehicle is selected
   useEffect(() => {
     if (vehicleId && !transportOrderCode && hasUserModified) {
       const today = new Date();
@@ -202,14 +149,10 @@ export function useChoXeVaoBenForm({
   }, [vehicleId]);
 
   useEffect(() => {
-    // Only initialize from editRecord if user hasn't modified the vehicle selection
     if (isEditMode && editRecord && !hasUserModified) {
-      // Set vehicleId - editRecord.vehicleId may not match current vehicle options
-      // Keep the original vehicleId for now, Autocomplete will show plateNumber from label
       setVehicleId(editRecord.vehicleId);
       setRouteId(editRecord.routeId || "");
       if (editRecord.entryTime) {
-        // Use parseDatabaseTimeForEdit to handle "fake UTC" timezone correctly
         setEntryDateTime(parseDatabaseTimeForEdit(editRecord.entryTime));
       }
       if (editRecord.driverId) {
@@ -222,7 +165,7 @@ export function useChoXeVaoBenForm({
   }, [isEditMode, editRecord, hasUserModified]);
 
   const resetForm = () => {
-    setHasUserModified(false);  // Reset flag to allow re-initialization from editRecord
+    setHasUserModified(false);
     setVehicleId("");
     setRouteId("");
     setScheduleId("");
@@ -232,7 +175,6 @@ export function useChoXeVaoBenForm({
     setConfirmPassengerDrop(false);
     setPerformPermitAfterEntry(false);
     setSelectedDriver(null);
-    setScheduleDataSource("database");
     schedulesCacheRef.current = {};
   };
 
@@ -277,79 +219,8 @@ export function useChoXeVaoBenForm({
     }
   };
 
-  const handleScheduleDataSourceChange = (next: ScheduleDataSource) => {
-    setScheduleDataSource(next);
-    setScheduleId("");
-  };
-
-  const loadSchedulesFromAppsheetTbJoin = async () => {
-    if (!routeId) {
-      toast.warning("Chọn tuyến trước");
-      return;
-    }
-    const routeCode = routes.find((r) => r.id === routeId)?.routeCode?.trim() || "";
-    if (!routeCode) {
-      toast.error("Tuyến không có mã (route_code)");
-      return;
-    }
-
-    setIsLoadingTbJoinSchedules(true);
-    setScheduleDataSource("appsheet");
-    try {
-      const opId = vehicleOperatorId || undefined;
-      const outcome = await fetchSchedulesFromAppsheetTbJoin({
-        routeId,
-        routeCode,
-        operatorId: opId,
-        operators,
-      });
-
-      if (outcome.tbFilteredRawCount === 0) {
-        setSchedules([]);
-        setScheduleId("");
-        toast.info("Không có nút chạy cố định khớp TB khai thác (Ref_Tuyen → ID_TB) chiều Đi");
-        return;
-      }
-
-      const appKey = scheduleCacheKey(routeId, opId, "appsheet");
-      schedulesCacheRef.current[appKey] = {
-        items: outcome.resolvedSchedules,
-        source: "appsheet",
-      };
-      setSchedules(outcome.resolvedSchedules);
-      setScheduleId("");
-      toast.success(
-        outcome.resolvedSchedules.length > 0
-          ? `Đã tải ${outcome.resolvedSchedules.length} biểu đồ giờ từ AppSheet (theo TB khai thác)`
-          : "Đã lọc theo TB nhưng chưa gán được đơn vị — kiểm tra mã ĐV trên AppSheet / thông tin xe",
-      );
-
-      void (async () => {
-        try {
-          if (outcome.normalizedForSync.length > 0) {
-            await scheduleApi.syncFromAppSheet(outcome.normalizedForSync as unknown[]);
-          }
-          const refreshed = await scheduleService
-            .getAll(routeId, vehicleOperatorId || undefined, true, "Đi")
-            .catch(() => []);
-          if (Array.isArray(refreshed) && refreshed.length > 0) {
-            const dbKey = scheduleCacheKey(routeId, opId, "database");
-            schedulesCacheRef.current[dbKey] = { items: refreshed, source: "database" };
-          }
-        } catch {
-          /* giữ danh sách TB */
-        }
-      })();
-    } catch (e) {
-      console.error("[loadSchedulesFromAppsheetTbJoin]", e);
-      toast.error("Không tải được lịch từ AppSheet");
-    } finally {
-      setIsLoadingTbJoinSchedules(false);
-    }
-  };
-
   const handleVehicleSelect = (id: string) => {
-    setHasUserModified(true);  // Mark as user-modified to prevent reset from editRecord
+    setHasUserModified(true);
     setVehicleId(id);
   };
 
@@ -360,7 +231,6 @@ export function useChoXeVaoBenForm({
     }
 
     try {
-      // Generate code format: LVC-YYYYMMDD-XXXX
       const today = new Date();
       const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
       const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -459,7 +329,6 @@ export function useChoXeVaoBenForm({
         try {
           const fullRecord = await dispatchService.getById(updatedRecord.id);
 
-          // Auto-generate transport order code if not already set
           if (!transportOrderCode) {
             const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
             const autoCode = `LVC-${dateStr}-${fullRecord.id.slice(-4).toUpperCase()}`;
@@ -546,9 +415,5 @@ export function useChoXeVaoBenForm({
     handleSubmit,
     handleClose,
     handlePermitDialogClose,
-    loadSchedulesFromAppsheetTbJoin,
-    isLoadingTbJoinSchedules,
-    scheduleDataSource,
-    handleScheduleDataSourceChange,
   };
 }

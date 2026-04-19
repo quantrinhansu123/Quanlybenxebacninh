@@ -49,19 +49,6 @@ export const vehicleBadgeApi = {
       }
     }
   },
-
-  /** Push AppSheet-polled badges to backend for DB persistence (chunked) */
-  syncFromAppSheet: async (badges: unknown[]): Promise<void> => {
-    if (!badges.length) return
-    try {
-      for (let i = 0; i < badges.length; i += SYNC_CHUNK_SIZE) {
-        const chunk = (badges as Record<string, unknown>[]).slice(i, i + SYNC_CHUNK_SIZE)
-        await api.post('/vehicles/badges/appsheet-sync', { badges: chunk })
-      }
-    } catch (error) {
-      console.warn('AppSheet badge sync to DB failed:', error)
-    }
-  },
 }
 
 // Re-export for backward compatibility

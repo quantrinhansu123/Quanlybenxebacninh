@@ -29,10 +29,6 @@ import { routeService, LegacyRoute } from "@/services/route.service"
 import { useUIStore } from "@/store/ui.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { useAuthStore } from "@/features/auth/store/authStore"
-import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
-import { normalizeFixedRouteRows, type NormalizedAppSheetFixedRoute } from "@/services/appsheet-normalize-fixed-routes"
-import { normalizeBusRouteRows, type NormalizedAppSheetBusRoute } from "@/services/appsheet-normalize-bus-routes"
-import { routeService as routeFeatService } from "@/features/fleet/routes"
 
 export default function QuanLyTuyen() {
   const [routes, setRoutes] = useState<LegacyRoute[]>([])
@@ -55,26 +51,6 @@ export default function QuanLyTuyen() {
   const itemsPerPage = 50
   const setTitle = useUIStore((state) => state.setTitle)
   const currentUser = useAuthStore((state) => state.user)
-
-  // AppSheet realtime polling state
-  const [appSheetFixedRoutes, setAppSheetFixedRoutes] = useState<NormalizedAppSheetFixedRoute[]>([])
-  const [appSheetBusRoutes, setAppSheetBusRoutes] = useState<NormalizedAppSheetBusRoute[]>([])
-
-  useAppSheetPolling({
-    endpointKey: 'fixedRoutes',
-    normalize: normalizeFixedRouteRows,
-    onData: (data: NormalizedAppSheetFixedRoute[]) => setAppSheetFixedRoutes(data),
-    onSyncToDb: (data) => routeFeatService.syncFromAppSheet(data),
-    enabled: true,
-  })
-
-  useAppSheetPolling({
-    endpointKey: 'busRoutes',
-    normalize: (rows) => normalizeBusRouteRows(rows),
-    onData: (data: NormalizedAppSheetBusRoute[]) => setAppSheetBusRoutes(data),
-    onSyncToDb: (data) => routeFeatService.syncFromAppSheet(data),
-    enabled: true,
-  })
 
   // Handle browser back button for dialog
   const { handleDialogOpenChange } = useDialogHistory(dialogOpen, setDialogOpen, "routeDialogOpen")
@@ -171,96 +147,10 @@ export default function QuanLyTuyen() {
   */
 
   // Merge AppSheet realtime data into route list (AppSheet primary, backend fallback)
-  const mergedRoutes = useMemo((): LegacyRoute[] => {
-    if (appSheetFixedRoutes.length === 0 && appSheetBusRoutes.length === 0) return routes
+  const mergedRoutes = routes
 
-    const backendMap = new Map<string, LegacyRoute>()
-    for (const r of routes) {
-      const key = r.routeCode.trim().toUpperCase()
-      backendMap.set(key, r)
-    }
-
-    const fixedConverted: LegacyRoute[] = appSheetFixedRoutes.map(r => {
-      const backend = backendMap.get(r.routeCode.trim().toUpperCase())
-      return {
-        id: backend?.id || r.routeCode,
-        routeCode: r.routeCode,
-        routeCodeOld: r.routeCodeOld || backend?.routeCodeOld || '',
-        routeCodeFixed: backend?.routeCodeFixed || '',
-        routeClass: backend?.routeClass || '',
-        routeType: r.routeType || backend?.routeType || '',
-        routePath: r.itinerary || backend?.routePath || '',
-        departureStation: r.departureStation || backend?.departureStation || '',
-        departureStationRef: r.departureStationRef || backend?.departureStationRef || '',
-        departureProvince: r.departureProvince || backend?.departureProvince || '',
-        departureProvinceOld: backend?.departureProvinceOld || '',
-        arrivalStation: r.arrivalStation || backend?.arrivalStation || '',
-        arrivalStationRef: r.arrivalStationRef || backend?.arrivalStationRef || '',
-        arrivalProvince: r.arrivalProvince || backend?.arrivalProvince || '',
-        arrivalProvinceOld: backend?.arrivalProvinceOld || '',
-        distanceKm: r.distanceKm ?? backend?.distanceKm ?? 0,
-        minIntervalMinutes: r.minIntervalMinutes ?? backend?.minIntervalMinutes ?? 0,
-        totalTripsMonth: r.totalTripsPerMonth ?? backend?.totalTripsMonth ?? 0,
-        tripsInOperation: r.tripsOperated ?? backend?.tripsInOperation ?? 0,
-        remainingCapacity: r.remainingCapacity ?? backend?.remainingCapacity ?? 0,
-        operationStatus: r.operationStatus || backend?.operationStatus || '',
-        calendarType: backend?.calendarType || '',
-        decisionNumber: r.decisionNumber || backend?.decisionNumber || '',
-        decisionDate: r.decisionDate || backend?.decisionDate || '',
-        issuingAuthority: backend?.issuingAuthority || '',
-        notes: backend?.notes || '',
-        filePath: backend?.filePath || '',
-        _source: 'appsheet',
-      }
-    })
-
-    const busConverted: LegacyRoute[] = appSheetBusRoutes.map(r => {
-      const backend = backendMap.get(r.routeCode.trim().toUpperCase())
-      return {
-        id: backend?.id || r.firebaseId,
-        routeCode: r.routeCode,
-        routeCodeOld: backend?.routeCodeOld || '',
-        routeCodeFixed: backend?.routeCodeFixed || '',
-        routeClass: backend?.routeClass || '',
-        routeType: r.routeType || 'Xe buýt',
-        routePath: r.itinerary || backend?.routePath || '',
-        departureStation: r.departureStation || backend?.departureStation || '',
-        departureStationRef: r.departureStationRef || backend?.departureStationRef || '',
-        departureProvince: r.departureProvince || backend?.departureProvince || '',
-        departureProvinceOld: backend?.departureProvinceOld || '',
-        arrivalStation: r.arrivalStation || backend?.arrivalStation || '',
-        arrivalStationRef: r.arrivalStationRef || backend?.arrivalStationRef || '',
-        arrivalProvince: r.arrivalProvince || backend?.arrivalProvince || '',
-        arrivalProvinceOld: backend?.arrivalProvinceOld || '',
-        distanceKm: r.distanceKm ?? backend?.distanceKm ?? 0,
-        minIntervalMinutes: backend?.minIntervalMinutes ?? 0,
-        totalTripsMonth: backend?.totalTripsMonth ?? 0,
-        tripsInOperation: backend?.tripsInOperation ?? 0,
-        remainingCapacity: backend?.remainingCapacity ?? 0,
-        operationStatus: r.operationStatus || backend?.operationStatus || '',
-        calendarType: backend?.calendarType || '',
-        decisionNumber: backend?.decisionNumber || '',
-        decisionDate: backend?.decisionDate || '',
-        issuingAuthority: backend?.issuingAuthority || '',
-        notes: backend?.notes || '',
-        filePath: backend?.filePath || '',
-        _source: 'appsheet',
-      }
-    })
-
-    // Start with backend routes, then override with AppSheet data
-    const mergedMap = new Map<string, LegacyRoute>()
-    for (const r of routes) {
-      mergedMap.set(r.routeCode.trim().toUpperCase(), r)
-    }
-    for (const r of [...fixedConverted, ...busConverted]) {
-      mergedMap.set(r.routeCode.trim().toUpperCase(), r)
-    }
-    return [...mergedMap.values()]
-  }, [routes, appSheetFixedRoutes, appSheetBusRoutes])
-
-  // Show loading only if backend hasn't loaded AND AppSheet hasn't loaded yet
-  const effectiveLoading = isLoading && appSheetFixedRoutes.length === 0
+  // Show loading only if backend hasn't loaded yet
+  const effectiveLoading = isLoading
 
   // Get unique values for filters (from merged data)
   const departureProvinces = Array.from(new Set(mergedRoutes.map((r) => r.departureProvince).filter(Boolean))).sort()
@@ -385,9 +275,6 @@ export default function QuanLyTuyen() {
               </h1>
               <p className="text-slate-500 text-sm mt-1">
                 Danh mục tuyến cố định
-                {(appSheetFixedRoutes.length > 0 || appSheetBusRoutes.length > 0) && (
-                  <span className="text-xs text-muted-foreground ml-2">(AppSheet realtime)</span>
-                )}
               </p>
             </div>
           </div>

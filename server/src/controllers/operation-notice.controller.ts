@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
 import { operationNotices } from '../db/schema/index.js'
-import { eq, and, isNotNull, ne } from 'drizzle-orm'
+import { eq, and, isNotNull, ne, ilike } from 'drizzle-orm'
 
 /** Proxy PDF file to bypass CORS restrictions from external hosts */
 export const proxyPdf = async (req: Request, res: Response) => {
@@ -44,20 +44,58 @@ export const getOperationNotices = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'routeCode is required' })
     }
 
-    const conditions = [
+    const baseConditions = [
       eq(operationNotices.routeCode, routeCode),
       isNotNull(operationNotices.fileUrl),
       ne(operationNotices.fileUrl, ''),
     ]
 
+    // If noticeNumber is provided, try exact match first, then filePath fuzzy match.
+    // schedules.notification_number sometimes stores a file-ID prefix (e.g. "6acde563")
+    // which appears in operation_notices.file_path as "THONGBAO_KHAITHAC_Files_/6acde563.File.*.pdf"
     if (noticeNumber && typeof noticeNumber === 'string') {
-      conditions.push(eq(operationNotices.noticeNumber, noticeNumber))
+      const nn = noticeNumber.trim()
+
+      // 1) Exact match on notice_number
+      const exact = await db
+        .select()
+        .from(operationNotices)
+        .where(and(...baseConditions, eq(operationNotices.noticeNumber, nn)))
+        .orderBy(operationNotices.issueDate)
+
+      if (exact.length > 0) return res.json(exact)
+
+      // 2) filePath fuzzy: notice whose file_path contains the noticeNumber token
+      const byFilePath = await db
+        .select()
+        .from(operationNotices)
+        .where(and(...baseConditions, ilike(operationNotices.filePath, `%${nn}%`)))
+        .orderBy(operationNotices.issueDate)
+
+      if (byFilePath.length > 0) return res.json(byFilePath)
+
+      // 3) Normalized partial match on notice_number (different separators / spacing)
+      const norm = nn.replace(/[\s\/\-\.]/g, '')
+      const all = await db
+        .select()
+        .from(operationNotices)
+        .where(and(...baseConditions))
+        .orderBy(operationNotices.issueDate)
+
+      const fuzzy = all.filter(n => {
+        const normDb = (n.noticeNumber || '').replace(/[\s\/\-\.]/g, '')
+        return normDb === norm ||
+          normDb.includes(norm) ||
+          norm.includes(normDb)
+      })
+      return res.json(fuzzy)
     }
 
+    // No noticeNumber — return all for route
     const data = await db
       .select()
       .from(operationNotices)
-      .where(and(...conditions))
+      .where(and(...baseConditions))
       .orderBy(operationNotices.issueDate)
 
     return res.json(data)

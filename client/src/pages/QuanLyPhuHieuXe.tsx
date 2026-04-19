@@ -31,14 +31,6 @@ import { useUIStore } from "@/store/ui.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { DatePicker } from "@/components/DatePicker"
 import BadgeDetailDialog from "./badge-detail-dialog"
-import { useAppSheetPolling } from "@/hooks/use-appsheet-polling"
-import { normalizeBadgeRows, type NormalizedAppSheetBadge } from "@/services/appsheet-normalize-badges"
-import { normalizeOperatorRows, type NormalizedAppSheetOperator } from "@/services/appsheet-normalize-operators"
-import { normalizeFixedRouteRows, type NormalizedAppSheetFixedRoute } from "@/services/appsheet-normalize-fixed-routes"
-import { normalizeBusRouteRows, type NormalizedAppSheetBusRoute } from "@/services/appsheet-normalize-bus-routes"
-import { vehicleBadgeService as vehicleBadgeFeatService } from "@/features/fleet/vehicle-badges"
-import { operatorApi } from "@/features/fleet/operators/api/operatorApi"
-import { routeApi } from "@/features/fleet/routes"
 import { useAuthStore } from "@/store/auth.store"
 
 // Helper function to convert Date to ISO string (YYYY-MM-DD)
@@ -88,7 +80,7 @@ export default function QuanLyPhuHieuXe() {
   const [filterStatus, setFilterStatus] = useState("")
   const [filterBadgeType, setFilterBadgeType] = useState("Buýt")
   /** Nguồn dữ liệu: appsheet = PHUHIEUXE GTVT, backend = Database */
-  const [dataSource, setDataSource] = useState<"appsheet" | "backend">("appsheet")
+  
 
   const [isLoading, setIsLoading] = useState(false)
   const [selectedBadge, setSelectedBadge] = useState<VehicleBadge | null>(null)
@@ -142,89 +134,19 @@ export default function QuanLyPhuHieuXe() {
   const [routeSearch, setRouteSearch] = useState("")
   const routeDropdownRef = useRef<HTMLDivElement>(null)
 
-  // AppSheet realtime polling for badges
-  const [appSheetBadges, setAppSheetBadges] = useState<NormalizedAppSheetBadge[]>([])
-
-  useAppSheetPolling({
-    endpointKey: 'badges',
-    normalize: normalizeBadgeRows,
-    onData: (data: NormalizedAppSheetBadge[]) => setAppSheetBadges(data),
-    onSyncToDb: (data) => vehicleBadgeFeatService.syncFromAppSheet(data),
-    getKey: (b) => b.badgeNumber,
-    enabled: true,
-  })
-
-  // Backend enrichment data (itinerary and destination from routes JOIN - not available in AppSheet)
+  // Backend enrichment data (itinerary and destination from routes JOIN)
   const [enrichmentMap, setEnrichmentMap] = useState<Map<string, { itinerary: string, endPoint: string, startPoint: string }>>(new Map())
-  // Route code -> station endpoints (for filtering AppSheet badges by station)
+  // Route code -> station endpoints (for filtering badges by station)
   const [routeStationMap, setRouteStationMap] = useState<Map<string, { endPoint: string, startPoint: string }>>(new Map())
   // Routes for dropdown — backend (id=UUID)
   const [backendRouteOptions, setBackendRouteOptions] = useState<Array<{ id: string; code: string; name: string }>>([])
-  // AppSheet routes (DANHMUCTUYENCODINH + DANHMUCTUYENBUYT) — id = routeCode (fixed) | firebaseId (bus)
-  const [appSheetFixedRoutes, setAppSheetFixedRoutes] = useState<NormalizedAppSheetFixedRoute[]>([])
-  const [appSheetBusRoutes, setAppSheetBusRoutes] = useState<NormalizedAppSheetBusRoute[]>([])
 
-  useAppSheetPolling({
-    endpointKey: 'fixedRoutes',
-    normalize: normalizeFixedRouteRows,
-    onData: (data: NormalizedAppSheetFixedRoute[]) => setAppSheetFixedRoutes(data),
-    onSyncToDb: (data) => routeApi.syncFromAppSheet(data),
-    getKey: (r) => r.routeCode,
-    enabled: true,
-  })
-  useAppSheetPolling({
-    endpointKey: 'busRoutes',
-    normalize: normalizeBusRouteRows,
-    onData: (data: NormalizedAppSheetBusRoute[]) => setAppSheetBusRoutes(data),
-    onSyncToDb: (data) => routeApi.syncFromAppSheet(data),
-    getKey: (r) => r.firebaseId,
-    enabled: true,
-  })
+  const routeOptions = backendRouteOptions
 
-  // Ưu tiên AppSheet routes, fallback backend
-  const routeOptions = useMemo(() => {
-    const fixed = appSheetFixedRoutes.map((r) => ({
-      id: r.routeCode,
-      code: r.routeCode,
-      name: [r.departureStation, r.arrivalStation].filter(Boolean).join(' - ') || r.itinerary || r.routeCode,
-    }))
-    const bus = appSheetBusRoutes.map((r) => ({
-      id: r.firebaseId,
-      code: r.routeCode,
-      name: [r.departureStation, r.arrivalStation].filter(Boolean).join(' - ') || r.displayName || r.itinerary || r.routeCode,
-    }))
-    if (fixed.length > 0 || bus.length > 0) return [...fixed, ...bus]
-    return backendRouteOptions
-  }, [appSheetFixedRoutes, appSheetBusRoutes, backendRouteOptions])
-
-  // Operators for dropdown — Ưu tiên AppSheet THONGTINDONVIVANTAI (IDDoanhNghiep), fallback backend
+  // Operators for dropdown — backend
   const [backendOperatorOptions, setBackendOperatorOptions] = useState<Array<{ id: string; name: string; code?: string }>>([])
 
-  // AppSheet operators (THONGTINDONVIVANTAI) — id = firebaseId = IDDoanhNghiep
-  const [appSheetOperators, setAppSheetOperators] = useState<NormalizedAppSheetOperator[]>([])
-
-  useAppSheetPolling({
-    endpointKey: 'operators',
-    normalize: normalizeOperatorRows,
-    onData: (data: NormalizedAppSheetOperator[]) => setAppSheetOperators(data),
-    onSyncToDb: (data) => operatorApi.syncFromAppSheet(data),
-    getKey: (o) => o.firebaseId,
-    enabled: true,
-  })
-
-  // Ưu tiên AppSheet, fallback backend
-  const operatorOptions = useMemo(() => {
-    if (appSheetOperators.length > 0) {
-      return appSheetOperators.map((o) => ({
-        id: o.firebaseId,
-        name: (o.name || o.code || '').trim() || '—',
-        code: o.code,
-        province: o.province,
-        phone: o.phone,
-      }))
-    }
-    return backendOperatorOptions
-  }, [appSheetOperators, backendOperatorOptions])
+  const operatorOptions = backendOperatorOptions
 
   const resolveOperatorDisplayName = useCallback(
     (badge: VehicleBadge) => {
@@ -412,68 +334,10 @@ export default function QuanLyPhuHieuXe() {
   const allowedTypesForFilters = ["Buýt", "Tuyến cố định"]
 
   // Merge data theo nguồn đã chọn
-  const mergedBadges = useMemo((): VehicleBadge[] => {
-    if (dataSource === "backend") return badges
-
-    if (appSheetBadges.length === 0) return badges // fallback when AppSheet chưa load
-
-    return appSheetBadges.map(b => {
-      // Tìm badge backend tương ứng để lấy thêm thông tin (ví dụ: tuyen_bus_code)
-      const backendBadge = badges.find(bb => bb.badge_number === b.badgeNumber)
-
-      return {
-      id: b.badgeNumber,
-      badge_number: b.badgeNumber,
-      license_plate_sheet: b.plateNumber || '',
-      badge_type: b.badgeType || '',
-      badge_color: b.badgeColor || '',
-      issue_date: b.issueDate || '',
-      expiry_date: b.expiryDate || '',
-      status: b.status || 'active',
-      file_code: b.fileNumber || '',
-      issue_type: b.issueType || '',
-      vehicle_id: b.plateNumber || '',
-      operational_status: 'trong_ben' as const,
-      bus_route_ref: b.busRouteRef || '',
-      business_license_ref: '',
-      created_at: '',
-      created_by: '',
-      email_notification_sent: false,
-      notes: b.notes || '',
-      notification_ref: '',
-      previous_badge_number: b.oldBadgeNumber || '',
-      renewal_due_date: '',
-      renewal_reason: b.renewalReason || '',
-      renewal_reminder_shown: false,
-      replacement_vehicle_id: '',
-      revocation_date: b.revokeDate || '',
-      revocation_decision: b.revokeDecision || '',
-      revocation_reason: b.revokeReason || '',
-      warn_duplicate_plate: false,
-      issuing_authority_ref: b.operatorRef || '',
-      // Backend enrichment
-      itinerary: enrichmentMap.get(b.badgeNumber)?.itinerary || '',
-      // Route fields from AppSheet — route_code = Ref_Tuyen ưu tiên (+ MaSoTuyen nếu trống), route_ref = Ref_Tuyen
-      route_id: '',
-      route_code: b.routeCode || '',
-      route_name: b.routeName || '',
-      route_ref: b.routeRef || '', // Ref_Tuyen — khớp routeStationMap khi MaSoTuyen không có trong backend
-      // Tuyến bus code lấy từ backend (nếu có)
-      tuyen_bus_code: (backendBadge as any)?.tuyen_bus_code || '',
-      vehicle_type: '',
-      metadata: {},
-      // Custom field to pass endpoint to filter
-      _endPoint: enrichmentMap.get(b.badgeNumber)?.endPoint || '',
-      _startPoint: enrichmentMap.get(b.badgeNumber)?.startPoint || '',
-      } as VehicleBadge & { tuyen_bus_code?: string; route_ref?: string; _endPoint?: string; _startPoint?: string }
-    })
-  }, [dataSource, appSheetBadges, badges, enrichmentMap])
+  const mergedBadges = badges
 
   // Loading: backend = chờ loadBadges; appsheet = chờ AppSheet hoặc fallback backend
-  const effectiveLoading =
-    dataSource === "backend"
-      ? isLoading
-      : isLoading && appSheetBadges.length === 0
+  const effectiveLoading = isLoading
 
   // Only show "Buýt" and "Tuyến cố định" badge types
   const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
@@ -907,23 +771,10 @@ export default function QuanLyPhuHieuXe() {
                   Quản lý phù hiệu xe
                 </h1>
                 <p className="text-slate-500 text-sm mt-1">
-                  {dataSource === "appsheet"
-                    ? "Dữ liệu trực tiếp từ AppSheet PHUHIEUXE (GTVT)"
-                    : "Dữ liệu từ Database"}
+                  "Dữ liệu từ Database"
                 </p>
                 <div className="flex items-center gap-2 mt-2">
-                  <Label htmlFor="data-source" className="text-xs text-slate-500 whitespace-nowrap">
-                    Nguồn:
-                  </Label>
-                  <select
-                    id="data-source"
-                    value={dataSource}
-                    onChange={(e) => setDataSource(e.target.value as "appsheet" | "backend")}
-                    className="text-sm rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400"
-                  >
-                    <option value="appsheet">AppSheet (PHUHIEUXE)</option>
-                    <option value="backend">Database</option>
-                  </select>
+                  
                 </div>
               </div>
             </div>

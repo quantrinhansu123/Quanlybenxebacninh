@@ -124,9 +124,7 @@ export interface Schedule {
   daysOfMonth?: number[]
   calendarType?: string
   notificationNumber?: string
-  /** URL file TB khai thác (AppSheet THONGBAO: cột link file / File), chỉ có khi lịch lấy từ AppSheet */
   notificationFileUrl?: string
-  /** Ref_Tuyen từ bản ghi TB đã ghép (đối chiếu mã tuyến) */
   tbRefTuyen?: string
   tripStatus?: string
   createdAt?: string
