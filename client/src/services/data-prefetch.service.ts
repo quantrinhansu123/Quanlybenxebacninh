@@ -9,6 +9,7 @@ import { driverService } from './driver.service'
 import { routeService } from './route.service'
 import { dashboardService } from './dashboard.service'
 import { dispatchService } from './dispatch.service'
+import { queryClient } from '../main'
 
 let isPrefetching = false
 let prefetchPromise: Promise<void> | null = null
@@ -30,16 +31,21 @@ export async function prefetchAppData(): Promise<void> {
   prefetchPromise = (async () => {
     try {
       // Priority 1: Critical data for main pages (parallel)
-      // Dashboard is highest priority. Move heavy quanly/dispatch to Priority 2.
       await Promise.all([
-        dashboardService.getDashboardData().catch(err => console.warn('[Prefetch] dashboard failed:', err)),
+        queryClient.prefetchQuery({
+          queryKey: ['dashboard-all'],
+          queryFn: () => dashboardService.getDashboardData(),
+        }),
       ])
 
       console.log(`[Prefetch] Critical data loaded in ${Date.now() - startTime}ms`)
 
       // Priority 2: Secondary data (parallel, non-blocking)
       Promise.all([
-        quanlyDataService.getAll().catch(err => console.warn('[Prefetch] quanlyData failed:', err)),
+        queryClient.prefetchQuery({
+          queryKey: ['quanly-data'],
+          queryFn: () => quanlyDataService.getAll(),
+        }),
         dispatchService.getAll().catch(err => console.warn('[Prefetch] dispatch failed:', err)),
         driverService.getAll().catch(err => console.warn('[Prefetch] drivers failed:', err)),
         routeService.getLegacy().catch(err => console.warn('[Prefetch] routes failed:', err)),

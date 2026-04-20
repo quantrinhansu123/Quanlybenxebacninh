@@ -16,7 +16,7 @@ import { dashboardService } from "@/services/dashboard.service";
 import type { DashboardStats, ChartDataPoint, RecentActivity, Warning, WeeklyStat, MonthlyStat, RouteBreakdown } from "@/services/dashboard.service";
 import { useUIStore } from "@/store/ui.store";
 import { cn } from "@/lib/utils";
-import { useCachedQuery, CACHE_TTL } from "@/lib/query-cache";
+import { useQuery } from "@tanstack/react-query";
 
 // Chart components (to be implemented in Phase 2-4)
 import { VehicleTrendChart } from "@/components/dashboard/charts/VehicleTrendChart";
@@ -45,12 +45,13 @@ const defaultStats: DashboardStats = {
 };
 
 export default function Dashboard() {
-  // Use cached query for dashboard data - persists across navigation
-  const { data: cachedData, isLoading: isCacheLoading, refetch } = useCachedQuery<DashboardData>(
-    'dashboard-all',
-    () => dashboardService.getDashboardData(),
-    { ttl: CACHE_TTL.SHORT, staleTime: 30000 } // 30s stale time matches polling
-  );
+  // Use TanStack React Query for dashboard data - persists across navigation
+  const { data: cachedData, isLoading: isCacheLoading, refetch } = useQuery<DashboardData>({
+    queryKey: ['dashboard-all'],
+    queryFn: () => dashboardService.getDashboardData(),
+    staleTime: 30000,
+    refetchInterval: 30000, // auto-refresh every 30s
+  });
 
   // Extract data from cache with defaults
   const stats = cachedData?.stats || defaultStats;
@@ -72,12 +73,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setTitle("Tổng quan");
-    // Set up polling every 30 seconds (background refresh)
-    const interval = setInterval(() => {
-      refetch().then(() => setLastUpdated(new Date()));
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [setTitle, refetch]);
+  }, [setTitle]);
 
   // Update lastUpdated when data loads
   useEffect(() => {

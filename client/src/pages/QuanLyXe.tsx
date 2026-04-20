@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { vehicleService, VehicleForm, VehicleView } from "@/features/fleet/vehicles"
 import { quanlyDataService } from "@/services/quanly-data.service"
+import { useQuery } from "@tanstack/react-query"
 
 import type { Vehicle } from "@/types"
 import { useUIStore } from "@/store/ui.store"
@@ -91,16 +92,12 @@ const QuickFilter = ({ label, count, active, onClick }: {
 const VISIBLE_PAGE_SIZE = 50
 
 export default function QuanLyXe() {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [operatorCount, setOperatorCount] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterVehicleType, setFilterVehicleType] = useState("")
   const [filterOperator, setFilterOperator] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
   const [quickFilter, setQuickFilter] = useState<"all" | "active" | "inactive">("all")
-  // Always filter to only show badge vehicles (Buýt/TCĐ)
   const showOnlyBadgeVehicles = true
-  const [isLoading, setIsLoading] = useState(false)
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"create" | "edit" | "view">("create")
@@ -110,99 +107,96 @@ export default function QuanLyXe() {
   const setTitle = useUIStore((state) => state.setTitle)
   const currentUser = useAuthStore((state) => state.user)
 
-  // Handle browser back button for dialog
+  const { data: quanlyData, isLoading, refetch } = useQuery({
+    queryKey: ['quanly-data'],
+    queryFn: () => quanlyDataService.getAll(['vehicles', 'operators', 'badges', 'routes']),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const vehicles = useMemo((): Vehicle[] => {
+    if (!quanlyData) return []
+    const routeLocMap = new Map<string, { start: string, end: string }>()
+    if (quanlyData.routes) {
+      for (const r of quanlyData.routes) {
+        routeLocMap.set(r.code, {
+          start: (r.startPoint || '').trim().toLowerCase(),
+          end: (r.endPoint || '').trim().toLowerCase()
+        })
+      }
+    }
+
+    const validPlates = new Set<string>()
+    const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase()
+
+    if (quanlyData.badges) {
+      for (const b of quanlyData.badges) {
+        const plate = b.license_plate_sheet?.trim().toUpperCase()
+        if (!plate) continue
+
+        if (userLoc) {
+          const rData = routeLocMap.get(b.route_code) || { start: '', end: '' }
+          if (rData.start === userLoc || rData.end === userLoc) {
+            validPlates.add(plate)
+          }
+        } else {
+          validPlates.add(plate)
+        }
+      }
+    }
+
+    return (quanlyData.vehicles || [])
+      .filter(v => {
+        if (userLoc) {
+          return validPlates.has(v.plateNumber?.trim().toUpperCase())
+        }
+        return true
+      })
+      .map(v => ({
+        id: v.id,
+        plateNumber: v.plateNumber,
+        seatCapacity: v.seatCapacity,
+        operatorName: v.operatorName || '',
+        vehicleTypeName: v.vehicleType || '',
+        vehicleCategory: v.vehicleCategory || '',
+        inspectionExpiryDate: v.inspectionExpiryDate,
+        isActive: v.isActive,
+        hasBadge: v.hasBadge,
+      } as any)) as Vehicle[]
+  }, [quanlyData, currentUser?.benPhuTrachName])
+
+  const operatorCount = useMemo(() => {
+    if (!quanlyData) return 0
+    const badges = quanlyData.badges || []
+    const rawVehicles = quanlyData.vehicles || []
+    const allOperators = quanlyData.operators || []
+    const allowedTypes = ["Buýt", "Tuyến cố định"]
+    const normPlate = (p: string) => p?.replace(/[\s.\-]/g, "").toUpperCase() || ""
+    const badgePlates = new Set(
+      badges.filter(b => allowedTypes.includes(b.badge_type)).map(b => normPlate(b.license_plate_sheet)).filter(Boolean)
+    )
+    const opIds = new Set<string>()
+    const opNames = new Set<string>()
+    for (const v of rawVehicles) {
+      if (v.plateNumber && badgePlates.has(normPlate(v.plateNumber))) {
+        if (v.operatorId) opIds.add(v.operatorId)
+        if (v.operatorName) opNames.add(v.operatorName.trim().toUpperCase())
+      }
+    }
+    return allOperators.filter(
+      op => opIds.has(op.id) || opNames.has(op.name?.trim().toUpperCase())
+    ).length
+  }, [quanlyData])
+
+  const handleForceRefresh = useCallback(async () => {
+    quanlyDataService.clearCache()
+    await refetch()
+  }, [refetch])
+
   const { handleDialogOpenChange } = useDialogHistory(dialogOpen, setDialogOpen, "vehicleDialogOpen")
 
   useEffect(() => {
     setTitle("Quản lý xe")
-    loadData()
-  }, [setTitle, currentUser?.benPhuTrachName])
-
-  const loadData = async (forceRefresh = false) => {
-    setIsLoading(true)
-    try {
-      // Use optimized unified endpoint - single request for all data
-      const data = await quanlyDataService.getAll(['vehicles', 'operators', 'badges', 'routes'], forceRefresh)
-
-      const routeLocMap = new Map<string, { start: string, end: string }>();
-      if (data.routes) {
-        for (const r of data.routes) {
-          routeLocMap.set(r.code, {
-            start: (r.startPoint || '').trim().toLowerCase(),
-            end: (r.endPoint || '').trim().toLowerCase()
-          });
-        }
-      }
-
-      const validPlates = new Set<string>();
-      const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
-
-      if (data.badges) {
-        for (const b of data.badges) {
-          const plate = b.license_plate_sheet?.trim().toUpperCase();
-          if (!plate) continue;
-
-          if (userLoc) {
-            const rData = routeLocMap.get(b.route_code) || { start: '', end: '' };
-            if (rData.start === userLoc || rData.end === userLoc) {
-              validPlates.add(plate);
-            }
-          } else {
-            validPlates.add(plate);
-          }
-        }
-      }
-
-      // Convert to expected formats
-      const vehicleData: Vehicle[] = (data.vehicles || [])
-        .filter(v => {
-          if (userLoc) {
-            return validPlates.has(v.plateNumber?.trim().toUpperCase());
-          }
-          return true;
-        })
-        .map(v => ({
-          id: v.id,
-          plateNumber: v.plateNumber,
-          seatCapacity: v.seatCapacity,
-          operatorName: v.operatorName || '',
-          vehicleTypeName: v.vehicleType || '',
-          vehicleCategory: v.vehicleCategory || '',
-          inspectionExpiryDate: v.inspectionExpiryDate,
-          isActive: v.isActive,
-          hasBadge: v.hasBadge,
-        } as any))
-
-      setVehicles(vehicleData)
-
-      // Count only operators with vehicles that have Buýt/Tuyến cố định badges
-      const badges = data.badges || [];
-      const vehicles2 = data.vehicles || [];
-      const allOperators = data.operators || [];
-      const allowedTypes = ["Buýt", "Tuyến cố định"];
-      const normPlate = (p: string) => p?.replace(/[\s.\-]/g, "").toUpperCase() || "";
-      const badgePlates = new Set(
-        badges.filter(b => allowedTypes.includes(b.badge_type)).map(b => normPlate(b.license_plate_sheet)).filter(Boolean)
-      );
-      const opIds = new Set<string>();
-      const opNames = new Set<string>();
-      for (const v of vehicles2) {
-        if (v.plateNumber && badgePlates.has(normPlate(v.plateNumber))) {
-          if (v.operatorId) opIds.add(v.operatorId);
-          if (v.operatorName) opNames.add(v.operatorName.trim().toUpperCase());
-        }
-      }
-      const filteredOpCount = allOperators.filter(
-        op => opIds.has(op.id) || opNames.has(op.name?.trim().toUpperCase())
-      ).length;
-      setOperatorCount(filteredOpCount)
-    } catch (error) {
-      console.error("Failed to load data:", error)
-      toast.error("Không thể tải danh sách xe. Vui lòng thử lại sau.")
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  }, [setTitle])
 
   // Resolution chain: falls back to backend-provided operatorName
   const resolveOperatorName = useCallback((vehicle: Vehicle): string => {
@@ -337,7 +331,7 @@ export default function QuanLyXe() {
 
           <div className="flex items-center gap-3">
             <Button
-              onClick={() => loadData(true)}
+              onClick={() => handleForceRefresh()}
               disabled={isLoading}
               className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
             >
@@ -851,7 +845,7 @@ export default function QuanLyXe() {
                   mode={viewMode === "view" ? "create" : viewMode}
                   onClose={() => {
                     setDialogOpen(false)
-                    loadData(true) // Force refresh to show new/updated vehicle
+                    handleForceRefresh()
                   }}
                 />
               )}
