@@ -88,7 +88,7 @@ const QuickFilter = ({ label, count, active, onClick }: {
   </button>
 )
 
-const ITEMS_PER_PAGE = 50
+const VISIBLE_PAGE_SIZE = 50
 
 export default function QuanLyXe() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
@@ -104,7 +104,7 @@ export default function QuanLyXe() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<"create" | "edit" | "view">("create")
-  const [currentPage, setCurrentPage] = useState(1)
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_PAGE_SIZE)
   const [displayMode, setDisplayMode] = useState<"table" | "grid">("table")
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const setTitle = useUIStore((state) => state.setTitle)
@@ -266,14 +266,12 @@ export default function QuanLyXe() {
   }, [vehicles, searchQuery, filterVehicleType, filterOperator, filterStatus, quickFilter, showOnlyBadgeVehicles, resolveOperatorName])
 
   // Pagination
-  const totalPages = Math.ceil(filteredVehicles.length / ITEMS_PER_PAGE)
-  const paginatedVehicles = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE
-    return filteredVehicles.slice(start, start + ITEMS_PER_PAGE)
-  }, [filteredVehicles, currentPage])
+  const visibleVehicles = useMemo(() => {
+    return filteredVehicles.slice(0, visibleCount)
+  }, [filteredVehicles, visibleCount])
 
   useEffect(() => {
-    setCurrentPage(1)
+    setVisibleCount(VISIBLE_PAGE_SIZE)
   }, [searchQuery, filterVehicleType, filterOperator, filterStatus, quickFilter])
 
   const handleCreate = () => {
@@ -575,11 +573,8 @@ export default function QuanLyXe() {
         {/* Results info */}
         <div className="flex items-center justify-between text-sm text-slate-500">
           <span>
-            Hiển thị <strong className="text-slate-700">{paginatedVehicles.length}</strong> trong tổng số <strong className="text-slate-700">{filteredVehicles.length.toLocaleString()}</strong> xe
+            Hiển thị <strong className="text-slate-700">{visibleVehicles.length}</strong> trong tổng số <strong className="text-slate-700">{filteredVehicles.length.toLocaleString()}</strong> xe
           </span>
-          {totalPages > 1 && (
-            <span>Trang {currentPage} / {totalPages}</span>
-          )}
         </div>
 
         {/* Content - Table View */}
@@ -615,7 +610,7 @@ export default function QuanLyXe() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading ? (
                     Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
-                  ) : paginatedVehicles.length === 0 ? (
+                  ) : visibleVehicles.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-16 text-center">
                         <div className="flex flex-col items-center">
@@ -643,7 +638,7 @@ export default function QuanLyXe() {
                       </td>
                     </tr>
                   ) : (
-                    paginatedVehicles.map((vehicle: any, index) => (
+                    visibleVehicles.map((vehicle: any, index) => (
                       <tr
                         key={vehicle.id}
                         className="group hover:bg-sky-50/50 transition-colors relative hover:z-50"
@@ -714,153 +709,124 @@ export default function QuanLyXe() {
                 </tbody>
               </table>
             </div>
+            {visibleCount < filteredVehicles.length && (
+              <div className="p-4 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  className="mt-4 w-full"
+                  onClick={() => setVisibleCount(prev => prev + VISIBLE_PAGE_SIZE)}
+                >
+                  Tải thêm ({filteredVehicles.length - visibleCount} xe)
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
         {/* Content - Grid View */}
         {displayMode === "grid" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {isLoading ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-200" />
-                    <div className="flex-1">
-                      <div className="h-5 bg-slate-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-slate-100 rounded w-1/2" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-3 bg-slate-100 rounded" />
-                    <div className="h-3 bg-slate-100 rounded w-2/3" />
-                  </div>
-                </div>
-              ))
-            ) : paginatedVehicles.length === 0 ? (
-              <div className="col-span-full py-16 text-center">
-                <Car className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-800">Không tìm thấy xe nào</h3>
-              </div>
-            ) : (
-              paginatedVehicles.map((vehicle: any, index) => (
-                <div
-                  key={vehicle.id}
-                  className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-lg hover:border-sky-200 transition-all group hover:-translate-y-1"
-                  style={{
-                    animation: 'fadeInUp 0.3s ease forwards',
-                    animationDelay: `${index * 50}ms`,
-                    opacity: 0
-                  }}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-cyan-100 flex items-center justify-center group-hover:from-sky-500 group-hover:to-cyan-500 transition-colors">
-                        <Car className="h-6 w-6 text-sky-600 group-hover:text-white transition-colors" />
-                      </div>
-                      <div>
-                        <h3 className="font-mono font-bold text-slate-800">{vehicle.plateNumber}</h3>
-                        <p className="text-sm text-slate-500">{getVehicleTypeName(vehicle) || "N/A"}</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {isLoading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-12 h-12 rounded-xl bg-slate-200" />
+                      <div className="flex-1">
+                        <div className="h-5 bg-slate-200 rounded w-3/4 mb-2" />
+                        <div className="h-3 bg-slate-100 rounded w-1/2" />
                       </div>
                     </div>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${vehicle.isActive
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-slate-100 text-slate-600"
-                      }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${vehicle.isActive ? "bg-emerald-500" : "bg-slate-400"
-                        }`} />
-                      {vehicle.isActive ? "Hoạt động" : "Ngừng"}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Building2 className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-600 truncate">{resolveOperatorName(vehicle) || "N/A"}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Users className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-600">{vehicle.seatCapacity || "N/A"} chỗ</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Calendar className="h-4 w-4 text-slate-400" />
-                      <span className="text-slate-600">Đăng kiểm: {formatDate(vehicle.inspectionExpiryDate)}</span>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-slate-100 rounded" />
+                      <div className="h-3 bg-slate-100 rounded w-2/3" />
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-end pt-4 border-t border-slate-100">
-                    <ActionMenu
-                      items={[
-                        {
-                          label: "Xem chi tiết",
-                          onClick: () => handleView(vehicle),
-                          variant: "info",
-                        },
-                        {
-                          label: "Chỉnh sửa",
-                          onClick: () => handleEdit(vehicle),
-                          variant: "warning",
-                        },
-                      ]}
-                    />
-                  </div>
+                ))
+              ) : visibleVehicles.length === 0 ? (
+                <div className="col-span-full py-16 text-center">
+                  <Car className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-800">Không tìm thấy xe nào</h3>
                 </div>
-              ))
+              ) : (
+                visibleVehicles.map((vehicle: any, index) => (
+                  <div
+                    key={vehicle.id}
+                    className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-lg hover:border-sky-200 transition-all group hover:-translate-y-1"
+                    style={{
+                      animation: 'fadeInUp 0.3s ease forwards',
+                      animationDelay: `${index * 50}ms`,
+                      opacity: 0
+                    }}
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-100 to-cyan-100 flex items-center justify-center group-hover:from-sky-500 group-hover:to-cyan-500 transition-colors">
+                          <Car className="h-6 w-6 text-sky-600 group-hover:text-white transition-colors" />
+                        </div>
+                        <div>
+                          <h3 className="font-mono font-bold text-slate-800">{vehicle.plateNumber}</h3>
+                          <p className="text-sm text-slate-500">{getVehicleTypeName(vehicle) || "N/A"}</p>
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${vehicle.isActive
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-600"
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${vehicle.isActive ? "bg-emerald-500" : "bg-slate-400"
+                          }`} />
+                        {vehicle.isActive ? "Hoạt động" : "Ngừng"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Building2 className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-600 truncate">{resolveOperatorName(vehicle) || "N/A"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-600">{vehicle.seatCapacity || "N/A"} chỗ</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 text-slate-400" />
+                        <span className="text-slate-600">Đăng kiểm: {formatDate(vehicle.inspectionExpiryDate)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end pt-4 border-t border-slate-100">
+                      <ActionMenu
+                        items={[
+                          {
+                            label: "Xem chi tiết",
+                            onClick: () => handleView(vehicle),
+                            variant: "info",
+                          },
+                          {
+                            label: "Chỉnh sửa",
+                            onClick: () => handleEdit(vehicle),
+                            variant: "warning",
+                          },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {visibleCount < filteredVehicles.length && (
+              <Button
+                variant="outline"
+                className="mt-4 w-full"
+                onClick={() => setVisibleCount(prev => prev + VISIBLE_PAGE_SIZE)}
+              >
+                Tải thêm ({filteredVehicles.length - visibleCount} xe)
+              </Button>
             )}
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-6 py-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-600">
-                Hiển thị {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredVehicles.length)} trong tổng số {filteredVehicles.length.toLocaleString()} xe
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
 
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((page) =>
-                      page === 1 ||
-                      page === totalPages ||
-                      (page >= currentPage - 1 && page <= currentPage + 1)
-                    )
-                    .map((page, index, array) => (
-                      <span key={page} className="flex items-center">
-                        {index > 0 && array[index - 1] !== page - 1 && (
-                          <span className="px-2 text-slate-400">...</span>
-                        )}
-                        <button
-                          onClick={() => setCurrentPage(page)}
-                          className={`min-w-[40px] h-10 rounded-xl text-sm font-medium transition-all ${currentPage === page
-                            ? "bg-sky-500 text-white shadow-md shadow-sky-500/25"
-                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                            }`}
-                        >
-                          {page}
-                        </button>
-                      </span>
-                    ))}
-                </div>
-
-                <Button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Vehicle Dialog */}
         <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>

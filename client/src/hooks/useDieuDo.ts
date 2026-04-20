@@ -26,11 +26,15 @@ export type DialogType =
   | "monthly-payment"
   | "depart-multiple";
 
+const PAGE_SIZE = 100;
+
 export function useDieuDo() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { records, setRecords } = useDispatchStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<DispatchRecord | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -132,13 +136,41 @@ export function useDieuDo() {
     // Only show loading state on initial load, not on polling refresh (stale-while-revalidate)
     if (showLoading) setIsLoading(true);
     try {
-      const data = await dispatchService.getAll();
+      const data = await dispatchService.getAll(
+        undefined, undefined, undefined, undefined, undefined,
+        PAGE_SIZE,
+        0
+      );
       // Filter out cancelled records
       const activeRecords = data.filter(r => r.currentStatus !== 'cancelled');
       setRecords(activeRecords);
+      setOffset(0);
+      setHasMore(data.length >= PAGE_SIZE);
     } catch (error) {
       console.error("Failed to load records:", error);
       toast.error("Không thể tải danh sách điều độ");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    const nextOffset = offset + PAGE_SIZE;
+    setIsLoading(true);
+    try {
+      const data = await dispatchService.getAll(
+        undefined, undefined, undefined, undefined, undefined,
+        PAGE_SIZE,
+        nextOffset
+      );
+      // Filter out cancelled records
+      const activeRecords = data.filter(r => r.currentStatus !== 'cancelled');
+      setRecords([...records, ...activeRecords]);
+      setOffset(nextOffset);
+      setHasMore(data.length >= PAGE_SIZE);
+    } catch (error) {
+      console.error("Failed to load more records:", error);
+      toast.error("Không thể tải thêm danh sách");
     } finally {
       setIsLoading(false);
     }
@@ -373,6 +405,8 @@ export function useDieuDo() {
     stats,
     totalActive,
     loadRecords,
+    loadMore,
+    hasMore,
     handleDelete,
     handleEdit,
     handleAction,

@@ -65,6 +65,8 @@ export default function DieuDo() {
     stats,
     totalActive,
     loadRecords,
+    loadMore,
+    hasMore,
     handleDelete,
     handleEdit,
     handleAction,
@@ -240,6 +242,20 @@ export default function DieuDo() {
           {renderColumn("departed")}
         </div>
       </div>
+
+      {hasMore && (
+        <div className="flex-shrink-0 flex justify-center py-2">
+          <Button
+            variant="outline"
+            className="rounded-xl gap-2"
+            onClick={loadMore}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+            Tải thêm
+          </Button>
+        </div>
+      )}
 
       {/* Footer Legend - Compact */}
       <div className="flex-shrink-0 px-3 lg:px-4 py-2 border-t border-slate-200/50 bg-white/80 backdrop-blur-xl">
