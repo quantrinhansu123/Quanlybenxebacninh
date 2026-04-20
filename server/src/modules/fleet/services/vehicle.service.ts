@@ -39,6 +39,8 @@ export interface VehicleFilters {
   operatorId?: string;
   isActive?: boolean | 'all';
   includeLegacy?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
 export type CombinedVehicle = VehicleAPI | LegacyVehicleData | BadgeVehicleData;
@@ -78,7 +80,9 @@ export class VehicleService {
     // Sort by plate number for consistent display
     result.sort((a, b) => a.plateNumber.localeCompare(b.plateNumber));
 
-    return result;
+    const pageLimit = filters?.limit ?? 50;
+    const pageOffset = filters?.offset ?? 0;
+    return result.slice(pageOffset, pageOffset + pageLimit);
   }
 
   private async getDbVehicles(operatorId?: string, isActive?: boolean | 'all'): Promise<VehicleAPI[]> {

@@ -71,10 +71,14 @@ async function upsertDocuments(
 export const getAllVehicles = async (req: Request, res: Response) => {
   try {
     const { operatorId, isActive, includeLegacy } = req.query;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
     const vehicles = await vehicleService.getAll({
       operatorId: operatorId as string | undefined,
       isActive: isActive === 'all' ? 'all' : isActive === 'false' ? false : undefined,
       includeLegacy: includeLegacy !== 'false',
+      limit: Number.isFinite(limit) && limit > 0 ? limit : 50,
+      offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
     });
     return res.json(vehicles);
   } catch (error: unknown) {
