@@ -248,8 +248,18 @@ export function useDieuDo() {
   }, []);
 
   const getRecordsByStatus = useCallback((status: DisplayStatus) => {
+    const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
+
     return records
       .filter((record) => {
+        if (userLoc) {
+          const departure = (record.departureStation || "").trim().toLowerCase();
+          const arrival = (record.arrivalStation || "").trim().toLowerCase();
+          if (departure !== userLoc && arrival !== userLoc) {
+            return false;
+          }
+        }
+
         if (record.currentStatus === "departed") return false;
         const displayStatus = getDisplayStatus(record.currentStatus);
         if (status === "in-station") return displayStatus === "in-station";
@@ -267,7 +277,7 @@ export function useDieuDo() {
           record.driverName.toLowerCase().includes(query)
         );
       });
-  }, [records, searchQuery, getDisplayStatus]);
+  }, [records, searchQuery, getDisplayStatus, currentUser?.benPhuTrachName]);
 
   const stats = useMemo(() => ({
     "in-station": getRecordsByStatus("in-station").length,

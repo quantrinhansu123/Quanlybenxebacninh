@@ -28,6 +28,8 @@ export interface DispatchRecord {
   routeId: string
   route?: Route
   routeName: string
+  departureStation?: string | null
+  arrivalStation?: string | null
 
   // Entry
   entryTime: string
