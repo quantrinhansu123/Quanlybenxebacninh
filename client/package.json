@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "vercel-build": "npm ci && tsc && vite build"
+    "vercel-build": "npm install && tsc && vite build"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",
