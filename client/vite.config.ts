@@ -64,6 +64,10 @@ export default defineConfig(({ mode }) => {
           'vendor-toast': ['react-toastify'],
           // PDF viewer
           'vendor-pdf': ['react-pdf', 'pdfjs-dist'],
+          // Excel export
+          'vendor-xlsx': ['xlsx'],
+          // QR code scanner
+          'vendor-qrcode': ['html5-qrcode'],
         },
       },
     },

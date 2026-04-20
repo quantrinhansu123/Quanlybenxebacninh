@@ -4,6 +4,7 @@
  * Used by Vercel serverless function splitting to load only the routes each function needs.
  */
 import express, { Request, Response } from 'express'
+import compression from 'compression'
 import bodyParser from 'body-parser'
 import cors from 'cors'
 import { errorHandler } from './middleware/errorHandler.js'
@@ -23,6 +24,8 @@ const DEV_ALLOWED_ORIGINS = [
 
 export function createApp(routes: RouteMount[]) {
   const app = express()
+
+  app.use(compression())
 
   app.use(cors({
     origin: (origin, callback) => {

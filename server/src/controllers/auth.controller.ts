@@ -345,7 +345,7 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
     }
 
     const benPhuTrachName = await fetchBenPhuTrachName(user.benPhuTrach)
-
+    res.setHeader('Cache-Control', 'private, no-cache')
     res.json({
       id: user.id,
       username: user.email,

@@ -2,16 +2,18 @@ import { lazy, Suspense } from "react"
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
-import { AdminRoute, ProtectedRoute } from "@/features/auth"
+import { AdminRoute, ProtectedRoute, useAuth } from "@/features/auth"
 import { MainLayout } from "@/components/layout/MainLayout"
 import { PublicLayout } from "@/components/layout/PublicLayout"
 import { PageLoader } from "@/components/common/PageLoader"
 import { ErrorBoundary } from "@/components/common/ErrorBoundary"
-import { ChatWidget } from "@/features/chat"
 
 // ============================================
 // LAZY LOADED PAGES - Grouped by Feature Domain
 // ============================================
+
+// Chat Widget
+const ChatWidget = lazy(() => import("@/features/chat").then(m => ({ default: m.ChatWidget })))
 
 // Auth Pages
 const Login = lazy(() => import("@/pages/Login"))
@@ -89,6 +91,8 @@ const BangGiaHoaDonDienTu = lazy(() => import("@/pages/pricing/BangGiaHoaDonDien
 const HuongDanBanVeUyThac = lazy(() => import("@/pages/guide/HuongDanBanVeUyThac"))
 
 function App() {
+  const { isAuthenticated } = useAuth()
+
   return (
     <ErrorBoundary>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -734,7 +738,11 @@ function App() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      <ChatWidget />
+      {isAuthenticated && (
+        <Suspense fallback={null}>
+          <ChatWidget />
+        </Suspense>
+      )}
       </BrowserRouter>
     </ErrorBoundary>
   )

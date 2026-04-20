@@ -195,6 +195,7 @@ export const getAllRoutes = async (req: Request, res: Response) => {
 
     const routesFormatted = routesData.map((route) => formatRouteResponse(route, provinceNameMap))
 
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     return res.json(routesFormatted)
   } catch (error) {
     console.error('Error fetching routes:', error)
@@ -491,6 +492,7 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
       legacyRoutesCache = { data: routesFormatted, timestamp: Date.now() }
     }
 
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     return res.json(routesFormatted)
   } catch (error: any) {
     console.error('Error fetching legacy routes:', error)
@@ -515,6 +517,7 @@ export const getUniqueDepartureStations = async (_req: Request, res: Response) =
     // Ensure uniqueness after trimming
     const uniqueStations = [...new Set(stations)]
 
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     return res.json(uniqueStations)
   } catch (error) {
     console.error('Error fetching unique departure stations:', error)

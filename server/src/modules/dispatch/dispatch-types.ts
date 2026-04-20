@@ -31,6 +31,8 @@ export interface DispatchRecord {
   scheduleId?: string | null
   routeId?: string | null
   routeName?: string
+  departureStation?: string | null
+  arrivalStation?: string | null
   route?: {
     id: string
     routeName: string
@@ -87,6 +89,8 @@ export interface DispatchFilters {
   startDate?: string
   endDate?: string
   entryBy?: string
+  limit?: number
+  offset?: number
 }
 
 // Note: Input types are defined in dispatch-validation.ts via Zod schemas

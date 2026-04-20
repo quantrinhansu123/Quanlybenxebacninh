@@ -40,6 +40,8 @@ export function mapDispatchToAPI(record: DispatchDBRecord): DispatchRecord {
       } : undefined,
     } : undefined,
     routeName: record.routeName || '',
+    departureStation: record.departureStation || null,
+    arrivalStation: record.arrivalStation || null,
     entryTime: record.entryTime?.toISOString() || '',
     entryBy: record.entryByName || record.entryBy || null,
     entryImageUrl: record.entryImageUrl || null,

@@ -20,6 +20,7 @@ export const getDashboardData = async (_req: AuthRequest, res: Response) => {
 export const getStats = async (_req: AuthRequest, res: Response) => {
   try {
     const stats = await dashboardService.getStats();
+    res.setHeader('Cache-Control', 'private, no-cache')
     return res.json(stats);
   } catch (error) {
     console.error('Error fetching stats:', error);

@@ -50,6 +50,7 @@ export const getProvincesV1 = async (_req: Request, res: Response): Promise<void
     const cacheKey = 'provinces_v1'
     const cached = getCached(cacheKey)
     if (cached) {
+      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
       res.json(cached)
       return
     }
@@ -67,6 +68,7 @@ export const getProvincesV1 = async (_req: Request, res: Response): Promise<void
     }))
 
     setCache(cacheKey, provinces)
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     res.json(provinces)
   } catch (error) {
     console.error('Error fetching provinces V1:', error)
@@ -90,6 +92,7 @@ export const getDistrictsByProvinceV1 = async (req: Request, res: Response): Pro
     const cacheKey = `districts_v1_${code}`
     const cached = getCached(cacheKey)
     if (cached) {
+      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
       res.json(cached)
       return
     }
@@ -120,6 +123,7 @@ export const getDistrictsByProvinceV1 = async (req: Request, res: Response): Pro
     )
 
     setCache(cacheKey, districts)
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     res.json(districts)
   } catch (error) {
     console.error('Error fetching districts:', error)
@@ -143,6 +147,7 @@ export const getWardsByDistrictV1 = async (req: Request, res: Response): Promise
     const cacheKey = `wards_v1_${provinceCode}_${districtCode}`
     const cached = getCached(cacheKey)
     if (cached) {
+      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
       res.json(cached)
       return
     }
@@ -166,6 +171,7 @@ export const getWardsByDistrictV1 = async (req: Request, res: Response): Promise
       }))
 
     setCache(cacheKey, wards)
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     res.json(wards)
   } catch (error) {
     console.error('Error fetching wards:', error)
@@ -184,6 +190,7 @@ export const getProvincesV2 = async (_req: Request, res: Response): Promise<void
     const cacheKey = 'provinces_v2'
     const cached = getCached(cacheKey)
     if (cached) {
+      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
       res.json(cached)
       return
     }
@@ -201,6 +208,7 @@ export const getProvincesV2 = async (_req: Request, res: Response): Promise<void
     }))
 
     setCache(cacheKey, provinces)
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     res.json(provinces)
   } catch (error) {
     console.error('Error fetching provinces V2:', error)
@@ -224,6 +232,7 @@ export const getWardsByProvinceV2 = async (req: Request, res: Response): Promise
     const cacheKey = `wards_v2_${code}`
     const cached = getCached(cacheKey)
     if (cached) {
+      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
       res.json(cached)
       return
     }
@@ -241,6 +250,7 @@ export const getWardsByProvinceV2 = async (req: Request, res: Response): Promise
     }))
 
     setCache(cacheKey, wards)
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     res.json(wards)
   } catch (error) {
     console.error('Error fetching wards V2:', error)

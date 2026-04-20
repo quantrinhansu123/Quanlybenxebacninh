@@ -45,20 +45,23 @@ class DrizzleDispatchRepository extends DrizzleRepository<
    */
   async findAllWithFilters(filters?: DispatchFilters): Promise<DispatchRecord[]> {
     const database = this.getDb()
-    const hasFilters = filters && Object.values(filters).some(v => v !== undefined)
+    const limit = filters?.limit ?? 50
+    const offset = filters?.offset ?? 0
+    // Check only content filters (exclude pagination params)
+    const hasFilters = filters && [filters.status, filters.vehicleId, filters.driverId, filters.routeId, filters.startDate, filters.endDate, filters.entryBy].some(v => v !== undefined)
 
-    // For unfiltered queries, use cache
-    if (!hasFilters) {
+    // For unfiltered first-page queries, use cache
+    if (!hasFilters && offset === 0) {
       const now = Date.now()
       if (dispatchCache.data && (now - dispatchCache.timestamp) < CACHE_TTL) {
-        return dispatchCache.data
+        return dispatchCache.data.slice(0, limit)
       }
 
-      // Fetch and cache
       const records = await database
         .select()
         .from(dispatchRecords)
         .orderBy(desc(dispatchRecords.entryTime))
+        .limit(limit)
 
       dispatchCache.data = records
       dispatchCache.timestamp = now
@@ -96,7 +99,7 @@ class DrizzleDispatchRepository extends DrizzleRepository<
       query = query.where(and(...conditions)) as typeof query
     }
 
-    return query.orderBy(desc(dispatchRecords.entryTime))
+    return query.orderBy(desc(dispatchRecords.entryTime)).limit(limit).offset(offset)
   }
 
   /**

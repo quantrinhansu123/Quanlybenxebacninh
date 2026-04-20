@@ -17,7 +17,9 @@ export const dispatchService = {
     vehicleId?: string,
     driverId?: string,
     routeId?: string,
-    entryBy?: string
+    entryBy?: string,
+    limit?: number,
+    offset?: number
   ): Promise<DispatchRecord[]> => {
     try {
       const params = new URLSearchParams()
@@ -26,6 +28,8 @@ export const dispatchService = {
       if (driverId) params.append('driverId', driverId)
       if (routeId) params.append('routeId', routeId)
       if (entryBy) params.append('entryBy', entryBy)
+      if (limit !== undefined) params.append('limit', limit.toString())
+      if (offset !== undefined) params.append('offset', offset.toString())
 
       const queryString = params.toString()
       

@@ -31,6 +31,7 @@ export const getAllVehicleTypes = async (_req: Request, res: Response) => {
       createdAt: vt.createdAt,
     }))
 
+    res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
     return res.json(mapped)
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to fetch vehicle types' })

@@ -65,13 +65,18 @@ async function updateWithStatusCheck(
 export const getAllDispatchRecords = async (req: Request, res: Response) => {
   try {
     const { status, vehicleId, driverId, routeId, entryBy } = req.query
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0
     const records = await dispatchRepository.findAllWithFilters({
       status: status as string,
       vehicleId: vehicleId as string,
       driverId: driverId as string,
       routeId: routeId as string,
       entryBy: entryBy as string,
+      limit: Number.isFinite(limit) && limit > 0 ? limit : 50,
+      offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
     })
+    res.setHeader('Cache-Control', 'private, no-cache')
     return res.json(mapDispatchListToAPI(records))
   } catch (error) {
     console.error('Error fetching dispatch records:', error)
