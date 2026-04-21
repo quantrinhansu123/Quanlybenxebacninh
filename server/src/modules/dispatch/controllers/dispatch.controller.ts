@@ -605,6 +605,72 @@ export const updateDispatchRecord = async (req: AuthRequest, res: Response) => {
   }
 }
 
+/**
+ * Revert dispatch record to previous status
+ */
+export const revertDispatchStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params
+    const currentRecord = await dispatchRepository.findById(id)
+
+    if (!currentRecord) {
+      return res.status(404).json({ error: 'Không tìm thấy đơn điều độ' })
+    }
+
+    const updateData: Record<string, unknown> = {}
+    let targetStatus = ''
+
+    switch (currentRecord.status) {
+      case DISPATCH_STATUS.PERMIT_ISSUED:
+      case DISPATCH_STATUS.PERMIT_REJECTED:
+        targetStatus = currentRecord.passengerDropTime ? DISPATCH_STATUS.PASSENGERS_DROPPED : DISPATCH_STATUS.ENTERED
+        updateData.status = targetStatus
+        updateData.boardingPermitTime = null
+        updateData.boardingPermitBy = null
+        updateData.boardingPermitByName = null
+        updateData.permitStatus = null
+        updateData.permitShiftId = null
+        updateData.plannedDepartureTime = null
+        updateData.seatCount = null
+        updateData.rejectionReason = null
+        break
+
+      case DISPATCH_STATUS.PAID:
+        targetStatus = DISPATCH_STATUS.PERMIT_ISSUED
+        updateData.status = targetStatus
+        updateData.paymentTime = null
+        updateData.paymentAmount = null
+        updateData.paymentMethod = null
+        updateData.invoiceNumber = null
+        updateData.paymentBy = null
+        updateData.paymentByName = null
+        updateData.paymentShiftId = null
+        break
+
+      case DISPATCH_STATUS.DEPARTURE_ORDERED:
+        targetStatus = DISPATCH_STATUS.PAID
+        updateData.status = targetStatus
+        updateData.departureOrderTime = null
+        updateData.passengersDeparting = null
+        updateData.departureOrderBy = null
+        updateData.departureOrderByName = null
+        updateData.departureOrderShiftId = null
+        break
+
+      default:
+        return res.status(400).json({ error: `Không thể chuyển về trạng thái trước từ trạng thái "${currentRecord.status}"` })
+    }
+
+    const record = await dispatchRepository.update(id, updateData)
+    if (!record) return res.status(500).json({ error: 'Không thể cập nhật đơn điều độ' })
+
+    return res.json({ message: 'Đã chuyển về trạng thái trước', dispatch: mapDispatchToAPI(record) })
+  } catch (error: unknown) {
+    console.error('Error reverting dispatch status:', error)
+    return res.status(500).json({ error: getErrorMessage(error, 'Không thể chuyển về trạng thái trước') })
+  }
+}
+
 // Legacy endpoints
 export const updateDispatchStatus = async (_req: Request, res: Response) => {
   return res.status(400).json({ error: 'This endpoint is deprecated. Use specific workflow endpoints instead.' })

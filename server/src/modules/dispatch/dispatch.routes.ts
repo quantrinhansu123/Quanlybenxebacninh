@@ -20,6 +20,7 @@ import {
   depart,
   deleteDispatchRecord,
   cancelDispatchRecord,
+  revertDispatchStatus,
 } from './controllers/dispatch.controller.js'
 
 const router = Router()
@@ -36,6 +37,7 @@ router.post('/', createDispatchRecord)
 router.put('/:id', updateDispatchRecord)
 router.delete('/:id', deleteDispatchRecord)
 router.post('/:id/cancel', cancelDispatchRecord)
+router.post('/:id/revert', revertDispatchStatus)
 router.post('/:id/passenger-drop', recordPassengerDrop)
 router.post('/:id/permit', issuePermit)
 router.post('/:id/payment', processPayment)

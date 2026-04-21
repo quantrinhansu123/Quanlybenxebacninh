@@ -273,6 +273,18 @@ export function useDieuDo() {
     }
   };
 
+  const handleRevert = async (record: DispatchRecord) => {
+    if (window.confirm(`Chuyển xe ${record.vehiclePlateNumber} về trạng thái trước?`)) {
+      try {
+        await dispatchService.revertStatus(record.id);
+        toast.success("Đã chuyển về trạng thái trước");
+        loadRecords();
+      } catch (error: any) {
+        toast.error(error.response?.data?.error || "Không thể chuyển về trạng thái trước");
+      }
+    }
+  };
+
   const getDisplayStatus = useCallback((currentStatus: DispatchStatus): DisplayStatus => {
     const statusMap: Record<DispatchStatus, DisplayStatus> = {
       entered: "in-station",
@@ -432,6 +444,7 @@ export function useDieuDo() {
     handleAction,
     handleOpenPermitReadOnly,
     handleRecordExit,
+    handleRevert,
     getDisplayStatus,
     getRecordsByStatus,
     isMonthlyPaymentVehicle,

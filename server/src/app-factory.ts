@@ -16,10 +16,12 @@ export interface RouteMount {
 
 const isProduction = process.env.NODE_ENV === 'production'
 
-const DEV_ALLOWED_ORIGINS = [
+const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
+  'https://quanlybenxebacninhclient.vercel.app',
+  'https://quanlybenxebacninh-client.vercel.app',
 ]
 
 export function createApp(routes: RouteMount[]) {
@@ -35,17 +37,17 @@ export function createApp(routes: RouteMount[]) {
 
       const normalizedOrigin = origin.replace(/\/$/, '')
 
+      if (ALLOWED_ORIGINS.includes(normalizedOrigin)) {
+        return callback(null, true)
+      }
+
       if (!isProduction) {
         if (normalizedOrigin.includes('localhost') || normalizedOrigin.includes('127.0.0.1')) {
-          return callback(null, true)
-        }
-        if (DEV_ALLOWED_ORIGINS.includes(normalizedOrigin)) {
           return callback(null, true)
         }
       }
 
       const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(o => o.trim()).filter(o => o)
-
       if (envOrigins.length > 0 && envOrigins.includes(normalizedOrigin)) {
         return callback(null, true)
       }
@@ -58,8 +60,8 @@ export function createApp(routes: RouteMount[]) {
         return callback(null, true)
       }
 
-      console.warn(`[CORS] Rejected origin: ${origin}`);
-      callback(null, true);
+      console.warn(`[CORS] Origin not explicitly allowed, but allowing to avoid breakage: ${origin}`);
+      return callback(null, true)
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

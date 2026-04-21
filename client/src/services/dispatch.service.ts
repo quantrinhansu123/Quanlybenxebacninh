@@ -221,4 +221,10 @@ export const dispatchService = {
     clearCache()
     return response.data.dispatch
   },
+  
+  revertStatus: async (id: string): Promise<DispatchRecord> => {
+    const response = await api.post<{ dispatch: DispatchRecord }>(`/dispatch/${id}/revert`)
+    clearCache()
+    return response.data.dispatch
+  },
 }

@@ -15,6 +15,7 @@ import {
   Radar,
   Sparkles,
   User,
+  RotateCcw,
 } from "lucide-react";
 import { useSmartNavigation } from "@/lib/navigation-utils";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ export default function DieuDo() {
     handleAction,
     handleOpenPermitReadOnly,
     handleRecordExit,
+    handleRevert,
     getRecordsByStatus,
     isMonthlyPaymentVehicle,
     getVehicleStatus,
@@ -94,21 +96,29 @@ export default function DieuDo() {
       );
     } else if (status === "permit-issued") {
       buttons.push(
+        <ActionButton key="revert" icon={RotateCcw} onClick={(e) => { e.stopPropagation(); handleRevert(record); }} title="Chuyển về trạng thái trước" variant="warning" />,
         <ActionButton key="payment" icon={Banknote} onClick={(e) => { e.stopPropagation(); navigateWithReturn(`/thanh-toan/${record.id}`); }} title="Thanh toán" variant="warning" />,
         <ActionButton key="document" icon={FileText} onClick={(e) => { e.stopPropagation(); handleOpenPermitReadOnly(record); }} title="Xem tài liệu" variant="info" />
       );
     } else if (status === "paid") {
       if (record.permitStatus === "approved") {
-        buttons.push(<ActionButton key="departure-order" icon={ShieldCheck} onClick={(e) => { e.stopPropagation(); handleAction(record, "departure-order"); }} title="Cấp lệnh xuất bến" variant="success" />);
+        buttons.push(
+          <ActionButton key="revert" icon={RotateCcw} onClick={(e) => { e.stopPropagation(); handleRevert(record); }} title="Chuyển về trạng thái trước" variant="warning" />,
+          <ActionButton key="departure-order" icon={ShieldCheck} onClick={(e) => { e.stopPropagation(); handleAction(record, "departure-order"); }} title="Cấp lệnh xuất bến" variant="success" />
+        );
       }
       if (record.permitStatus === "rejected" || !record.permitStatus) {
         buttons.push(
+          <ActionButton key="revert" icon={RotateCcw} onClick={(e) => { e.stopPropagation(); handleRevert(record); }} title="Chuyển về trạng thái trước" variant="warning" />,
           <ActionButton key="exit" icon={BusEnterIcon} onClick={async (e) => { e.stopPropagation(); await handleRecordExit(record); }} title="Cho xe ra bến" variant="danger" />,
           <ActionButton key="delete" icon={Trash2} onClick={(e) => { e.stopPropagation(); handleDelete(record); }} title="Xóa" variant="danger" />
         );
       }
     } else if (status === "departed" && record.currentStatus === "departure_ordered") {
-      buttons.push(<ActionButton key="depart" icon={BusEnterIcon} onClick={(e) => { e.stopPropagation(); handleAction(record, "depart"); }} title="Cho xe ra bến" variant="success" />);
+      buttons.push(
+        <ActionButton key="revert" icon={RotateCcw} onClick={(e) => { e.stopPropagation(); handleRevert(record); }} title="Chuyển về trạng thái trước" variant="warning" />,
+        <ActionButton key="depart" icon={BusEnterIcon} onClick={(e) => { e.stopPropagation(); handleAction(record, "depart"); }} title="Cho xe ra bến" variant="success" />
+      );
     }
 
     return buttons;
