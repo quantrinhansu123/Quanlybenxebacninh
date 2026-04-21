@@ -18,9 +18,6 @@ const router = Router()
 // All routes require authentication
 router.use(authenticate)
 
-// Only admin can manage users
-router.use(authorize('admin'))
-
 // User CRUD operations
 router.get('/', getAllUsers)
 router.get('/:id', getUserById)

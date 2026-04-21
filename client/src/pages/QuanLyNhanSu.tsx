@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { toast } from "react-toastify"
+import { useAuth } from "@/features/auth"
 import {
   Plus,
   Search,
@@ -41,6 +42,7 @@ const ROLE_COLORS: Record<string, string> = {
 }
 
 export default function QuanLyNhanSu() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [searchQuery, setSearchQuery] = useState("")
@@ -103,9 +105,19 @@ export default function QuanLyNhanSu() {
         role: filterRole || undefined,
         isActive: filterActive,
       })
-      setUsers(response.data)
-      setTotal(response.pagination.total)
-      setTotalPages(response.pagination.totalPages)
+      
+      let filteredUsers = response.data;
+      if (currentUser) {
+        if (currentUser.benPhuTrach) {
+          filteredUsers = filteredUsers.filter(u => u.benPhuTrach === currentUser.benPhuTrach)
+        } else {
+          filteredUsers = filteredUsers.filter(u => u.id === currentUser.id)
+        }
+      }
+      
+      setUsers(filteredUsers)
+      setTotal(filteredUsers.length !== response.data.length ? filteredUsers.length : response.pagination.total)
+      setTotalPages(filteredUsers.length !== response.data.length ? Math.ceil(filteredUsers.length / ITEMS_PER_PAGE) : response.pagination.totalPages)
     } catch (error) {
       console.error("Failed to load users:", error)
       toast.error("Không thể tải danh sách nhân sự")
