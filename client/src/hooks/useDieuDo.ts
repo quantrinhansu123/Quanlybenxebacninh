@@ -43,6 +43,8 @@ export function useDieuDo() {
   const setTitle = useUIStore((state) => state.setTitle);
   const currentUser = useAuthStore((state) => state.user);
 
+  const [routesMap, setRoutesMap] = useState<Map<string, { start: string, end: string }>>(new Map());
+
   // Restore dialog state from URL params
   // FIX: Require BOTH dispatchId AND action to prevent fallback to "permit"
   useEffect(() => {
@@ -77,14 +79,20 @@ export function useDieuDo() {
       const data = await quanlyDataService.getAll();
 
       const routeLocMap = new Map<string, { start: string, end: string }>();
+      const routeIdMap = new Map<string, { start: string, end: string }>();
       if (data.routes) {
         for (const r of data.routes) {
           routeLocMap.set(r.code, {
             start: (r.startPoint || '').trim().toLowerCase(),
             end: (r.endPoint || '').trim().toLowerCase()
           });
+          routeIdMap.set(r.id, {
+            start: (r.startPoint || '').trim().toLowerCase(),
+            end: (r.endPoint || '').trim().toLowerCase()
+          });
         }
       }
+      setRoutesMap(routeIdMap);
 
       const validPlates = new Set<string>();
       const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
@@ -285,9 +293,21 @@ export function useDieuDo() {
     return records
       .filter((record) => {
         if (userLoc) {
-          const departure = (record.departureStation || "").trim().toLowerCase();
-          const arrival = (record.arrivalStation || "").trim().toLowerCase();
-          if (departure !== userLoc && arrival !== userLoc) {
+          let departure = (record.departureStation || "").trim().toLowerCase();
+          let arrival = (record.arrivalStation || "").trim().toLowerCase();
+          
+          if (!departure && !arrival && record.routeId) {
+            const routeData = routesMap.get(record.routeId);
+            if (routeData) {
+              departure = routeData.start;
+              arrival = routeData.end;
+            }
+          }
+
+          const matchesLoc = departure === userLoc || arrival === userLoc;
+          const enteredByUser = record.entryBy === currentUser?.id || record.entryBy === currentUser?.fullName || record.entryBy === currentUser?.username;
+          
+          if (!matchesLoc && !enteredByUser) {
             return false;
           }
         }
@@ -309,7 +329,7 @@ export function useDieuDo() {
           record.driverName.toLowerCase().includes(query)
         );
       });
-  }, [records, searchQuery, getDisplayStatus, currentUser?.benPhuTrachName]);
+  }, [records, searchQuery, getDisplayStatus, currentUser?.benPhuTrachName, currentUser?.id, currentUser?.fullName, currentUser?.username, routesMap]);
 
   const stats = useMemo(() => ({
     "in-station": getRecordsByStatus("in-station").length,
