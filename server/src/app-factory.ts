@@ -3,7 +3,7 @@
  * Creates a configured Express app with base middleware and specified routes.
  * Used by Vercel serverless function splitting to load only the routes each function needs.
  */
-import express, { Request, Response } from 'express'
+import express, { Request, Response, NextFunction } from 'express'
 import compression from 'compression'
 import bodyParser from 'body-parser'
 import cors from 'cors'
@@ -28,6 +28,24 @@ export function createApp(routes: RouteMount[]) {
   const app = express()
 
   app.use(compression())
+
+  // Manual CORS preflight handling for robustness on Vercel
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const origin = req.headers.origin
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+      res.setHeader('Access-Control-Allow-Credentials', 'true')
+    }
+    
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+      res.setHeader('Access-Control-Max-Age', '86400')
+      res.status(204).end()
+      return
+    }
+    next()
+  })
 
   app.use(cors({
     origin: (origin, callback) => {
