@@ -29,7 +29,6 @@ async function getApp() {
         { default: chatRoutes },
         { default: quanlyDataRoutes },
         { default: operationNoticeRoutes },
-        { default: gtvtSyncRoutes },
         { default: userRoutes },
         { default: webhookRoutes },
       ] = await Promise.all([
@@ -56,7 +55,6 @@ async function getApp() {
         import('../src/modules/chat/chat.routes.js'),
         import('../src/routes/quanly-data.routes.js'),
         import('../src/routes/operation-notice.routes.js'),
-        import('../src/routes/gtvt-sync.routes.js'),
         import('../src/routes/user.routes.js'),
         import('../src/routes/webhook.routes.js'),
       ])
@@ -85,7 +83,6 @@ async function getApp() {
         { path: '/api/chat', router: chatRoutes },
         { path: '/api/quanly-data', router: quanlyDataRoutes },
         { path: '/api/operation-notices', router: operationNoticeRoutes },
-        { path: '/api/integrations/gtvt', router: gtvtSyncRoutes },
         { path: '/api/users', router: userRoutes },
         { path: '/api/webhooks', router: webhookRoutes },
       ])
@@ -105,6 +102,11 @@ export default async function handler(req: any, res: any) {
   } catch (error) {
     console.error('[Vercel Handler] Error in handler:', error)
     if (!res.headersSent) {
+      const origin = req.headers.origin;
+      if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
       res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',

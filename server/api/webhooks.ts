@@ -7,19 +7,16 @@ export default async function handler(req: any, res: any) {
     if (!appInstance) {
       const [
         { default: webhookRoutes },
-        { default: gtvtSyncRoutes },
         { default: uploadRoutes },
         { default: operationNoticeRoutes },
       ] = await Promise.all([
         import('../src/routes/webhook.routes.js'),
-        import('../src/routes/gtvt-sync.routes.js'),
         import('../src/routes/upload.routes.js'),
         import('../src/routes/operation-notice.routes.js'),
       ])
 
       const routes: RouteMount[] = [
         { path: '/api/webhooks', router: webhookRoutes },
-        { path: '/api/integrations/gtvt', router: gtvtSyncRoutes },
         { path: '/api/upload', router: uploadRoutes },
         { path: '/api/operation-notices', router: operationNoticeRoutes },
       ]
@@ -29,6 +26,12 @@ export default async function handler(req: any, res: any) {
   } catch (error) {
     console.error('[Vercel Handler] Error:', error)
     if (!res.headersSent) {
+      // Add CORS headers to error response so the browser doesn't obscure the true 500 error
+      const origin = req.headers.origin;
+      if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
       res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
