@@ -16,6 +16,11 @@ export const authenticate = (
   res: Response,
   next: NextFunction
 ) => {
+  // Skip authentication for OPTIONS requests (CORS preflight)
+  if (req.method === 'OPTIONS') {
+    return next()
+  }
+
   try {
     const authHeader = req.headers.authorization
 
