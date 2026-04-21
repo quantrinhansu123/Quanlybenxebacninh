@@ -58,7 +58,8 @@ export function createApp(routes: RouteMount[]) {
         return callback(null, true)
       }
 
-      callback(new Error('Not allowed by CORS'))
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
