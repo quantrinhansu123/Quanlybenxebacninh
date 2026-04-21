@@ -379,6 +379,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           arrivalStationRef: r.arrivalStationRef || '',
           distance: r.distanceKm || '',
           routeType: r.routeType || '',
+          itinerary: r.itinerary || '',
         })
       }
       
@@ -506,7 +507,7 @@ export const getQuanLyData = async (req: Request, res: Response) => {
           try {
             const busRouteRows = await db.execute(
               // eslint-disable-next-line drizzle/enforce-query-usage
-              sql`SELECT id_tuyen FROM danh_muc_tuyen_bus WHERE diem_dau = ${stationCode}`,
+              sql`SELECT id_tuyen FROM danh_muc_tuyen_bus WHERE diem_dau = ${stationCode} OR diem_cuoi = ${stationCode} OR hanh_trinh ILIKE ${'%' + stationName + '%'}`,
             )
             for (const row of busRouteRows as any[]) {
               const id = (row.id_tuyen || '').trim()
@@ -525,7 +526,8 @@ export const getQuanLyData = async (req: Request, res: Response) => {
             const route = r as any
             const startPoint = (route.startPoint || '').trim().toLowerCase()
             const endPoint = (route.endPoint || '').trim().toLowerCase()
-            if (startPoint === stationLower || endPoint === stationLower) {
+            const itinerary = (route.itinerary || '').trim().toLowerCase()
+            if (startPoint === stationLower || endPoint === stationLower || itinerary.includes(stationLower)) {
               const rc = (route.code || '').trim().toUpperCase()
               if (rc) allowedFixedRouteCodes.add(rc)
             }
