@@ -107,7 +107,7 @@ export default function QuanLyNhanSu() {
       })
       
       let filteredUsers = response.data;
-      if (currentUser) {
+      if (currentUser && currentUser.role !== 'admin') {
         if (currentUser.benPhuTrach) {
           filteredUsers = filteredUsers.filter(u => u.benPhuTrach === currentUser.benPhuTrach)
         } else {

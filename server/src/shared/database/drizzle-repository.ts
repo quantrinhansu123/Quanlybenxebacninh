@@ -6,7 +6,7 @@
  * This is a known issue with Drizzle when using abstract base classes
  */
 import { db } from '../../db/drizzle.js'
-import { eq, sql, and, or, gte, lte, like, desc, asc } from 'drizzle-orm'
+import { eq, sql, and, or, gte, lte, like, desc, asc, inArray } from 'drizzle-orm'
 import { PgTable, PgColumn } from 'drizzle-orm/pg-core'
 import { DatabaseError, NotFoundError } from '../errors/app-error.js'
 
@@ -186,4 +186,4 @@ export abstract class DrizzleRepository<
 }
 
 // Re-export drizzle operators for convenience
-export { eq, and, or, gte, lte, like, desc, asc, sql }
+export { eq, and, or, gte, lte, like, desc, asc, sql, inArray }

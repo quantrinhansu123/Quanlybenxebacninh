@@ -11,7 +11,6 @@ import {
   deleteUser,
 } from '../controllers/user.controller.js'
 import { authenticate } from '../middleware/auth.js'
-import { authorize } from '../middleware/auth.js'
 
 const router = Router()
 

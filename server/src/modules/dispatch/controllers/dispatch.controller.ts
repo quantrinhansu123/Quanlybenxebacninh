@@ -62,11 +62,19 @@ async function updateWithStatusCheck(
 /**
  * Get all dispatch records with optional filters
  */
-export const getAllDispatchRecords = async (req: Request, res: Response) => {
+export const getAllDispatchRecords = async (req: AuthRequest, res: Response) => {
   try {
     const { status, vehicleId, driverId, routeId, entryBy } = req.query
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0
+    const userId = req.user?.id;
+
+    let allowedPlates: Set<string> | null = null;
+    if (userId) {
+      const { getStationAllowedPlates } = await import('../../../utils/station-filter.js');
+      allowedPlates = await getStationAllowedPlates(userId);
+    }
+
     const records = await dispatchRepository.findAllWithFilters({
       status: status as string,
       vehicleId: vehicleId as string,
@@ -75,6 +83,7 @@ export const getAllDispatchRecords = async (req: Request, res: Response) => {
       entryBy: entryBy as string,
       limit: Number.isFinite(limit) && limit > 0 ? limit : 50,
       offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
+      allowedPlates: allowedPlates ? Array.from(allowedPlates) : undefined,
     })
     res.setHeader('Cache-Control', 'private, no-cache')
     return res.json(mapDispatchListToAPI(records))

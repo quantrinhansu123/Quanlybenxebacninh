@@ -7,12 +7,14 @@
 
 import { db } from '../db/drizzle.js';
 import { dispatchRecords, vehicles, routes, drivers, vehicleBadges } from '../db/schema/index.js';
-import { desc, gte, lte, lt, or, and, isNotNull, sql, eq } from 'drizzle-orm';
+import { desc, gte, lte, lt, or, and, isNotNull, sql, eq, inArray } from 'drizzle-orm';
 import type { DispatchRecord } from '../db/schema/dispatch-records.js';
 import type { Vehicle } from '../db/schema/vehicles.js';
 import type { Route } from '../db/schema/routes.js';
 import type { Driver } from '../db/schema/drivers.js';
 import type { VehicleBadge } from '../db/schema/vehicle-badges.js';
+
+import { getStationAllowedPlates } from '../utils/station-filter.js';
 
 // Cache structure
 interface DashboardCache {
@@ -31,7 +33,7 @@ interface DashboardAllData {
 }
 
 // Cache with 1 minute TTL (dashboard needs fresh data)
-let dashboardCache: DashboardCache = { data: null, timestamp: 0 };
+const dashboardCaches = new Map<string, DashboardCache>();
 const CACHE_TTL = 60 * 1000; // 1 minute
 
 // Helper function to get Vietnam date strings for queries
@@ -150,7 +152,7 @@ export class DashboardService {
    * Load raw data from database with OPTIMIZED filtered queries
    * Only loads data needed for dashboard (not full tables)
    */
-  private async loadRawData(): Promise<RawData> {
+  private async loadRawData(allowedPlates: Set<string> | null): Promise<RawData> {
     if (!db) {
       throw new Error('[Dashboard] Database not initialized');
     }
@@ -216,10 +218,21 @@ export class DashboardService {
     const routesMap: Record<string, Route> = {};
     routesData.forEach((r) => { routesMap[r.id] = r; });
 
+    // Filter by allowed plates if applicable
+    let filteredDispatch = dispatchRecordsData;
+    let filteredVehicles = vehiclesWithExpiryData;
+    let filteredBadges = vehicleBadgesData;
+
+    if (allowedPlates !== null) {
+      filteredDispatch = filteredDispatch.filter(d => d.vehiclePlateNumber && allowedPlates.has(d.vehiclePlateNumber));
+      filteredVehicles = filteredVehicles.filter(v => v.plateNumber && allowedPlates.has(v.plateNumber));
+      filteredBadges = filteredBadges.filter(b => b.plateNumber && allowedPlates.has(b.plateNumber));
+    }
+
     // Flatten vehicle expiry documents
     const vehicleExpiryDocs: Array<{ vehicleId: string; plateNumber: string; documentType: string; expiryDate: string; badgeType?: string }> = [];
 
-    for (const vehicle of vehiclesWithExpiryData) {
+    for (const vehicle of filteredVehicles) {
       if (vehicle.roadWorthinessExpiry) {
         vehicleExpiryDocs.push({
           vehicleId: vehicle.id,
@@ -240,7 +253,7 @@ export class DashboardService {
 
     // Add vehicle badges expiry dates
     // Include badges both with and without vehicleId (use badge.plateNumber directly)
-    for (const badge of vehicleBadgesData) {
+    for (const badge of filteredBadges) {
       if (badge.expiryDate) {
         // Try to get plate number from linked vehicle, fallback to badge's plate number
         const vehicle = badge.vehicleId ? vehiclesMap[badge.vehicleId] : undefined;
@@ -258,13 +271,13 @@ export class DashboardService {
       }
     }
 
-    console.log(`[Dashboard] Loaded filtered data in ${Date.now() - startTime}ms (${dispatchRecordsData.length} dispatch, ${vehiclesWithExpiryData.length} vehicles, ${driversWithExpiryData.length} drivers)`);
+    console.log(`[Dashboard] Loaded filtered data in ${Date.now() - startTime}ms (${filteredDispatch.length} dispatch, ${filteredVehicles.length} vehicles, ${driversWithExpiryData.length} drivers)`);
 
     return {
-      dispatchRecords: dispatchRecordsData,
+      dispatchRecords: filteredDispatch,
       vehicles: vehiclesMap,
       routes: routesMap,
-      vehicleBadges: vehicleBadgesData as VehicleBadge[],
+      vehicleBadges: filteredBadges as VehicleBadge[],
       vehicleExpiryDocs,
       drivers: driversWithExpiryData as Driver[],
       todayStr,
@@ -272,74 +285,46 @@ export class DashboardService {
   }
 
   /**
-   * Get stats using SQL aggregation (OPTIMIZED)
-   */
-  private async getStatsSQL(): Promise<DashboardStats> {
-    if (!db) throw new Error('[Dashboard] Database not initialized');
-
-    const { todayStr } = getVietnamDateRange();
-    const todayStart = new Date(todayStr + 'T00:00:00+07:00');
-    const todayEnd = new Date(todayStr + 'T23:59:59.999+07:00');
-
-    // Single query with FILTER clauses for different counts
-    const result = await db.select({
-      totalVehiclesToday: sql<number>`COUNT(*)::int`,
-      vehiclesInStation: sql<number>`COUNT(*) FILTER (WHERE status IN ('entered', 'passengers_dropped', 'permit_issued', 'paid', 'departure_ordered') AND exit_time IS NULL)::int`,
-      vehiclesDepartedToday: sql<number>`COUNT(*) FILTER (WHERE status = 'departed' AND exit_time IS NOT NULL)::int`,
-      revenueToday: sql<number>`COALESCE(SUM(CASE WHEN status IN ('paid', 'departed') THEN payment_amount ELSE 0 END), 0)::numeric`,
-    })
-    .from(dispatchRecords)
-    .where(and(
-      gte(dispatchRecords.entryTime, todayStart),
-      lte(dispatchRecords.entryTime, todayEnd)
-    ));
-
-    const stats = result[0] || {
-      totalVehiclesToday: 0,
-      vehiclesInStation: 0,
-      vehiclesDepartedToday: 0,
-      revenueToday: 0,
-    };
-
-    // Get invalid vehicles count separately
-    const invalidVehicles = await this.getInvalidVehiclesCount(todayStr);
-
-    return {
-      totalVehiclesToday: stats.totalVehiclesToday,
-      vehiclesInStation: stats.vehiclesInStation,
-      vehiclesDepartedToday: stats.vehiclesDepartedToday,
-      revenueToday: parseFloat(String(stats.revenueToday)) || 0,
-      invalidVehicles,
-    };
-  }
-
-  /**
    * Get count of invalid vehicles (expired documents)
    * Runs both COUNT queries in parallel instead of sequentially
    */
-  private async getInvalidVehiclesCount(todayStr: string): Promise<number> {
+  private async getInvalidVehiclesCount(todayStr: string, allowedPlates: Set<string> | null): Promise<number> {
     if (!db) throw new Error('[Dashboard] Database not initialized');
 
-    // Run both counts in PARALLEL (was sequential — saved 1 DB round-trip)
+    if (allowedPlates !== null && allowedPlates.size === 0) {
+      return 0;
+    }
+
+    const vehicleConditions: any[] = [
+      or(
+        and(isNotNull(vehicles.registrationExpiry), lt(vehicles.registrationExpiry, todayStr)),
+        and(isNotNull(vehicles.insuranceExpiry), lt(vehicles.insuranceExpiry, todayStr)),
+        and(isNotNull(vehicles.roadWorthinessExpiry), lt(vehicles.roadWorthinessExpiry, todayStr))
+      )
+    ];
+    if (allowedPlates !== null) {
+      vehicleConditions.push(inArray(vehicles.plateNumber, Array.from(allowedPlates)));
+    }
+
+    const badgeConditions: any[] = [
+      and(isNotNull(vehicleBadges.expiryDate), lt(vehicleBadges.expiryDate, todayStr))
+    ];
+    if (allowedPlates !== null) {
+      badgeConditions.push(inArray(vehicleBadges.plateNumber, Array.from(allowedPlates)));
+    }
+
+    // Run both counts in PARALLEL (was sequential - saved 1 DB round-trip)
     const [vehicleCount, badgeCount] = await Promise.all([
       db.select({
         count: sql<number>`COUNT(*)::int`,
       })
       .from(vehicles)
-      .where(
-        or(
-          and(isNotNull(vehicles.registrationExpiry), lt(vehicles.registrationExpiry, todayStr)),
-          and(isNotNull(vehicles.insuranceExpiry), lt(vehicles.insuranceExpiry, todayStr)),
-          and(isNotNull(vehicles.roadWorthinessExpiry), lt(vehicles.roadWorthinessExpiry, todayStr))
-        )
-      ),
+      .where(and(...vehicleConditions)),
       db.select({
         count: sql<number>`COUNT(*)::int`,
       })
       .from(vehicleBadges)
-      .where(
-        and(isNotNull(vehicleBadges.expiryDate), lt(vehicleBadges.expiryDate, todayStr))
-      ),
+      .where(and(...badgeConditions)),
     ]);
 
     return (vehicleCount[0]?.count || 0) + (badgeCount[0]?.count || 0);
@@ -348,22 +333,35 @@ export class DashboardService {
   /**
    * Get chart data using SQL GROUP BY hour (OPTIMIZED)
    */
-  private async getChartDataSQL(): Promise<ChartDataPoint[]> {
+  private async getChartDataSQL(allowedPlates: Set<string> | null): Promise<ChartDataPoint[]> {
     if (!db) throw new Error('[Dashboard] Database not initialized');
 
     const { todayStr } = getVietnamDateRange();
     const todayStart = new Date(todayStr + 'T00:00:00+07:00');
     const todayEnd = new Date(todayStr + 'T23:59:59.999+07:00');
 
+    const conditions: any[] = [
+      gte(dispatchRecords.entryTime, todayStart),
+      lte(dispatchRecords.entryTime, todayEnd)
+    ];
+
+    if (allowedPlates !== null) {
+      if (allowedPlates.size === 0) {
+        const hours = Array.from({ length: 12 }, (_, i) => i + 6);
+        return hours.map(hour => ({
+          hour: hour.toString().padStart(2, '0') + ':00',
+          count: 0,
+        }));
+      }
+      conditions.push(inArray(dispatchRecords.vehiclePlateNumber, Array.from(allowedPlates)));
+    }
+
     const result = await db.select({
       hour: sql<string>`TO_CHAR(entry_time AT TIME ZONE 'Asia/Saigon', 'HH24:00')`,
       count: sql<number>`COUNT(*)::int`,
     })
     .from(dispatchRecords)
-    .where(and(
-      gte(dispatchRecords.entryTime, todayStart),
-      lte(dispatchRecords.entryTime, todayEnd)
-    ))
+    .where(and(...conditions))
     .groupBy(sql`TO_CHAR(entry_time AT TIME ZONE 'Asia/Saigon', 'HH24:00')`)
     .orderBy(sql`1`);
 
@@ -462,11 +460,39 @@ export class DashboardService {
   /**
    * Get weekly stats using SQL GROUP BY date (OPTIMIZED)
    */
-  private async getWeeklyStatsSQL(): Promise<WeeklyStat[]> {
+  private async getWeeklyStatsSQL(allowedPlates: Set<string> | null): Promise<WeeklyStat[]> {
     if (!db) throw new Error('[Dashboard] Database not initialized');
 
     const { weekAgoStr } = getVietnamDateRange();
     const weekAgoDate = new Date(weekAgoStr + 'T00:00:00+07:00');
+
+    const conditions: any[] = [
+      gte(dispatchRecords.entryTime, weekAgoDate)
+    ];
+
+    if (allowedPlates !== null) {
+      if (allowedPlates.size === 0) {
+        // Return empty week stats
+        const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+        const days: { dateStr: string; dayName: string }[] = [];
+    
+        for (let i = 6; i >= 0; i--) {
+          const now = new Date();
+          const vietnamTime = new Date(now.getTime() + (7 * 60 + now.getTimezoneOffset()) * 60000);
+          vietnamTime.setDate(vietnamTime.getDate() - i);
+          const dateStr = `${vietnamTime.getFullYear()}-${String(vietnamTime.getMonth() + 1).padStart(2, '0')}-${String(vietnamTime.getDate()).padStart(2, '0')}`;
+          days.push({ dateStr, dayName: dayNames[vietnamTime.getDay()] });
+        }
+        return days.map(({ dateStr, dayName }) => ({
+          day: dateStr,
+          dayName,
+          departed: 0,
+          inStation: 0,
+          total: 0,
+        }));
+      }
+      conditions.push(inArray(dispatchRecords.vehiclePlateNumber, Array.from(allowedPlates)));
+    }
 
     const result = await db.select({
       day: sql<string>`DATE(entry_time AT TIME ZONE 'Asia/Saigon')::text`,
@@ -474,7 +500,7 @@ export class DashboardService {
       inStation: sql<number>`COUNT(*) FILTER (WHERE status IN ('entered', 'passengers_dropped', 'permit_issued', 'paid', 'departure_ordered') AND exit_time IS NULL)::int`,
     })
     .from(dispatchRecords)
-    .where(gte(dispatchRecords.entryTime, weekAgoDate))
+    .where(and(...conditions))
     .groupBy(sql`DATE(entry_time AT TIME ZONE 'Asia/Saigon')`)
     .orderBy(sql`1`);
 
@@ -532,14 +558,82 @@ export class DashboardService {
   }
 
   /**
+   * Get stats using SQL aggregation (OPTIMIZED)
+   */
+  private async getStatsSQL(allowedPlates: Set<string> | null): Promise<DashboardStats> {
+    if (!db) throw new Error('[Dashboard] Database not initialized');
+
+    const { todayStr } = getVietnamDateRange();
+    const todayStartStr = todayStr + ' 00:00:00+07';
+    const todayEndStr = todayStr + ' 23:59:59.999+07';
+
+    const conditions: any[] = [];
+
+    if (allowedPlates !== null) {
+      if (allowedPlates.size === 0) {
+        return {
+          totalVehiclesToday: 0,
+          vehiclesInStation: 0,
+          vehiclesDepartedToday: 0,
+          revenueToday: 0,
+          invalidVehicles: 0,
+        };
+      }
+      conditions.push(inArray(dispatchRecords.vehiclePlateNumber, Array.from(allowedPlates)));
+    }
+
+    let query = db.select({
+      totalVehiclesToday: sql<number>`COUNT(*) FILTER (WHERE entry_time >= ${todayStartStr}::timestamptz AND entry_time <= ${todayEndStr}::timestamptz)::int`,
+      vehiclesInStation: sql<number>`COUNT(*) FILTER (WHERE status IN ('entered', 'passengers_dropped', 'permit_issued', 'paid', 'departure_ordered') AND (exit_time IS NULL OR exit_time >= ${todayStartStr}::timestamptz))::int`,
+      vehiclesDepartedToday: sql<number>`COUNT(*) FILTER (WHERE status = 'departed' AND exit_time >= ${todayStartStr}::timestamptz AND exit_time <= ${todayEndStr}::timestamptz)::int`,
+      revenueToday: sql<number>`COALESCE(SUM(CASE WHEN status IN ('paid', 'departed') AND payment_time >= ${todayStartStr}::timestamptz AND payment_time <= ${todayEndStr}::timestamptz THEN payment_amount ELSE 0 END), 0)::numeric`,
+    })
+    .from(dispatchRecords);
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
+    }
+
+    const result = await query;
+
+    const stats = result[0] || {
+      totalVehiclesToday: 0,
+      vehiclesInStation: 0,
+      vehiclesDepartedToday: 0,
+      revenueToday: 0,
+    };
+
+    // Get invalid vehicles count separately
+    const invalidVehicles = await this.getInvalidVehiclesCount(todayStr, allowedPlates);
+
+    return {
+      totalVehiclesToday: stats.totalVehiclesToday,
+      vehiclesInStation: stats.vehiclesInStation,
+      vehiclesDepartedToday: stats.vehiclesDepartedToday,
+      revenueToday: parseFloat(String(stats.revenueToday)) || 0,
+      invalidVehicles,
+    };
+  }
+
+  /**
    * Get route breakdown using SQL GROUP BY route with JOIN (OPTIMIZED)
    */
-  private async getRouteBreakdownSQL(): Promise<RouteBreakdown[]> {
+  private async getRouteBreakdownSQL(allowedPlates: Set<string> | null): Promise<RouteBreakdown[]> {
     if (!db) throw new Error('[Dashboard] Database not initialized');
 
     const { todayStr } = getVietnamDateRange();
     const todayStart = new Date(todayStr + 'T00:00:00+07:00');
     const todayEnd = new Date(todayStr + 'T23:59:59.999+07:00');
+
+    const conditions: any[] = [
+      gte(dispatchRecords.entryTime, todayStart),
+      lte(dispatchRecords.entryTime, todayEnd)
+    ];
+
+    if (allowedPlates !== null) {
+      if (allowedPlates.size === 0) return [];
+      conditions.push(inArray(dispatchRecords.vehiclePlateNumber, Array.from(allowedPlates)));
+    }
 
     // Single query: get route breakdown + total via window function (was 2 sequential queries)
     const result = await db.select({
@@ -557,10 +651,7 @@ export class DashboardService {
     })
     .from(dispatchRecords)
     .leftJoin(routes, eq(dispatchRecords.routeId, routes.id))
-    .where(and(
-      gte(dispatchRecords.entryTime, todayStart),
-      lte(dispatchRecords.entryTime, todayEnd)
-    ))
+    .where(and(...conditions))
     .groupBy(dispatchRecords.routeId, routes.routeType, routes.routeCodeOld, routes.routeCode, routes.departureStation)
     .orderBy(sql`3 DESC`)
     .limit(6);
@@ -581,50 +672,54 @@ export class DashboardService {
    * Get all dashboard data - OPTIMIZED: SQL aggregation + caching
    * Uses stale-while-revalidate pattern to avoid blocking requests
    */
-  async getAllData(): Promise<DashboardAllData> {
+  async getAllData(userId?: string): Promise<DashboardAllData> {
     const now = Date.now();
+    const cacheKey = userId || 'global';
+    const dashboardCache = dashboardCaches.get(cacheKey) || { data: null, timestamp: 0 };
 
     // Return cached data if valid
     if (dashboardCache.data) {
       if ((now - dashboardCache.timestamp) < CACHE_TTL) {
-        console.log('[Dashboard] Returning cached data');
+        console.log(`[Dashboard] Returning cached data for ${cacheKey}`);
         return dashboardCache.data;
       }
       
       // Stale-while-revalidate (up to 5 minutes stale)
       if ((now - dashboardCache.timestamp) < CACHE_TTL * 5) {
-        console.log('[Dashboard] Returning stale cached data, revalidating in background');
-        this.revalidateCache().catch(e => console.error('[Dashboard] Background revalidation error:', e));
+        console.log(`[Dashboard] Returning stale cached data for ${cacheKey}, revalidating in background`);
+        this.revalidateCache(userId).catch(e => console.error('[Dashboard] Background revalidation error:', e));
         return dashboardCache.data;
       }
     }
 
     // Cache is missing or too stale, fetch synchronously
-    return this.fetchAndCacheData();
+    return this.fetchAndCacheData(userId);
   }
 
-  private async revalidateCache() {
+  private async revalidateCache(userId?: string) {
     if (this.isRevalidating) return;
     this.isRevalidating = true;
     try {
-      await this.fetchAndCacheData();
+      await this.fetchAndCacheData(userId);
     } finally {
       this.isRevalidating = false;
     }
   }
 
-  private async fetchAndCacheData(): Promise<DashboardAllData> {
+  private async fetchAndCacheData(userId?: string): Promise<DashboardAllData> {
     const startTime = Date.now();
+    const allowedPlates = userId ? await getStationAllowedPlates(userId) : null;
+    const cacheKey = userId || 'global';
 
     // Use SQL aggregation for stats, charts, weekly, route (OPTIMIZED)
     // Keep loadRawData for warnings and recentActivity (need full records for formatting)
-    const raw = await this.loadRawData();
+    const raw = await this.loadRawData(allowedPlates);
 
     const [stats, chartData, weeklyStats, routeBreakdown] = await Promise.all([
-      this.getStatsSQL(),
-      this.getChartDataSQL(),
-      this.getWeeklyStatsSQL(),
-      this.getRouteBreakdownSQL(),
+      this.getStatsSQL(allowedPlates),
+      this.getChartDataSQL(allowedPlates),
+      this.getWeeklyStatsSQL(allowedPlates),
+      this.getRouteBreakdownSQL(allowedPlates),
     ]);
 
     // Calculate metrics that need raw data
@@ -639,51 +734,55 @@ export class DashboardService {
     };
 
     // Update cache
-    dashboardCache = { data, timestamp: Date.now() };
+    dashboardCaches.set(cacheKey, { data, timestamp: Date.now() });
 
-    console.log(`[Dashboard] Generated all data in ${Date.now() - startTime}ms (SQL aggregation)`);
+    console.log(`[Dashboard] Generated all data for ${cacheKey} in ${Date.now() - startTime}ms (SQL aggregation)`);
     return data;
   }
 
   // Individual getters for backward compatibility (use cached data)
-  async getStats(): Promise<DashboardStats> {
-    const data = await this.getAllData();
+  async getStats(userId?: string): Promise<DashboardStats> {
+    const data = await this.getAllData(userId);
     return data.stats;
   }
 
-  async getChartData(): Promise<ChartDataPoint[]> {
-    const data = await this.getAllData();
+  async getChartData(userId?: string): Promise<ChartDataPoint[]> {
+    const data = await this.getAllData(userId);
     return data.chartData;
   }
 
-  async getRecentActivity(): Promise<RecentActivity[]> {
-    const data = await this.getAllData();
+  async getRecentActivity(userId?: string): Promise<RecentActivity[]> {
+    const data = await this.getAllData(userId);
     return data.recentActivity;
   }
 
-  async getWarnings(): Promise<Warning[]> {
-    const data = await this.getAllData();
+  async getWarnings(userId?: string): Promise<Warning[]> {
+    const data = await this.getAllData(userId);
     return data.warnings;
   }
 
-  async getWeeklyStats(): Promise<WeeklyStat[]> {
-    const data = await this.getAllData();
+  async getWeeklyStats(userId?: string): Promise<WeeklyStat[]> {
+    const data = await this.getAllData(userId);
     return data.weeklyStats;
   }
 
-  async getMonthlyStats(): Promise<MonthlyStat[]> {
-    const data = await this.getAllData();
+  async getMonthlyStats(userId?: string): Promise<MonthlyStat[]> {
+    const data = await this.getAllData(userId);
     return data.monthlyStats;
   }
 
-  async getRouteBreakdown(): Promise<RouteBreakdown[]> {
-    const data = await this.getAllData();
+  async getRouteBreakdown(userId?: string): Promise<RouteBreakdown[]> {
+    const data = await this.getAllData(userId);
     return data.routeBreakdown;
   }
 
   // Clear cache (for manual refresh)
-  clearCache(): void {
-    dashboardCache = { data: null, timestamp: 0 };
+  clearCache(userId?: string): void {
+    if (userId) {
+      dashboardCaches.delete(userId);
+    } else {
+      dashboardCaches.clear();
+    }
   }
 }
 

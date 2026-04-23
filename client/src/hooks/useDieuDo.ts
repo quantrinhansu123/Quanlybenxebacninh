@@ -95,7 +95,7 @@ export function useDieuDo() {
       setRoutesMap(routeIdMap);
 
       const validPlates = new Set<string>();
-      const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
+      const userLoc = currentUser?.role === 'admin' ? undefined : currentUser?.benPhuTrachName?.trim().toLowerCase();
 
       if (data.badges) {
         for (const b of data.badges) {
@@ -300,7 +300,7 @@ export function useDieuDo() {
   }, []);
 
   const getRecordsByStatus = useCallback((status: DisplayStatus) => {
-    const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase();
+    const userLoc = currentUser?.role === 'admin' ? undefined : currentUser?.benPhuTrachName?.trim().toLowerCase();
 
     return records
       .filter((record) => {

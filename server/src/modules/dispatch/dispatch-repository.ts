@@ -5,7 +5,7 @@
  */
 import { db, withTransaction } from '../../db/drizzle.js'
 import { dispatchRecords } from '../../db/schema/index.js'
-import { DrizzleRepository, eq, and, gte, lte, desc, sql } from '../../shared/database/drizzle-repository.js'
+import { DrizzleRepository, eq, and, gte, lte, desc, sql, inArray } from '../../shared/database/drizzle-repository.js'
 import type { DispatchFilters } from './dispatch-types'
 
 // Infer types from schema
@@ -48,7 +48,7 @@ class DrizzleDispatchRepository extends DrizzleRepository<
     const limit = filters?.limit ?? 50
     const offset = filters?.offset ?? 0
     // Check only content filters (exclude pagination params)
-    const hasFilters = filters && [filters.status, filters.vehicleId, filters.driverId, filters.routeId, filters.startDate, filters.endDate, filters.entryBy].some(v => v !== undefined)
+    const hasFilters = filters && [filters.status, filters.vehicleId, filters.driverId, filters.routeId, filters.startDate, filters.endDate, filters.entryBy, filters.allowedPlates].some(v => v !== undefined)
 
     // For unfiltered first-page queries, use cache
     if (!hasFilters && offset === 0) {
@@ -91,6 +91,12 @@ class DrizzleDispatchRepository extends DrizzleRepository<
     }
     if (filters?.entryBy) {
       conditions.push(eq(dispatchRecords.entryBy, filters.entryBy))
+    }
+    if (filters?.allowedPlates) {
+      if (filters.allowedPlates.length === 0) {
+        return [];
+      }
+      conditions.push(inArray(dispatchRecords.vehiclePlateNumber, filters.allowedPlates))
     }
 
     let query = database.select().from(dispatchRecords)

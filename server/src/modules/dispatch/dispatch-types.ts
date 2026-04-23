@@ -82,15 +82,16 @@ import type { DispatchRecord as DrizzleDispatch } from '../../db/schema/dispatch
 export type DispatchDBRecord = DrizzleDispatch
 
 export interface DispatchFilters {
-  status?: string
-  vehicleId?: string
-  driverId?: string
-  routeId?: string
-  startDate?: string
-  endDate?: string
-  entryBy?: string
-  limit?: number
-  offset?: number
+  status?: string;
+  vehicleId?: string;
+  driverId?: string;
+  routeId?: string;
+  startDate?: string;
+  endDate?: string;
+  entryBy?: string;
+  limit?: number;
+  offset?: number;
+  allowedPlates?: string[];
 }
 
 // Note: Input types are defined in dispatch-validation.ts via Zod schemas
