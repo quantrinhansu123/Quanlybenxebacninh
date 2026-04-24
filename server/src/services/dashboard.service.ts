@@ -147,6 +147,15 @@ interface RawData {
   todayStr: string;
 }
 
+function normalizePlate(plate: string | null | undefined): string {
+  return (plate || '').replace(/[.\-\s]/g, '').toUpperCase();
+}
+
+function getAllowedPlateList(allowedPlates: Set<string> | null): string[] | null {
+  if (allowedPlates === null) return null;
+  return Array.from(allowedPlates);
+}
+
 export class DashboardService {
   /**
    * Load raw data from database with OPTIMIZED filtered queries
@@ -162,6 +171,37 @@ export class DashboardService {
 
     // Create date for SQL queries (week ago timestamp)
     const weekAgoDate = new Date(weekAgoStr + 'T00:00:00+07:00');
+    const allowedPlateList = getAllowedPlateList(allowedPlates);
+
+    const dispatchConditions: any[] = [gte(dispatchRecords.entryTime, weekAgoDate)];
+    const vehiclesConditions: any[] = [
+      or(
+        and(isNotNull(vehicles.registrationExpiry), lte(vehicles.registrationExpiry, thirtyDaysLaterStr)),
+        and(isNotNull(vehicles.insuranceExpiry), lte(vehicles.insuranceExpiry, thirtyDaysLaterStr)),
+        and(isNotNull(vehicles.roadWorthinessExpiry), lte(vehicles.roadWorthinessExpiry, thirtyDaysLaterStr))
+      )!
+    ];
+    const badgesConditions: any[] = [
+      and(isNotNull(vehicleBadges.expiryDate), lte(vehicleBadges.expiryDate, thirtyDaysLaterStr))
+    ];
+
+    if (allowedPlateList !== null) {
+      if (allowedPlateList.length === 0) {
+        // No allowed vehicles for this user scope.
+        return {
+          dispatchRecords: [],
+          vehicles: {},
+          routes: {},
+          vehicleBadges: [],
+          vehicleExpiryDocs: [],
+          drivers: [],
+          todayStr,
+        };
+      }
+      dispatchConditions.push(inArray(dispatchRecords.vehiclePlateNumber, allowedPlateList));
+      vehiclesConditions.push(inArray(vehicles.plateNumber, allowedPlateList));
+      badgesConditions.push(inArray(vehicleBadges.plateNumber, allowedPlateList));
+    }
 
     // Query tables in PARALLEL with FILTERS to reduce data transfer
     const [
@@ -171,36 +211,28 @@ export class DashboardService {
       vehicleBadgesData,
       driversWithExpiryData,
     ] = await Promise.all([
-      // Only dispatch records from last 7 days (for weekly stats)
+      // Only dispatch records from last 7 days (and scoped plate list if available)
       db.select().from(dispatchRecords)
-        .where(gte(dispatchRecords.entryTime, weekAgoDate))
+        .where(and(...dispatchConditions))
         .orderBy(desc(dispatchRecords.entryTime)),
-      // Only vehicles with expiry dates in warning range (next 30 days)
+      // Only vehicles with expiry dates in warning range (and scoped plate list if available)
       db.select({
         id: vehicles.id,
         plateNumber: vehicles.plateNumber,
         registrationExpiry: vehicles.registrationExpiry,
         insuranceExpiry: vehicles.insuranceExpiry,
         roadWorthinessExpiry: vehicles.roadWorthinessExpiry,
-      }).from(vehicles).where(
-        or(
-          and(isNotNull(vehicles.registrationExpiry), lte(vehicles.registrationExpiry, thirtyDaysLaterStr)),
-          and(isNotNull(vehicles.insuranceExpiry), lte(vehicles.insuranceExpiry, thirtyDaysLaterStr)),
-          and(isNotNull(vehicles.roadWorthinessExpiry), lte(vehicles.roadWorthinessExpiry, thirtyDaysLaterStr))
-        )
-      ),
+      }).from(vehicles).where(and(...vehiclesConditions)),
       // Routes are small, load all
       db.select().from(routes),
-      // Only badges with expiry dates in warning range
+      // Only badges with expiry dates in warning range (and scoped plate list if available)
       db.select({
         id: vehicleBadges.id,
         vehicleId: vehicleBadges.vehicleId,
         plateNumber: vehicleBadges.plateNumber,
         expiryDate: vehicleBadges.expiryDate,
         badgeType: vehicleBadges.badgeType,
-      }).from(vehicleBadges).where(
-        and(isNotNull(vehicleBadges.expiryDate), lte(vehicleBadges.expiryDate, thirtyDaysLaterStr))
-      ),
+      }).from(vehicleBadges).where(and(...badgesConditions)),
       // Only drivers with license expiry in warning range
       db.select({
         id: drivers.id,
@@ -218,15 +250,27 @@ export class DashboardService {
     const routesMap: Record<string, Route> = {};
     routesData.forEach((r) => { routesMap[r.id] = r; });
 
-    // Filter by allowed plates if applicable
+    // Filter by allowed plates if applicable (SQL already filtered; keep runtime check for safety)
     let filteredDispatch = dispatchRecordsData;
     let filteredVehicles = vehiclesWithExpiryData;
     let filteredBadges = vehicleBadgesData;
 
     if (allowedPlates !== null) {
-      filteredDispatch = filteredDispatch.filter(d => d.vehiclePlateNumber && allowedPlates.has(d.vehiclePlateNumber));
-      filteredVehicles = filteredVehicles.filter(v => v.plateNumber && allowedPlates.has(v.plateNumber));
-      filteredBadges = filteredBadges.filter(b => b.plateNumber && allowedPlates.has(b.plateNumber));
+      filteredDispatch = filteredDispatch.filter(d => {
+        const raw = (d.vehiclePlateNumber || '').trim().toUpperCase();
+        if (!raw) return false;
+        return allowedPlates.has(raw) || allowedPlates.has(normalizePlate(raw));
+      });
+      filteredVehicles = filteredVehicles.filter(v => {
+        const raw = (v.plateNumber || '').trim().toUpperCase();
+        if (!raw) return false;
+        return allowedPlates.has(raw) || allowedPlates.has(normalizePlate(raw));
+      });
+      filteredBadges = filteredBadges.filter(b => {
+        const raw = (b.plateNumber || '').trim().toUpperCase();
+        if (!raw) return false;
+        return allowedPlates.has(raw) || allowedPlates.has(normalizePlate(raw));
+      });
     }
 
     // Flatten vehicle expiry documents
@@ -583,7 +627,8 @@ export class DashboardService {
     }
 
     let query = db.select({
-      totalVehiclesToday: sql<number>`COUNT(*) FILTER (WHERE entry_time >= ${todayStartStr}::timestamptz AND entry_time <= ${todayEndStr}::timestamptz)::int`,
+      // Count unique vehicles by plate for "Tổng xe hôm nay" (not total entries).
+      totalVehiclesToday: sql<number>`COUNT(DISTINCT vehicle_plate_number) FILTER (WHERE entry_time >= ${todayStartStr}::timestamptz AND entry_time <= ${todayEndStr}::timestamptz AND vehicle_plate_number IS NOT NULL)::int`,
       vehiclesInStation: sql<number>`COUNT(*) FILTER (WHERE status IN ('entered', 'passengers_dropped', 'permit_issued', 'paid', 'departure_ordered') AND (exit_time IS NULL OR exit_time >= ${todayStartStr}::timestamptz))::int`,
       vehiclesDepartedToday: sql<number>`COUNT(*) FILTER (WHERE status = 'departed' AND exit_time >= ${todayStartStr}::timestamptz AND exit_time <= ${todayEndStr}::timestamptz)::int`,
       revenueToday: sql<number>`COALESCE(SUM(CASE WHEN status IN ('paid', 'departed') AND payment_time >= ${todayStartStr}::timestamptz AND payment_time <= ${todayEndStr}::timestamptz THEN payment_amount ELSE 0 END), 0)::numeric`,

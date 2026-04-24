@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { dashboardService } from "@/services/dashboard.service";
 import type { DashboardStats, ChartDataPoint, RecentActivity, Warning, WeeklyStat, MonthlyStat, RouteBreakdown } from "@/services/dashboard.service";
 import { useUIStore } from "@/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/authStore";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 
@@ -45,9 +46,11 @@ const defaultStats: DashboardStats = {
 };
 
 export default function Dashboard() {
+  const user = useAuthStore((state) => state.user);
+
   // Use TanStack React Query for dashboard data - persists across navigation
   const { data: cachedData, isLoading: isCacheLoading, refetch } = useQuery<DashboardData>({
-    queryKey: ['dashboard-all'],
+    queryKey: ['dashboard-all', user?.id ?? 'anonymous'],
     queryFn: () => dashboardService.getDashboardData(),
     staleTime: 30000,
     refetchInterval: 30000, // auto-refresh every 30s

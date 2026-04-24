@@ -6,7 +6,7 @@ import { useChoXeVaoBenForm } from "@/hooks/useChoXeVaoBenForm";
 import type { DispatchRecord } from "@/types";
 
 interface ChoXeVaoBenDialogProps {
-  vehicleOptions: Array<{ id: string; plateNumber: string }>;
+  vehicleOptions: Array<{ id: string; plateNumber: string; stationName?: string }>;
   onClose: () => void;
   onSuccess?: () => void;
   open?: boolean;

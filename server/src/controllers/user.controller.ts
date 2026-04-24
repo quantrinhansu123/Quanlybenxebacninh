@@ -6,9 +6,49 @@ import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
 import { users } from '../db/schema/users.js'
 import { locations } from '../db/schema/locations.js'
+import { dispatchRecords } from '../db/schema/dispatch-records.js'
+import { auditLogs } from '../db/schema/audit-logs.js'
+import { violations } from '../db/schema/violations.js'
+import { vehicleDocuments } from '../db/schema/vehicle-documents.js'
 import { eq, sql, ilike, or, and } from 'drizzle-orm'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
+
+const getErrorLog = (error: unknown): Record<string, unknown> => {
+  if (!error) return { message: 'Unknown error' }
+  if (error instanceof Error) {
+    const err = error as Error & { cause?: unknown; code?: string }
+    return {
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      cause: err.cause instanceof Error ? err.cause.message : undefined,
+    }
+  }
+  return { message: String(error) }
+}
+
+const isMissingTableError = (error: unknown): boolean => {
+  const err = error as any
+  const code = err?.code || err?.cause?.code
+  const message = String(err?.message || '')
+  const causeMessage = String(err?.cause || '')
+  return (
+    code === '42P01' ||
+    message.includes('relation') && message.includes('does not exist') ||
+    causeMessage.includes('relation') && causeMessage.includes('does not exist')
+  )
+}
+
+const tryOptionalUpdate = async (operation: () => Promise<unknown>): Promise<void> => {
+  try {
+    await operation()
+  } catch (error) {
+    if (!isMissingTableError(error)) {
+      throw error
+    }
+  }
+}
 
 // Validation schemas
 const createUserSchema = z.object({
@@ -40,7 +80,6 @@ export const getAllUsers = async (req: Request, res: Response): Promise<void> =>
       res.status(500).json({ error: 'Database not initialized' })
       return
     }
-
     const page = parseInt(req.query.page as string) || 1
     const limit = parseInt(req.query.limit as string) || 50
     const search = (req.query.search as string) || ''
@@ -243,7 +282,7 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
 
     res.status(201).json(newUser)
   } catch (error) {
-    console.error('Error creating user:', error)
+    console.error('Error creating user:', getErrorLog(error))
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: error.errors })
       return
@@ -358,7 +397,7 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 
     res.json(updatedUser)
   } catch (error) {
-    console.error('Error updating user:', error)
+    console.error('Error updating user:', getErrorLog(error))
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: error.errors })
       return
@@ -376,6 +415,7 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
       res.status(500).json({ error: 'Database not initialized' })
       return
     }
+    const database = db
 
     const { id } = req.params
 
@@ -391,12 +431,58 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
       return
     }
 
-    // Delete user
-    await db.delete(users).where(eq(users.id, id))
+    // Unlink foreign-key references first, then delete user.
+    // This keeps historical records while allowing account deletion.
+    // Important: do not run in one transaction because some environments
+    // may miss optional tables (violations, vehicle_documents). A single
+    // missing table would abort transaction and block user deletion.
+    await database
+      .update(dispatchRecords)
+      .set({
+        userId: null,
+        entryBy: null,
+        passengerDropBy: null,
+        boardingPermitBy: null,
+        paymentBy: null,
+        departureOrderBy: null,
+        exitBy: null,
+      })
+      .where(
+        or(
+          eq(dispatchRecords.userId, id),
+          eq(dispatchRecords.entryBy, id),
+          eq(dispatchRecords.passengerDropBy, id),
+          eq(dispatchRecords.boardingPermitBy, id),
+          eq(dispatchRecords.paymentBy, id),
+          eq(dispatchRecords.departureOrderBy, id),
+          eq(dispatchRecords.exitBy, id),
+        )!
+      )
+
+    await database
+      .update(auditLogs)
+      .set({ userId: null })
+      .where(eq(auditLogs.userId, id))
+
+    await tryOptionalUpdate(() =>
+      database
+        .update(violations)
+        .set({ recordedBy: null })
+        .where(eq(violations.recordedBy, id))
+    )
+
+    await tryOptionalUpdate(() =>
+      database
+        .update(vehicleDocuments)
+        .set({ updatedBy: null })
+        .where(eq(vehicleDocuments.updatedBy, id))
+    )
+
+    await database.delete(users).where(eq(users.id, id))
 
     res.status(204).send()
   } catch (error) {
-    console.error('Error deleting user:', error)
+    console.error('Error deleting user:', getErrorLog(error))
     res.status(500).json({ error: 'Failed to delete user' })
   }
 }

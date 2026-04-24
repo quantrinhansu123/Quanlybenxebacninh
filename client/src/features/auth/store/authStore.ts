@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { User, RegisterCredentials } from '../types'
 import { authApi } from '../api/authApi'
+import { clearAllCaches } from '@/services/data-prefetch.service'
 
 interface AuthStoreState {
   user: User | null
@@ -40,6 +41,7 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
 
   logout: () => {
     authApi.logout()
+    clearAllCaches()
     set({ user: null, isAuthenticated: false })
   },
 

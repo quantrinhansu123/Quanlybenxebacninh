@@ -2,8 +2,26 @@ import { db } from '../db/drizzle.js';
 import { users, locations, vehicleBadges, routes as routesTable } from '../db/schema/index.js';
 import { eq, sql } from 'drizzle-orm';
 
+interface StationAllowedPlatesCacheEntry {
+  data: Set<string> | null;
+  timestamp: number;
+}
+
+const stationAllowedPlatesCache = new Map<string, StationAllowedPlatesCacheEntry>();
+const STATION_FILTER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function cloneSet(data: Set<string> | null): Set<string> | null {
+  return data ? new Set(data) : null;
+}
+
 export async function getStationAllowedPlates(userId: string): Promise<Set<string> | null> {
   if (!db) return null;
+
+  const now = Date.now();
+  const cached = stationAllowedPlatesCache.get(userId);
+  if (cached && (now - cached.timestamp) < STATION_FILTER_CACHE_TTL_MS) {
+    return cloneSet(cached.data);
+  }
 
   // Returns null if no user or no station filter applies. Returns Set of allowed plate numbers if filter applies.
   const [user] = await db
@@ -12,9 +30,16 @@ export async function getStationAllowedPlates(userId: string): Promise<Set<strin
     .where(eq(users.id, userId))
     .limit(1);
 
-  if (!user) return null;
-  if (user.role === 'admin') return null;
-  if (!user.benPhuTrach) return null;
+  if (!user) {
+    stationAllowedPlatesCache.set(userId, { data: null, timestamp: now });
+    return null;
+  }
+  // If user is assigned to a specific station, always scope data to that station.
+  // This applies to every role, including admin accounts tied to a station.
+  if (!user.benPhuTrach) {
+    stationAllowedPlatesCache.set(userId, { data: null, timestamp: now });
+    return null;
+  }
 
   const [location] = await db
     .select({
@@ -26,7 +51,10 @@ export async function getStationAllowedPlates(userId: string): Promise<Set<strin
     .where(eq(locations.id, user.benPhuTrach))
     .limit(1);
 
-  if (!location) return null;
+  if (!location) {
+    stationAllowedPlatesCache.set(userId, { data: null, timestamp: now });
+    return null;
+  }
 
   const stationName = location.name.trim();
   const rawMaBen = (location as any).maBen as string | null | undefined;
@@ -75,25 +103,25 @@ export async function getStationAllowedPlates(userId: string): Promise<Set<strin
   const allowedPlates = new Set<string>();
 
   for (const b of allBadges) {
-    const normalizePlate = (p: string) => (p || '').replace(/[.\-\s]/g, '').toUpperCase();
-    const plate = normalizePlate(b.plateNumber || '');
-    if (!plate) continue;
+    const rawPlate = (b.plateNumber || '').trim().toUpperCase();
+    const normalizedPlate = rawPlate.replace(/[.\-\s]/g, '');
+    if (!rawPlate) continue;
 
     if (b.badgeType === 'Buýt') {
       const id = (b.tuyenBusCode || '').trim();
       if (id && allowedBusRouteIds.has(id)) {
-        allowedPlates.add(plate);
+        allowedPlates.add(rawPlate);
+        allowedPlates.add(normalizedPlate);
       }
     } else if (b.badgeType === 'Tuyến cố định') {
       const rc = (b.routeCode || '').trim().toUpperCase();
       if (rc && allowedFixedRouteCodes.has(rc)) {
-        allowedPlates.add(plate);
+        allowedPlates.add(rawPlate);
+        allowedPlates.add(normalizedPlate);
       }
-    } else {
-      // Other badge types: allow
-      allowedPlates.add(plate);
     }
   }
 
+  stationAllowedPlatesCache.set(userId, { data: new Set(allowedPlates), timestamp: now });
   return allowedPlates;
 }

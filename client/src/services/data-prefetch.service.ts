@@ -70,6 +70,9 @@ export async function prefetchAppData(): Promise<void> {
 export function clearAllCaches(): void {
   quanlyDataService.clearCache()
   driverService.clearCache()
+  queryClient.clear()
+  isPrefetching = false
+  prefetchPromise = null
   // routeService cache is cleared internally
   console.log('[Prefetch] All caches cleared')
 }

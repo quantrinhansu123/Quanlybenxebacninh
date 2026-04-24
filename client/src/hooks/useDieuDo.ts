@@ -42,6 +42,7 @@ export function useDieuDo() {
   const [isReadOnly, setIsReadOnly] = useState(false);
   const setTitle = useUIStore((state) => state.setTitle);
   const currentUser = useAuthStore((state) => state.user);
+  const currentUserStationName = currentUser?.benPhuTrachName?.trim() || "";
 
   const [routesMap, setRoutesMap] = useState<Map<string, { start: string, end: string }>>(new Map());
 
@@ -95,6 +96,7 @@ export function useDieuDo() {
       setRoutesMap(routeIdMap);
 
       const validPlates = new Set<string>();
+      const plateToStation = new Map<string, string>();
       const userLoc = currentUser?.role === 'admin' ? undefined : currentUser?.benPhuTrachName?.trim().toLowerCase();
 
       if (data.badges) {
@@ -109,9 +111,19 @@ export function useDieuDo() {
             // Buýt: route_code / điểm đầu-cuối trong API quanly-data không bám theo cùng logic tuyến cố định → vẫn đưa vào DS biển số.
             if (matchesBen || isBusBadgeType(b.badge_type)) {
               validPlates.add(plate);
+              if (matchesBen) {
+                plateToStation.set(plate, currentUserStationName);
+              } else if (isBusBadgeType(b.badge_type)) {
+                plateToStation.set(plate, (rData.start || rData.end || "").trim());
+              }
             }
           } else {
             validPlates.add(plate);
+            const rData = routeLocMap.get(b.route_code) || { start: "", end: "" };
+            const station = (rData.start || rData.end || "").trim();
+            if (station) {
+              plateToStation.set(plate, station);
+            }
           }
         }
       }
@@ -384,7 +396,13 @@ export function useDieuDo() {
           selectedRecord?.vehiclePlateNumber?.replace(/[.\-\s]/g, '').toUpperCase() === normalizedPlate;
         return !activePlateNumbers.has(normalizedPlate) || isEditingThisVehicle;
       })
-      .map((v) => ({ id: v.id, plateNumber: v.plateNumber }));
+      .map((v) => {
+        return {
+          id: v.id,
+          plateNumber: v.plateNumber,
+          stationName: (v as any).stationName || currentUserStationName,
+        };
+      });
 
     // When editing, ensure the current vehicle is in options with CORRECT ID
     // Match by ID (not plate) to ensure Autocomplete finds the option
@@ -396,12 +414,13 @@ export function useDieuDo() {
         options.unshift({
           id: selectedRecord.vehicleId,
           plateNumber: selectedRecord.vehiclePlateNumber,
+          stationName: "",
         });
       }
     }
 
     return options;
-  }, [vehicles, activePlateNumbers, dialogType, selectedRecord]);
+  }, [vehicles, activePlateNumbers, dialogType, selectedRecord, currentUserStationName]);
 
   const isMonthlyPaymentVehicle = useCallback((record: DispatchRecord): boolean => {
     if (record.metadata?.paymentType === "monthly") return true;

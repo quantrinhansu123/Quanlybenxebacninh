@@ -181,7 +181,12 @@ export default function QuanLyNhanSu() {
       loadUsers()
     } catch (error: any) {
       console.error("Failed to save user:", error)
-      toast.error(error.response?.data?.error || "Không thể lưu nhân sự. Vui lòng thử lại.")
+      const details = error?.response?.data?.details
+      const detailMessage =
+        Array.isArray(details) && details.length > 0
+          ? details[0]?.message
+          : undefined
+      toast.error(detailMessage || error?.response?.data?.error || "Không thể lưu nhân sự. Vui lòng thử lại.")
     }
   }
 
@@ -198,9 +203,9 @@ export default function QuanLyNhanSu() {
       setDeleteDialogOpen(false)
       setUserToDelete(null)
       loadUsers()
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete user:", error)
-      toast.error("Không thể xóa nhân sự. Vui lòng thử lại.")
+      toast.error(error?.response?.data?.error || "Không thể xóa nhân sự. Vui lòng thử lại.")
     }
   }
 
@@ -583,6 +588,7 @@ export default function QuanLyNhanSu() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="mt-1"
+                  minLength={6}
                   required={!isEditMode}
                 />
               </div>

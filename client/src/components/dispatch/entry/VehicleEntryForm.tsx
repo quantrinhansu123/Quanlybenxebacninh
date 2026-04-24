@@ -8,7 +8,7 @@ import { DateTimePicker } from "@/components/DatePicker";
 import type { Route, Schedule } from "@/types";
 
 interface VehicleEntryFormProps {
-  vehicleOptions: Array<{ id: string; plateNumber: string }>;
+  vehicleOptions: Array<{ id: string; plateNumber: string; stationName?: string }>;
   vehicleId: string;
   /** Display fallback for edit mode when vehicleId is legacy format */
   editRecordPlateNumber?: string;
@@ -69,7 +69,7 @@ export function VehicleEntryForm({
             onChange={onVehicleSelect}
             options={vehicleOptions.map((v) => ({
               value: v.id,
-              label: v.plateNumber,
+              label: v.stationName ? `${v.plateNumber} — ${v.stationName}` : v.plateNumber,
             }))}
             placeholder="Nhập biển kiểm soát để tìm kiếm..."
             className="w-full"
