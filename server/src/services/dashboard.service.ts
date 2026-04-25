@@ -157,6 +157,132 @@ function getAllowedPlateList(allowedPlates: Set<string> | null): string[] | null
 }
 
 export class DashboardService {
+  private calculateStatsFromRaw(raw: RawData): DashboardStats {
+    const { dispatchRecords, vehicleExpiryDocs, todayStr } = raw;
+    const inStationStatuses = new Set(['entered', 'passengers_dropped', 'permit_issued', 'paid', 'departure_ordered']);
+
+    const todayRecords = dispatchRecords.filter((r) => {
+      if (!r.entryTime) return false;
+      return isToday(r.entryTime.toISOString(), todayStr);
+    });
+
+    const totalVehiclesToday = new Set(
+      todayRecords
+        .map((r) => (r.vehiclePlateNumber || '').trim().toUpperCase())
+        .filter(Boolean)
+    ).size;
+
+    const vehiclesInStation = dispatchRecords.filter((r) => {
+      const status = r.status || '';
+      return inStationStatuses.has(status) && !r.exitTime;
+    }).length;
+
+    const vehiclesDepartedToday = dispatchRecords.filter((r) => {
+      if (r.status !== 'departed' || !r.exitTime) return false;
+      return isToday(r.exitTime.toISOString(), todayStr);
+    }).length;
+
+    const revenueToday = dispatchRecords.reduce((sum, r) => {
+      const status = r.status || '';
+      if (status !== 'paid' && status !== 'departed') return sum;
+      if (!r.paymentTime || !isToday(r.paymentTime.toISOString(), todayStr)) return sum;
+      const amount = parseFloat(String(r.paymentAmount ?? 0));
+      return sum + (Number.isFinite(amount) ? amount : 0);
+    }, 0);
+
+    const invalidVehicles = vehicleExpiryDocs.filter((doc) => {
+      const expiryDate = (doc.expiryDate || '').split('T')[0] || doc.expiryDate;
+      return !!expiryDate && expiryDate < todayStr;
+    }).length;
+
+    return {
+      totalVehiclesToday,
+      vehiclesInStation,
+      vehiclesDepartedToday,
+      revenueToday,
+      invalidVehicles,
+    };
+  }
+
+  private buildChartDataFromRaw(raw: RawData): ChartDataPoint[] {
+    const { dispatchRecords, todayStr } = raw;
+    const hourMap = new Map<string, number>();
+
+    for (const r of dispatchRecords) {
+      if (!r.entryTime) continue;
+      const iso = r.entryTime.toISOString();
+      if (!isToday(iso, todayStr)) continue;
+      const hour = iso.slice(11, 13);
+      const key = `${hour}:00`;
+      hourMap.set(key, (hourMap.get(key) || 0) + 1);
+    }
+
+    const hours = Array.from({ length: 12 }, (_, i) => i + 6);
+    return hours.map((hour) => {
+      const key = `${hour.toString().padStart(2, '0')}:00`;
+      return { hour: key, count: hourMap.get(key) || 0 };
+    });
+  }
+
+  private buildWeeklyStatsFromRaw(raw: RawData): WeeklyStat[] {
+    const { dispatchRecords } = raw;
+    const inStationStatuses = new Set(['entered', 'passengers_dropped', 'permit_issued', 'paid', 'departure_ordered']);
+    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const statsMap = new Map<string, { departed: number; inStation: number }>();
+
+    for (const r of dispatchRecords) {
+      if (!r.entryTime) continue;
+      const d = new Date(r.entryTime);
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(d.getUTCDate()).padStart(2, '0');
+      const day = `${yyyy}-${mm}-${dd}`;
+      const current = statsMap.get(day) || { departed: 0, inStation: 0 };
+      if (r.status === 'departed' && r.exitTime) current.departed += 1;
+      else if (inStationStatuses.has(r.status || '') && !r.exitTime) current.inStation += 1;
+      statsMap.set(day, current);
+    }
+
+    const days: WeeklyStat[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const now = new Date();
+      const vietnamTime = new Date(now.getTime() + (7 * 60 + now.getTimezoneOffset()) * 60000);
+      vietnamTime.setDate(vietnamTime.getDate() - i);
+      const dateStr = `${vietnamTime.getFullYear()}-${String(vietnamTime.getMonth() + 1).padStart(2, '0')}-${String(vietnamTime.getDate()).padStart(2, '0')}`;
+      const s = statsMap.get(dateStr) || { departed: 0, inStation: 0 };
+      days.push({
+        day: dateStr,
+        dayName: dayNames[vietnamTime.getDay()],
+        departed: s.departed,
+        inStation: s.inStation,
+        total: s.departed + s.inStation,
+      });
+    }
+    return days;
+  }
+
+  private buildRouteBreakdownFromRaw(raw: RawData): RouteBreakdown[] {
+    const { dispatchRecords, routes, todayStr } = raw;
+    const counts = new Map<string, number>();
+
+    for (const r of dispatchRecords) {
+      if (!r.entryTime || !isToday(r.entryTime.toISOString(), todayStr)) continue;
+      const key = r.routeId || 'unknown';
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+
+    const total = Array.from(counts.values()).reduce((a, b) => a + b, 0) || 1;
+    return Array.from(counts.entries())
+      .map(([routeId, count]) => ({
+        routeId,
+        routeName: getDisplayRouteCode(routes[routeId]) || 'Khác',
+        count,
+        percentage: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }
+
   /**
    * Load raw data from database with OPTIMIZED filtered queries
    * Only loads data needed for dashboard (not full tables)
@@ -760,12 +886,26 @@ export class DashboardService {
     // Keep loadRawData for warnings and recentActivity (need full records for formatting)
     const raw = await this.loadRawData(allowedPlates);
 
-    const [stats, chartData, weeklyStats, routeBreakdown] = await Promise.all([
-      this.getStatsSQL(allowedPlates),
-      this.getChartDataSQL(allowedPlates),
-      this.getWeeklyStatsSQL(allowedPlates),
-      this.getRouteBreakdownSQL(allowedPlates),
-    ]);
+    let stats: DashboardStats;
+    let chartData: ChartDataPoint[];
+    let weeklyStats: WeeklyStat[];
+    let routeBreakdown: RouteBreakdown[];
+
+    if (allowedPlates !== null) {
+      // For station-scoped users, use normalized in-memory filtered data
+      // to avoid plate format mismatch issues in SQL-level filtering.
+      stats = this.calculateStatsFromRaw(raw);
+      chartData = this.buildChartDataFromRaw(raw);
+      weeklyStats = this.buildWeeklyStatsFromRaw(raw);
+      routeBreakdown = this.buildRouteBreakdownFromRaw(raw);
+    } else {
+      [stats, chartData, weeklyStats, routeBreakdown] = await Promise.all([
+        this.getStatsSQL(allowedPlates),
+        this.getChartDataSQL(allowedPlates),
+        this.getWeeklyStatsSQL(allowedPlates),
+        this.getRouteBreakdownSQL(allowedPlates),
+      ]);
+    }
 
     // Calculate metrics that need raw data
     const data: DashboardAllData = {
