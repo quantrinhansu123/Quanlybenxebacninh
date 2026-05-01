@@ -276,14 +276,7 @@ export function VehicleForm({
         const rc = (badge.route_code || '').trim().toUpperCase()
         const stationEntry = rc ? routeStationMap.get(rc) : undefined
         const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
-        const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
-        // Không có route info → ẩn để tránh lộ dữ liệu ngoài bến phụ trách
-        if (!dep && !arr) {
-          // Fallback: thử match theo route_name / itinerary nếu có
-          const hint = `${badge.route_name || ''} ${badge.itinerary || ''}`.trim().toLowerCase()
-          if (!hint || !hint.includes(userLoc)) return
-        }
-        if (dep !== userLoc && arr !== userLoc) return
+        if (!dep || dep !== userLoc) return
       }
       const plate = badge.license_plate_sheet
       if (plate && isValidPlateNumber(plate) && !uniquePlates.has(plate)) {

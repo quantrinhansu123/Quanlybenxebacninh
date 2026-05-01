@@ -518,16 +518,14 @@ export const getQuanLyData = async (req: Request, res: Response) => {
           }
         }
 
-        // ===== 2) Tuyến cố định: build allowed route codes by station name (startPoint/endPoint) =====
+        // ===== 2) Tuyến cố định: chỉ tuyến có điểm đầu (bến đi) trùng tên bến — không lấy theo điểm cuối / hành trình =====
         const allowedFixedRouteCodes = new Set<string>()
         if (stationName) {
           const stationLower = stationName.trim().toLowerCase()
           for (const r of data.routes) {
             const route = r as any
             const startPoint = (route.startPoint || '').trim().toLowerCase()
-            const endPoint = (route.endPoint || '').trim().toLowerCase()
-            const itinerary = (route.itinerary || '').trim().toLowerCase()
-            if (startPoint === stationLower || endPoint === stationLower || itinerary.includes(stationLower)) {
+            if (startPoint === stationLower) {
               const rc = (route.code || '').trim().toUpperCase()
               if (rc) allowedFixedRouteCodes.add(rc)
             }
@@ -543,7 +541,7 @@ export const getQuanLyData = async (req: Request, res: Response) => {
             return !!id && allowedBusRouteIds.has(id)
           }
 
-          // "Tuyến cố định" badges: filter by station name via routeCode → startPoint/endPoint
+          // "Tuyến cố định" badges: routeCode thuộc tuyến có điểm đầu = bến (xem allowedFixedRouteCodes)
           if (b.badge_type === 'Tuyến cố định') {
             if (!stationName || allowedFixedRouteCodes.size === 0) {
               return false

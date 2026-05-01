@@ -135,7 +135,7 @@ export default function QuanLyXe() {
 
         if (userLoc) {
           const rData = routeLocMap.get(b.route_code) || { start: '', end: '' }
-          if (rData.start === userLoc || rData.end === userLoc) {
+          if (rData.start === userLoc) {
             validPlates.add(plate)
           }
         } else {

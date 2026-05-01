@@ -159,12 +159,11 @@ export default function QuanLyTuyen() {
   const operationStatuses = Array.from(new Set(mergedRoutes.map((r) => r.operationStatus).filter(Boolean))).sort()
 
   const filteredRoutes = mergedRoutes.filter((route) => {
-    // Station filter: non-admin users with benPhuTrachName only see routes passing through their station
+    // Station filter: chỉ tuyến có bến đi (điểm đầu) trùng bến user — không lọc theo điểm đến
     if (currentUser?.benPhuTrachName) {
       const userStation = currentUser.benPhuTrachName.trim().toLowerCase()
       const dep = (route.departureStation || '').trim().toLowerCase()
-      const arr = (route.arrivalStation || '').trim().toLowerCase()
-      if (dep !== userStation && arr !== userStation) return false
+      if (dep !== userStation) return false
     }
 
     // Search filter

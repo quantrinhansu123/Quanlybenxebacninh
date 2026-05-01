@@ -407,9 +407,8 @@ export default function QuanLyPhuHieuXe() {
         let stationEntry = rc ? routeStationMap.get(rc) : undefined
         if (!stationEntry && rr) stationEntry = routeStationMap.get(rr)
         const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
-        const arr = (stationEntry?.endPoint || '').trim().toLowerCase()
-        if (!dep && !arr) return false // no route info — hide
-        if (dep !== userLoc && arr !== userLoc) return false
+        if (!dep) return false
+        if (dep !== userLoc) return false
       }
     }
 

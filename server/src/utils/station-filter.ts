@@ -76,16 +76,14 @@ export async function getStationAllowedPlates(userId: string): Promise<Set<strin
     }
   }
 
-  // 2) Tuyến cố định: allowed route codes
+  // 2) Tuyến cố định: chỉ tuyến có điểm đầu (departure) trùng tên bến
   const allowedFixedRouteCodes = new Set<string>();
   if (stationName) {
     const stationLower = stationName.trim().toLowerCase();
     const allRoutes = await db.select().from(routesTable);
     for (const route of allRoutes) {
       const startPoint = (route.departureStation || '').trim().toLowerCase();
-      const endPoint = (route.arrivalStation || '').trim().toLowerCase();
-      const itinerary = (route.itinerary || '').trim().toLowerCase();
-      if (startPoint === stationLower || endPoint === stationLower || itinerary.includes(stationLower)) {
+      if (startPoint === stationLower) {
         const rc = (route.routeCode || '').trim().toUpperCase();
         if (rc) allowedFixedRouteCodes.add(rc);
       }

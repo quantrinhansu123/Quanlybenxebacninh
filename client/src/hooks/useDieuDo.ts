@@ -106,8 +106,8 @@ export function useDieuDo() {
 
           if (userLoc) {
             const rData = routeLocMap.get(b.route_code) || { start: "", end: "" };
-            const matchesBen =
-              rData.start === userLoc || rData.end === userLoc;
+            // Chỉ coi thuộc bến khi điểm đầu tuyến (bến đi) trùng bến user — không lấy theo điểm cuối.
+            const matchesBen = rData.start === userLoc;
             // Buýt: route_code / điểm đầu-cuối trong API quanly-data không bám theo cùng logic tuyến cố định → vẫn đưa vào DS biển số.
             if (matchesBen || isBusBadgeType(b.badge_type)) {
               validPlates.add(plate);
@@ -328,7 +328,8 @@ export function useDieuDo() {
             }
           }
 
-          const matchesLoc = departure === userLoc || arrival === userLoc;
+          // Cùng quy tắc phù hiệu: chỉ bến là điểm đầu (xuất phát), không lọc theo điểm đến.
+          const matchesLoc = departure === userLoc;
           const enteredByUser = record.entryBy === currentUser?.id || record.entryBy === currentUser?.fullName || record.entryBy === currentUser?.username;
           
           if (!matchesLoc && !enteredByUser) {

@@ -3,7 +3,7 @@ import { db } from '../db/drizzle.js'
 import { routes } from '../db/schema/index.js'
 import { users } from '../db/schema/users.js'
 import { locations } from '../db/schema/locations.js'
-import { eq, asc, and, or, sql } from 'drizzle-orm'
+import { eq, asc, and, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { AuthRequest } from '../middleware/auth.js'
 
@@ -431,11 +431,8 @@ export const getLegacyRoutes = async (req: Request, res: Response) => {
     let whereCondition: any = undefined
 
     if (shouldFilterByStation && stationName) {
-      whereCondition = or(
-        sql`TRIM(${routes.departureStation}) = ${stationName}`,
-        sql`TRIM(${routes.arrivalStation}) = ${stationName}`
-      )
-      console.log(`[Routes] Filtering by station: ${stationName}`)
+      whereCondition = sql`TRIM(${routes.departureStation}) = ${stationName}`
+      console.log(`[Routes] Filtering by station (departure only): ${stationName}`)
     }
 
     // Get routes from database
