@@ -21,6 +21,7 @@
     "check-user-ben-phu-trach": "tsx src/scripts/check-user-ben-phu-trach.ts",
     "test-login": "tsx src/scripts/test-login.ts",
     "test-login-endpoint": "tsx src/scripts/test-login-endpoint.ts",
+    "compare:appsheet": "tsx src/scripts/compare-appsheet-supabase.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",

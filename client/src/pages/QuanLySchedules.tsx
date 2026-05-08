@@ -9,6 +9,7 @@ import {
   Clock,
   Pencil,
   Trash2,
+  Eye,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -34,7 +35,10 @@ import {
 
 import type { Schedule } from "@/types"
 import { scheduleService } from "@/services/schedule.service"
+import { routeService } from "@/services/route.service"
 import { quanlyDataService } from "@/services/quanly-data.service"
+import { gtvtSyncService } from "@/services/gtvt-sync.service"
+import { useAuthStore } from "@/features/auth/store/authStore"
 
 type DirectionFilter = "all" | "Đi" | "Về"
 type FrequencyType = "daily" | "weekly" | "specific_days"
@@ -67,6 +71,15 @@ export default function QuanLySchedules() {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [routes, setRoutes] = useState<RouteOption[]>([])
   const [operators, setOperators] = useState<OperatorOption[]>([])
+  const [routeViewOpen, setRouteViewOpen] = useState(false)
+  const [routeViewLoading, setRouteViewLoading] = useState(false)
+  const [routeViewData, setRouteViewData] = useState<any | null>(null)
+  const [routeViewSchedules, setRouteViewSchedules] = useState<Schedule[]>([])
+  const [routeViewSchedulesLoading, setRouteViewSchedulesLoading] = useState(false)
+  const [isSyncingFromAppSheet, setIsSyncingFromAppSheet] = useState(false)
+
+  const currentUser = useAuthStore((s) => s.user)
+  const isAdmin = currentUser?.role === "admin"
 
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRouteId, setFilterRouteId] = useState<string>("")
@@ -253,6 +266,71 @@ export default function QuanLySchedules() {
 
   const handleDirectionToggle = (v: DirectionFilter) => setDirection(v)
 
+  const formatDaysOfWeek = (days: any): string => {
+    const arr = Array.isArray(days) ? days : []
+    if (arr.length === 0) return ""
+    const map: Record<number, string> = { 1: "CN", 2: "T2", 3: "T3", 4: "T4", 5: "T5", 6: "T6", 7: "T7" }
+    const labels = arr
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n))
+      .map((n) => map[n] || String(n))
+    return Array.from(new Set(labels)).join(", ")
+  }
+
+  const handleSyncFromAppSheet = async () => {
+    if (!isAdmin) {
+      toast.error("Chỉ admin mới đồng bộ được")
+      return
+    }
+    if (!window.confirm("Đồng bộ FULL schedules từ AppSheet → Supabase?")) return
+    setIsSyncingFromAppSheet(true)
+    try {
+      const result = await gtvtSyncService.syncRoutesSchedules(false)
+      if (result.errors?.length) {
+        const first = result.errors[0]
+        const msg = typeof first === "string" ? first : first?.message
+        toast.warning(msg || "Đồng bộ xong nhưng có lỗi")
+      } else {
+        toast.success("Đã đồng bộ AppSheet → Supabase")
+      }
+      await loadSchedules(true)
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể đồng bộ AppSheet → Supabase")
+    } finally {
+      setIsSyncingFromAppSheet(false)
+    }
+  }
+
+  const handleViewRoute = async (routeId?: string) => {
+    const id = String(routeId || "").trim()
+    if (!id) {
+      toast.error("Schedule chưa có routeId")
+      return
+    }
+    setRouteViewOpen(true)
+    setRouteViewLoading(true)
+    setRouteViewData(null)
+    setRouteViewSchedules([])
+    setRouteViewSchedulesLoading(true)
+    try {
+      const [route, scheds] = await Promise.all([
+        routeService.getById(id),
+        // do NOT pass direction="all" because API treats it as a real filter
+        scheduleService.getAll(id, undefined, true, undefined),
+      ])
+      setRouteViewData(route)
+      setRouteViewSchedules(scheds || [])
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể tải chi tiết tuyến")
+      setRouteViewOpen(false)
+    } finally {
+      setRouteViewLoading(false)
+      setRouteViewSchedulesLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-orange-50">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
@@ -277,6 +355,15 @@ export default function QuanLySchedules() {
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
               Làm mới
+            </Button>
+            <Button
+              onClick={handleSyncFromAppSheet}
+              disabled={!isAdmin || isSyncingFromAppSheet}
+              title={!isAdmin ? "Chỉ admin mới dùng được" : "Đồng bộ full schedules từ AppSheet"}
+              className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingFromAppSheet ? "animate-spin" : ""}`} />
+              Đồng bộ AppSheet
             </Button>
             <Button
               onClick={() => setCreateOpen(true)}
@@ -338,12 +425,11 @@ export default function QuanLySchedules() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Schedule</TableHead>
                 <TableHead>Tuyến</TableHead>
                 <TableHead>Đơn vị</TableHead>
                 <TableHead className="text-center">Giờ</TableHead>
                 <TableHead className="text-center">Direction</TableHead>
-                <TableHead className="text-center">Frequency</TableHead>
+                <TableHead className="text-center">Ngày trong tuần</TableHead>
                 <TableHead className="text-center">Trạng thái</TableHead>
                 <TableHead className="text-center">Thao tác</TableHead>
               </TableRow>
@@ -352,26 +438,20 @@ export default function QuanLySchedules() {
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={7}>
                       <div className="animate-pulse h-8 bg-slate-100 rounded w-full" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-16 text-slate-500">
+                  <TableCell colSpan={7} className="text-center py-16 text-slate-500">
                     Không có schedules
                   </TableCell>
                 </TableRow>
               ) : (
                 paginated.map((s) => (
                   <TableRow key={s.id}>
-                    <TableCell className="font-mono">
-                      <div className="flex flex-col">
-                        <span className="font-semibold">{s.scheduleCode}</span>
-                        <span className="text-xs text-slate-500">{s.id}</span>
-                      </div>
-                    </TableCell>
                     <TableCell>
                       {s.route?.routeCode ? (
                         <div className="flex flex-col">
@@ -394,7 +474,9 @@ export default function QuanLySchedules() {
                     </TableCell>
                     <TableCell className="text-center tabular-nums">{s.departureTime}</TableCell>
                     <TableCell className="text-center">{s.direction || "—"}</TableCell>
-                    <TableCell className="text-center">{s.frequencyType}</TableCell>
+                    <TableCell className="text-center text-sm text-slate-700">
+                      {formatDaysOfWeek((s as any).daysOfWeek) || "—"}
+                    </TableCell>
                     <TableCell className="text-center">
                       {s.isActive ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
@@ -409,6 +491,11 @@ export default function QuanLySchedules() {
                     <TableCell className="text-center">
                       <ActionMenu
                         items={[
+                          {
+                            label: "Xem tuyến",
+                            onClick: () => handleViewRoute((s as any).routeId),
+                            variant: "info",
+                          },
                           {
                             label: "Chỉnh sửa (TODO)",
                             onClick: () => toast.info("Chưa hỗ trợ chỉnh sửa schedule"),
@@ -615,6 +702,92 @@ export default function QuanLySchedules() {
                 {isSubmitting ? "Đang tạo..." : "Tạo schedule"}
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Route View Dialog */}
+        <Dialog
+          open={routeViewOpen}
+          onOpenChange={(open) => {
+            setRouteViewOpen(open)
+            if (!open) {
+              setRouteViewData(null)
+              setRouteViewSchedules([])
+              setRouteViewLoading(false)
+              setRouteViewSchedulesLoading(false)
+            }
+          }}
+        >
+          <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Chi tiết tuyến</DialogTitle>
+            </DialogHeader>
+
+            {routeViewLoading ? (
+              <div className="p-4 text-sm text-slate-600">Đang tải...</div>
+            ) : !routeViewData ? (
+              <div className="p-4 text-sm text-slate-600">Không có dữ liệu tuyến</div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-slate-50 border rounded-xl p-4">
+                  <div className="text-sm text-slate-500">Mã tuyến</div>
+                  <div className="text-2xl font-bold text-slate-900">{routeViewData.routeCode || "—"}</div>
+                  <div className="text-sm text-slate-600 mt-1">{routeViewData.routeName || ""}</div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white border rounded-xl p-4">
+                    <div className="text-sm text-slate-500">Bến đi</div>
+                    <div className="text-lg font-semibold text-slate-900">{routeViewData.departureStation || "—"}</div>
+                    <div className="text-sm text-slate-600">{routeViewData.departureProvince || ""}</div>
+                  </div>
+                  <div className="bg-white border rounded-xl p-4">
+                    <div className="text-sm text-slate-500">Bến đến</div>
+                    <div className="text-lg font-semibold text-slate-900">{routeViewData.arrivalStation || "—"}</div>
+                    <div className="text-sm text-slate-600">{routeViewData.arrivalProvince || ""}</div>
+                  </div>
+                </div>
+
+                {routeViewData.itinerary ? (
+                  <div className="bg-white border rounded-xl p-4">
+                    <div className="text-sm text-slate-500 mb-1">Hành trình</div>
+                    <div className="text-sm text-slate-800 whitespace-pre-wrap break-words">
+                      {routeViewData.itinerary}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="bg-white border rounded-xl p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-800">Lịch chạy của tuyến</div>
+                    <div className="text-sm text-slate-500">({routeViewSchedules.length})</div>
+                  </div>
+
+                  {routeViewSchedulesLoading ? (
+                    <div className="mt-3 text-sm text-slate-600">Đang tải lịch...</div>
+                  ) : routeViewSchedules.length === 0 ? (
+                    <div className="mt-3 text-sm text-slate-600">Chưa có schedule</div>
+                  ) : (
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {routeViewSchedules.slice(0, 12).map((s) => (
+                        <div key={s.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-lg font-bold text-slate-900 tabular-nums">{s.departureTime || "—"}</div>
+                            <div className="text-xs text-slate-500">{s.direction || "—"}</div>
+                          </div>
+                          <div className="mt-2 text-sm text-slate-700">
+                            <span className="text-slate-500">Ngày trong tuần:</span>{" "}
+                            <span className="font-semibold">
+                              {formatDaysOfWeek((s as any).daysOfWeek) || "—"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

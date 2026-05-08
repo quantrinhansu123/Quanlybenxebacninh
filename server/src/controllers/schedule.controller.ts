@@ -87,6 +87,7 @@ export const getAllSchedules = async (req: Request, res: Response) => {
         calendarType: schedules.calendarType,
         notificationNumber: schedules.notificationNumber,
         tripStatus: schedules.tripStatus,
+        metadata: schedules.metadata,
         createdAt: schedules.createdAt,
         updatedAt: schedules.updatedAt,
         route: {
@@ -126,6 +127,7 @@ export const getAllSchedules = async (req: Request, res: Response) => {
       calendarType: item.calendarType,
       notificationNumber: item.notificationNumber,
       tripStatus: item.tripStatus,
+      metadata: item.metadata,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }))

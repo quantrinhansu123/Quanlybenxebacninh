@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { toast } from "react-toastify"
-import { Search, RefreshCw, ChevronLeft, ChevronRight, MapPin, FileText, Route, TrendingUp, CheckCircle, XCircle } from "lucide-react"
+import { Search, RefreshCw, ChevronLeft, ChevronRight, MapPin, FileText, Route, TrendingUp, CheckCircle, XCircle, Database, ArrowDownToLine } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,6 +22,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { routeService, LegacyRoute } from "@/services/route.service"
+import { scheduleService } from "@/services/schedule.service"
+import type { Schedule } from "@/types"
+import { gtvtSyncService } from "@/services/gtvt-sync.service"
 // Manual sync imports disabled — auto sync via SharedWorker
 // import { gtvtSyncService } from "@/services/gtvt-sync.service"
 // import { isAxiosError } from "axios"
@@ -29,6 +32,7 @@ import { routeService, LegacyRoute } from "@/services/route.service"
 import { useUIStore } from "@/store/ui.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { useAuthStore } from "@/features/auth/store/authStore"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function QuanLyTuyen() {
   const [routes, setRoutes] = useState<LegacyRoute[]>([])
@@ -40,6 +44,14 @@ export default function QuanLyTuyen() {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedRoute, setSelectedRoute] = useState<LegacyRoute | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [routeSchedules, setRouteSchedules] = useState<Schedule[]>([])
+  const [schedulesLoading, setSchedulesLoading] = useState(false)
+  const [isSyncingSchedules, setIsSyncingSchedules] = useState(false)
+  const [isComparing, setIsComparing] = useState(false)
+  const [isSyncingFromAppSheet, setIsSyncingFromAppSheet] = useState(false)
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false)
+  const [compareTab, setCompareTab] = useState<"routes" | "schedules" | "operators">("routes")
+  const [compareData, setCompareData] = useState<Awaited<ReturnType<typeof gtvtSyncService.compare>> | null>(null)
   // Manual sync disabled — auto sync via SharedWorker
   // const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   // const [isSyncing, setIsSyncing] = useState(false)
@@ -51,6 +63,7 @@ export default function QuanLyTuyen() {
   const itemsPerPage = 50
   const setTitle = useUIStore((state) => state.setTitle)
   const currentUser = useAuthStore((state) => state.user)
+  const isAdmin = currentUser?.role === 'admin'
 
   // Handle browser back button for dialog
   const { handleDialogOpenChange } = useDialogHistory(dialogOpen, setDialogOpen, "routeDialogOpen")
@@ -71,6 +84,39 @@ export default function QuanLyTuyen() {
       toast.error("Không thể tải danh sách tuyến. Vui lòng thử lại sau.")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleCompare = async () => {
+    setIsComparing(true)
+    try {
+      const diff = await gtvtSyncService.compare(500)
+      setCompareData(diff)
+      setCompareDialogOpen(true)
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể so sánh AppSheet ↔ Supabase")
+    } finally {
+      setIsComparing(false)
+    }
+  }
+
+  const handleSyncFromAppSheet = async () => {
+    if (!window.confirm("Đồng bộ AppSheet → Supabase? Dữ liệu tuyến + biểu đồ giờ sẽ upsert.")) return
+    setIsSyncingFromAppSheet(true)
+    try {
+      const result = await gtvtSyncService.syncRoutesSchedules(false)
+      if (result.errors?.length) {
+        toast.warning(`Đồng bộ xong nhưng có lỗi: ${result.errors[0]}`)
+      } else {
+        toast.success("Đồng bộ AppSheet → Supabase thành công")
+      }
+      await loadRoutes(true)
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể đồng bộ AppSheet → Supabase")
+    } finally {
+      setIsSyncingFromAppSheet(false)
     }
   }
 
@@ -216,6 +262,54 @@ export default function QuanLyTuyen() {
     setDialogOpen(true)
   }
 
+  useEffect(() => {
+    if (!dialogOpen || !selectedRoute?.id) return
+    let cancelled = false
+    setSchedulesLoading(true)
+    setRouteSchedules([])
+    scheduleService
+      .getAll(selectedRoute.id, undefined, true)
+      .then((data) => {
+        if (!cancelled) setRouteSchedules(data)
+      })
+      .catch((e) => {
+        console.error("Failed to load schedules for route:", e)
+        if (!cancelled) toast.error("Không thể tải biểu đồ giờ của tuyến")
+      })
+      .finally(() => {
+        if (!cancelled) setSchedulesLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [dialogOpen, selectedRoute?.id])
+
+  const syncSchedulesForSelectedRoute = async () => {
+    if (!selectedRoute) return
+    if (!isAdmin) {
+      toast.error("Chỉ admin mới đồng bộ được")
+      return
+    }
+    if (!window.confirm(`Đồng bộ biểu đồ giờ cho tuyến ${displayRouteCode(selectedRoute.routeCode)}?`)) return
+    setIsSyncingSchedules(true)
+    try {
+      const result = await gtvtSyncService.syncRoutesSchedules(false, selectedRoute.routeCode)
+      if (result.errors?.length) {
+        toast.warning(result.errors[0]?.message || "Đồng bộ xong nhưng có lỗi")
+      } else {
+        toast.success("Đã đồng bộ biểu đồ giờ")
+      }
+      // Reload schedules list from DB
+      const data = await scheduleService.getAll(selectedRoute.id, undefined, true)
+      setRouteSchedules(data)
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể đồng bộ biểu đồ giờ")
+    } finally {
+      setIsSyncingSchedules(false)
+    }
+  }
+
   const clearFilters = () => {
     setSearchQuery("")
     setFilterDepartureProvince("")
@@ -227,6 +321,44 @@ export default function QuanLyTuyen() {
   // Strip BUS- prefix for display (data keeps prefix for merge key matching)
   const displayRouteCode = (code: string) => code.replace(/^BUS-/i, '')
 
+  const noticeDocsForSelectedRoute = useMemo(() => {
+    const routeCode = (selectedRoute?.routeCode || '').trim()
+    if (!routeCode) return []
+    const codeUpper = routeCode.toUpperCase()
+    const codeNoBus = codeUpper.replace(/^BUS-/, '')
+
+    const byId = new Map<string, { id: string; routeRef: string; number?: string; displayText?: string; fileUrl?: string }>()
+
+    for (const s of routeSchedules as any[]) {
+      const meta = s?.metadata
+      const noticeMeta = meta?.notice_meta
+      const noticeId = String(noticeMeta?.id || '').trim()
+      const fileUrl = String(noticeMeta?.fileUrl || '').trim()
+      const routeRefRaw = String(noticeMeta?.routeRef || '').trim()
+      if (!noticeId && !fileUrl) continue
+
+      const routeRefUpper = routeRefRaw.toUpperCase()
+      const matchesRoute =
+        (routeRefUpper && (routeRefUpper === codeUpper || routeRefUpper === codeNoBus)) ||
+        (!routeRefUpper && codeUpper) // fallback: if routeRef not present yet, still allow (rare older records)
+
+      if (!matchesRoute) continue
+
+      const key = noticeId || fileUrl
+      if (byId.has(key)) continue
+
+      byId.set(key, {
+        id: noticeId || key,
+        routeRef: routeRefRaw || displayRouteCode(codeUpper),
+        number: String(noticeMeta?.number || '').trim() || undefined,
+        displayText: String(noticeMeta?.displayText || '').trim() || undefined,
+        fileUrl: fileUrl || undefined,
+      })
+    }
+
+    return Array.from(byId.values())
+  }, [routeSchedules, selectedRoute?.routeCode])
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "N/A"
     // Handle format "2025-04-14 00:00:00" or "dd/mm/yyyy"
@@ -237,6 +369,17 @@ export default function QuanLyTuyen() {
       }
     }
     return dateStr
+  }
+
+  const formatDaysOfWeek = (days: any): string => {
+    const arr = Array.isArray(days) ? days : []
+    if (arr.length === 0) return ""
+    const map: Record<number, string> = { 1: "CN", 2: "T2", 3: "T3", 4: "T4", 5: "T5", 6: "T6", 7: "T7" }
+    const labels = arr
+      .map((x) => Number(x))
+      .filter((n) => Number.isFinite(n))
+      .map((n) => map[n] || String(n))
+    return Array.from(new Set(labels)).join(", ")
   }
 
   // formatDateTime removed — was only used by sync dialog
@@ -284,6 +427,28 @@ export default function QuanLyTuyen() {
               <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
               Làm mới
             </Button>
+
+            <>
+              <Button
+                onClick={handleCompare}
+                disabled={!isAdmin || isComparing || isLoading}
+                variant="outline"
+                className="px-4 py-2.5 rounded-xl"
+                title={!isAdmin ? "Chỉ admin mới dùng được" : undefined}
+              >
+                <Database className={`mr-2 h-4 w-4 ${isComparing ? "animate-spin" : ""}`} />
+                So sánh AppSheet
+              </Button>
+              <Button
+                onClick={handleSyncFromAppSheet}
+                disabled={!isAdmin || isSyncingFromAppSheet || isLoading}
+                className="px-4 py-2.5 rounded-xl"
+                title={!isAdmin ? "Chỉ admin mới dùng được" : undefined}
+              >
+                <ArrowDownToLine className={`mr-2 h-4 w-4 ${isSyncingFromAppSheet ? "animate-spin" : ""}`} />
+                Đồng bộ AppSheet
+              </Button>
+            </>
           </div>
         </div>
 
@@ -591,7 +756,7 @@ export default function QuanLyTuyen() {
 
       {/* Detail Dialog */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[98vw] max-w-7xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">Chi tiết tuyến xe</DialogTitle>
           </DialogHeader>
@@ -602,6 +767,16 @@ export default function QuanLyTuyen() {
                 <div className="col-span-2 bg-blue-50 p-4 rounded-lg">
                   <p className="text-base text-blue-600 font-medium">Mã tuyến</p>
                   <p className="text-2xl font-bold text-blue-900">{displayRouteCode(selectedRoute.routeCode)}</p>
+                  <div className="mt-1 text-sm text-blue-700 flex flex-wrap gap-x-4 gap-y-1">
+                    <span>
+                      <span className="text-blue-600">Mã DB:</span>{" "}
+                      <span className="font-semibold">{selectedRoute.routeCode || "N/A"}</span>
+                    </span>
+                    <span>
+                      <span className="text-blue-600">Route ID:</span>{" "}
+                      <span className="font-semibold">{selectedRoute.id || "N/A"}</span>
+                    </span>
+                  </div>
                   {selectedRoute.routeCodeOld && selectedRoute.routeCodeOld !== selectedRoute.routeCode && (
                     <p className="text-base text-blue-500">Mã cũ: {selectedRoute.routeCodeOld}</p>
                   )}
@@ -616,6 +791,11 @@ export default function QuanLyTuyen() {
                     <div>
                       <p className="text-base text-gray-500">Bến đi</p>
                       <p className="text-lg font-medium">{selectedRoute.departureStation}</p>
+                      {selectedRoute.departureStationRef ? (
+                        <p className="text-sm text-gray-500">
+                          Ref bến đi: <span className="font-medium">{selectedRoute.departureStationRef}</span>
+                        </p>
+                      ) : null}
                       <p className="text-base text-gray-600">{selectedRoute.departureProvince}</p>
                     </div>
                   </div>
@@ -626,6 +806,11 @@ export default function QuanLyTuyen() {
                     <div>
                       <p className="text-base text-gray-500">Bến đến</p>
                       <p className="text-lg font-medium">{selectedRoute.arrivalStation}</p>
+                      {selectedRoute.arrivalStationRef ? (
+                        <p className="text-sm text-gray-500">
+                          Ref bến đến: <span className="font-medium">{selectedRoute.arrivalStationRef}</span>
+                        </p>
+                      ) : null}
                       <p className="text-base text-gray-600">{selectedRoute.arrivalProvince}</p>
                     </div>
                   </div>
@@ -659,6 +844,67 @@ export default function QuanLyTuyen() {
                   <p className="text-xl font-bold">{selectedRoute.minIntervalMinutes}</p>
                 </div>
               </div>
+
+              {/* Extra fields (full/trace) */}
+              <div className="bg-white border rounded-lg p-4">
+                <p className="text-lg font-medium mb-3">Thông tin đầy đủ</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-base">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500">Nguồn dữ liệu</span>
+                    <span className="font-medium">{selectedRoute._source || "N/A"}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500">Công suất còn lại</span>
+                    <span className="font-medium">{String(selectedRoute.remainingCapacity ?? "N/A")}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500">Mã tuyến cố định</span>
+                    <span className="font-medium">{selectedRoute.routeCodeFixed || "N/A"}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-gray-500">Phân hạng</span>
+                    <span className="font-medium">{selectedRoute.routeClass || "N/A"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* All columns (raw) */}
+              <details className="bg-white border rounded-lg p-4">
+                <summary className="cursor-pointer select-none text-lg font-medium">
+                  Tất cả cột (raw)
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    (click để mở/đóng)
+                  </span>
+                </summary>
+
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                  {Object.entries(selectedRoute as any).map(([k, v]) => {
+                    const value =
+                      v === null || v === undefined
+                        ? "—"
+                        : typeof v === "object"
+                          ? JSON.stringify(v)
+                          : String(v)
+                    return (
+                      <div key={k} className="flex items-start gap-3">
+                        <div className="w-48 shrink-0 text-gray-500 font-medium break-words">
+                          {k}
+                        </div>
+                        <div className="flex-1 text-gray-900 break-words">
+                          {value}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-sm font-medium text-gray-700 mb-2">JSON đầy đủ</div>
+                  <pre className="text-xs bg-gray-50 border rounded-lg p-3 overflow-auto max-h-[360px] whitespace-pre-wrap break-words">
+                    {JSON.stringify(selectedRoute, null, 2)}
+                  </pre>
+                </div>
+              </details>
 
               {/* Status & Type */}
               <div className="grid grid-cols-2 gap-4">
@@ -696,6 +942,275 @@ export default function QuanLyTuyen() {
                 </div>
               </div>
 
+              {/* Schedules (Biểu đồ giờ + văn bản) */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-gray-400" />
+                  <p className="text-lg font-medium">Biểu đồ giờ & văn bản</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={syncSchedulesForSelectedRoute}
+                    disabled={!isAdmin || isSyncingSchedules || schedulesLoading}
+                    title={!isAdmin ? "Chỉ admin mới dùng được" : undefined}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingSchedules ? "animate-spin" : ""}`} />
+                    Đồng bộ biểu đồ giờ
+                  </Button>
+                </div>
+
+                {schedulesLoading ? (
+                  <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
+                    Đang tải biểu đồ giờ...
+                  </div>
+                ) : routeSchedules.length === 0 ? (
+                  <div className="bg-amber-50 p-4 rounded-lg text-sm text-amber-700">
+                    Tuyến này chưa có dữ liệu biểu đồ giờ (schedules).
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-white border rounded-lg p-3">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Văn bản / thông tin giờ chạy</p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Tổng lịch</span>
+                          <span className="font-semibold">{routeSchedules.length}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Giờ sớm nhất</span>
+                          <span className="font-semibold">
+                            {routeSchedules.map((s: any) => s.departureTime).filter(Boolean).sort()[0] || "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Giờ muộn nhất</span>
+                          <span className="font-semibold">
+                            {routeSchedules.map((s: any) => s.departureTime).filter(Boolean).sort().slice(-1)[0] || "N/A"}
+                          </span>
+                        </div>
+                        <div className="pt-2 text-gray-600">
+                          Danh sách dưới đây lấy từ DB `schedules` (đồng bộ từ AppSheet `BieuDoChayXeChiTiet` + `THONGBAO_KHAITHAC`).
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white border rounded-lg p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-gray-700">
+                          File THONGBAO_KHAITHAC (theo <span className="font-semibold">Ref_Tuyen</span>)
+                        </p>
+                        <span className="text-sm text-gray-500">({noticeDocsForSelectedRoute.length})</span>
+                      </div>
+
+                      {noticeDocsForSelectedRoute.length === 0 ? (
+                        <div className="mt-2 text-sm text-gray-500">
+                          Chưa có file văn bản cho tuyến này. (Cần đồng bộ để lấy `THONGBAO_KHAITHAC.File` theo `Ref_Tuyen`.)
+                        </div>
+                      ) : (
+                        <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {noticeDocsForSelectedRoute.slice(0, 12).map((d) => (
+                            <div key={d.id} className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-gray-900 break-words">
+                                    {d.number ? `Số TB ${d.number}` : "Văn bản"}
+                                  </div>
+                                  <div className="text-sm text-gray-600 break-words">
+                                    <span className="text-gray-500">Mã tuyến:</span> {d.routeRef || "---"}
+                                  </div>
+                                </div>
+
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-3 text-xs rounded-lg shrink-0"
+                                  disabled={!String(d.fileUrl || "").trim()}
+                                  title={!String(d.fileUrl || "").trim() ? "Không có file" : "Mở file THONGBAO_KHAITHAC"}
+                                  onClick={() => {
+                                    const href = String(d.fileUrl || "").trim()
+                                    if (href) window.open(href, "_blank", "noopener,noreferrer")
+                                  }}
+                                >
+                                  Mở file
+                                </Button>
+                              </div>
+
+                              {d.displayText ? (
+                                <div className="mt-2 text-sm text-gray-700 break-words">
+                                  {d.displayText}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-base font-semibold text-gray-800 mb-3">Danh sách giờ chạy</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                        {routeSchedules.slice(0, 60).map((s: any) => (
+                          <div
+                            key={s.id}
+                            className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-xl font-bold tracking-tight text-gray-900">
+                                {s.departureTime || "N/A"}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-3 text-xs rounded-lg"
+                                disabled={!String(s?.metadata?.notice_meta?.fileUrl || "").trim()}
+                                title={!String(s?.metadata?.notice_meta?.fileUrl || "").trim() ? "Không có file văn bản" : "Mở văn bản THONGBAO_KHAITHAC"}
+                                onClick={() => {
+                                  const href = String(s?.metadata?.notice_meta?.fileUrl || "").trim()
+                                  if (href) window.open(href, "_blank", "noopener,noreferrer")
+                                }}
+                              >
+                                Xem văn bản
+                              </Button>
+                            </div>
+
+                            <div
+                              className="mt-2 text-sm text-gray-700 font-medium line-clamp-3"
+                              title={s?.metadata?.notice_meta?.displayText || ""}
+                            >
+                              {s?.metadata?.notice_meta?.displayText ? String(s.metadata.notice_meta.displayText) : ""}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-gray-800">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Số TB</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.SoThongBao || s?.notificationNumber || "")}>
+                                  {String(s?.metadata?.schedule_meta?.SoThongBao || s?.notificationNumber || "---")}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Ref TBKT</span>
+                                <span
+                                  className="font-semibold break-words"
+                                  title={String(
+                                    s?.metadata?.schedule_meta?.Ref_ThongBaoKhaiThac ||
+                                      s?.metadata?.schedule_meta?.ref_thongbao_khaithac ||
+                                      "",
+                                  )}
+                                >
+                                  {String(
+                                    s?.metadata?.schedule_meta?.Ref_ThongBaoKhaiThac ||
+                                      s?.metadata?.schedule_meta?.ref_thongbao_khaithac ||
+                                      "---",
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Mã tuyến</span>
+                                <span
+                                  className="font-semibold break-words"
+                                  title={String(s?.metadata?.notice_meta?.routeRef || selectedRoute?.routeCode || "")}
+                                >
+                                  {String(s?.metadata?.notice_meta?.routeRef || selectedRoute?.routeCode || "---")}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Chiều</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.Chieu || s?.direction || "")}>
+                                  {String(s?.metadata?.schedule_meta?.Chieu || s?.direction || "---")}
+                                </span>
+                              </div>
+
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Giờ xuất bến</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.GioXuatBen || s?.departureTime || "")}>
+                                  {String(s?.metadata?.schedule_meta?.GioXuatBen || s?.departureTime || "---")}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Ngày trong tuần</span>
+                                <span
+                                  className="font-semibold break-words"
+                                  title={formatDaysOfWeek((s as any)?.daysOfWeek)}
+                                >
+                                  {formatDaysOfWeek((s as any)?.daysOfWeek) || "---"}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Ngày HĐ</span>
+                                <span
+                                  className="font-semibold break-words"
+                                  title={String(
+                                    s?.metadata?.schedule_meta?.NgayHoatDong ||
+                                      s?.metadata?.schedule_meta?.NgayHoatDongGoc ||
+                                      formatDaysOfWeek((s as any)?.daysOfWeek) ||
+                                      s?.effectiveFrom ||
+                                      "",
+                                  )}
+                                >
+                                  {String(
+                                    s?.metadata?.schedule_meta?.NgayHoatDong ||
+                                      s?.metadata?.schedule_meta?.NgayHoatDongGoc ||
+                                      formatDaysOfWeek((s as any)?.daysOfWeek) ||
+                                      s?.effectiveFrom ||
+                                      "---",
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Loại ngày</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.LoaiNgay || s?.calendarType || "")}>
+                                  {String(s?.metadata?.schedule_meta?.LoaiNgay || s?.calendarType || "---")}
+                                </span>
+                              </div>
+
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">TT chuyến</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.TrangThaiChuyen || s?.tripStatus || "")}>
+                                  {String(s?.metadata?.schedule_meta?.TrangThaiChuyen || s?.tripStatus || "---")}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">TT tổng</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.TrangThaiTongHop || "")}>
+                                  {String(s?.metadata?.schedule_meta?.TrangThaiTongHop || "---")}
+                                </span>
+                              </div>
+
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Chuyến/tháng</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.SoChuyen_Thang_CT || "")}>
+                                  {String(s?.metadata?.schedule_meta?.SoChuyen_Thang_CT || "---")}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Ngày ngừng</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.NgayBiNgung || s?.effectiveTo || "")}>
+                                  {String(s?.metadata?.schedule_meta?.NgayBiNgung || s?.effectiveTo || "---")}
+                                </span>
+                              </div>
+
+                              <div className="col-span-2 flex items-baseline gap-2">
+                                <span className="text-gray-500 whitespace-nowrap">Ngày gốc</span>
+                                <span className="font-semibold break-words" title={String(s?.metadata?.schedule_meta?.NgayHoatDongGoc || "")}>
+                                  {String(s?.metadata?.schedule_meta?.NgayHoatDongGoc || "---")}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {routeSchedules.length > 60 && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          …và {routeSchedules.length - 60} giờ khác (xem đầy đủ ở trang Quản lý biểu đồ giờ).
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
               {/* Notes */}
               {selectedRoute.notes && (
                 <div className="border-t pt-4">
@@ -703,6 +1218,145 @@ export default function QuanLyTuyen() {
                   <p className="text-base">{selectedRoute.notes}</p>
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare Dialog */}
+      <Dialog open={compareDialogOpen} onOpenChange={setCompareDialogOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl">So sánh AppSheet ↔ Supabase</DialogTitle>
+          </DialogHeader>
+
+          {!compareData ? (
+            <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
+              Chưa có dữ liệu so sánh.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-white border rounded-lg p-3">
+                  <div className="text-xs text-gray-500">Tuyến</div>
+                  <div className="text-sm font-semibold">
+                    AppSheet {compareData.routes.appsheet} • DB {compareData.routes.supabase}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    AppSheet-only: {compareData.routes.onlyInAppSheet.count} • DB-only: {compareData.routes.onlyInSupabase.count}
+                  </div>
+                </div>
+                <div className="bg-white border rounded-lg p-3">
+                  <div className="text-xs text-gray-500">Biểu đồ giờ</div>
+                  <div className="text-sm font-semibold">
+                    AppSheet {compareData.schedules.appsheet} • DB {compareData.schedules.supabase}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    AppSheet-only: {compareData.schedules.onlyInAppSheet.count} • DB-only: {compareData.schedules.onlyInSupabase.count}
+                  </div>
+                </div>
+                <div className="bg-white border rounded-lg p-3">
+                  <div className="text-xs text-gray-500">Nhà xe (Ref_DonVi)</div>
+                  <div className="text-sm font-semibold">
+                    Tổng trong thông báo: {compareData.operatorRefs.totalInNotices}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Thiếu trong DB: {compareData.operatorRefs.missingInSupabase.count}
+                  </div>
+                </div>
+              </div>
+
+              <Tabs value={compareTab} onValueChange={(v) => setCompareTab(v as any)}>
+                <TabsList>
+                  <TabsTrigger value="routes">Tuyến</TabsTrigger>
+                  <TabsTrigger value="schedules">Biểu đồ giờ</TabsTrigger>
+                  <TabsTrigger value="operators">Nhà xe thiếu</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="routes">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="bg-white border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold">Chỉ có ở AppSheet</div>
+                        <div className="text-xs text-gray-500">
+                          Hiển thị {Math.min(compareData.limit, compareData.routes.onlyInAppSheet.count)} / {compareData.routes.onlyInAppSheet.count}
+                        </div>
+                      </div>
+                      <div className="max-h-[340px] overflow-auto text-sm font-mono space-y-1">
+                        {compareData.routes.onlyInAppSheet.items.map((x) => (
+                          <div key={x} className="px-2 py-1 bg-gray-50 rounded">{x}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-white border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold">Chỉ có ở DB</div>
+                        <div className="text-xs text-gray-500">
+                          Hiển thị {Math.min(compareData.limit, compareData.routes.onlyInSupabase.count)} / {compareData.routes.onlyInSupabase.count}
+                        </div>
+                      </div>
+                      <div className="max-h-[340px] overflow-auto text-sm font-mono space-y-1">
+                        {compareData.routes.onlyInSupabase.items.map((x) => (
+                          <div key={x} className="px-2 py-1 bg-gray-50 rounded">{x}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="schedules">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="bg-white border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold">Chỉ có ở AppSheet</div>
+                        <div className="text-xs text-gray-500">
+                          Hiển thị {Math.min(compareData.limit, compareData.schedules.onlyInAppSheet.count)} / {compareData.schedules.onlyInAppSheet.count}
+                        </div>
+                      </div>
+                      <div className="max-h-[340px] overflow-auto text-sm font-mono space-y-1">
+                        {compareData.schedules.onlyInAppSheet.items.map((x) => (
+                          <div key={x} className="px-2 py-1 bg-gray-50 rounded">{x}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-white border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold">Chỉ có ở DB</div>
+                        <div className="text-xs text-gray-500">
+                          Hiển thị {Math.min(compareData.limit, compareData.schedules.onlyInSupabase.count)} / {compareData.schedules.onlyInSupabase.count}
+                        </div>
+                      </div>
+                      <div className="max-h-[340px] overflow-auto text-sm font-mono space-y-1">
+                        {compareData.schedules.onlyInSupabase.items.map((x) => (
+                          <div key={x} className="px-2 py-1 bg-gray-50 rounded">{x}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2">
+                    Key so sánh schedules là <span className="font-mono">ROUTECODE|HH:MM</span>.
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="operators">
+                  <div className="bg-white border rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-semibold">Ref_DonVi thiếu trong DB</div>
+                      <div className="text-xs text-gray-500">
+                        Hiển thị {Math.min(compareData.limit, compareData.operatorRefs.missingInSupabase.count)} / {compareData.operatorRefs.missingInSupabase.count}
+                      </div>
+                    </div>
+                    <div className="max-h-[420px] overflow-auto text-sm font-mono space-y-1">
+                      {compareData.operatorRefs.missingInSupabase.items.map((x) => (
+                        <div key={x} className="px-2 py-1 bg-amber-50 rounded">{x}</div>
+                      ))}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      Nếu danh sách này &gt; 0 thì khi sync schedules sẽ có record bị <b>skip</b> do không resolve được operator.
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </DialogContent>

@@ -30,6 +30,7 @@ import quanlyDataRoutes from './routes/quanly-data.routes.js'
 import operationNoticeRoutes from './routes/operation-notice.routes.js'
 import userRoutes from './routes/user.routes.js'
 import webhookRoutes from './routes/webhook.routes.js'
+import gtvtSyncRoutes from './routes/gtvt-sync.routes.js'
 
 const allRoutes: RouteMount[] = [
   { path: '/api/auth', router: authRoutes },
@@ -57,6 +58,7 @@ const allRoutes: RouteMount[] = [
   { path: '/api/operation-notices', router: operationNoticeRoutes },
   { path: '/api/users', router: userRoutes },
   { path: '/api/webhooks', router: webhookRoutes },
+  { path: '/api/integrations/gtvt', router: gtvtSyncRoutes },
 ]
 
 const app = createApp(allRoutes)
@@ -100,6 +102,9 @@ export const routeGroups = {
     { path: '/api/webhooks', router: webhookRoutes },
     { path: '/api/upload', router: uploadRoutes },
     { path: '/api/operation-notices', router: operationNoticeRoutes },
+  ] as RouteMount[],
+  integrations: [
+    { path: '/api/integrations/gtvt', router: gtvtSyncRoutes },
   ] as RouteMount[],
   data: [
     { path: '/api/quanly-data', router: quanlyDataRoutes },

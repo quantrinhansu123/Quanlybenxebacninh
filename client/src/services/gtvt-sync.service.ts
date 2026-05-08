@@ -1,9 +1,37 @@
 import api from '@/lib/api'
 import type { GtvtContractStatus, GtvtLastSyncResponse, GtvtSyncSummaryResponse } from '@/types/gtvt-sync.types'
 
+export type GtvtCompareResponse = {
+  routes: {
+    appsheet: number
+    supabase: number
+    onlyInAppSheet: { count: number; items: string[] }
+    onlyInSupabase: { count: number; items: string[] }
+  }
+  schedules: {
+    appsheet: number
+    supabase: number
+    onlyInAppSheet: { count: number; items: string[] }
+    onlyInSupabase: { count: number; items: string[] }
+  }
+  operatorRefs: {
+    totalInNotices: number
+    missingInSupabase: { count: number; items: string[] }
+  }
+  limit: number
+}
+
 export const gtvtSyncService = {
-  syncRoutesSchedules: async (dryRun = false): Promise<GtvtSyncSummaryResponse> => {
-    const response = await api.post<GtvtSyncSummaryResponse>('/integrations/gtvt/sync-routes-schedules', { dryRun }, { timeout: 120000 })
+  compare: async (limit = 200): Promise<GtvtCompareResponse> => {
+    const response = await api.get<GtvtCompareResponse>(`/integrations/gtvt/compare?limit=${limit}`, { timeout: 120000 })
+    return response.data
+  },
+  syncRoutesSchedules: async (dryRun = false, routeCode?: string): Promise<GtvtSyncSummaryResponse> => {
+    const response = await api.post<GtvtSyncSummaryResponse>(
+      '/integrations/gtvt/sync-routes-schedules',
+      { dryRun, routeCode },
+      { timeout: 120000 }
+    )
     return response.data
   },
 

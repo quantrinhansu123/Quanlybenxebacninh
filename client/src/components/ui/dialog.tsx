@@ -1,7 +1,18 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "./button"
+
+function ensurePortalRoot(): HTMLElement | null {
+  if (typeof document === "undefined") return null
+  const existing = document.getElementById("app-portal-root")
+  if (existing) return existing
+  const el = document.createElement("div")
+  el.id = "app-portal-root"
+  document.body.appendChild(el)
+  return el
+}
 
 interface DialogProps {
   open: boolean
@@ -20,16 +31,23 @@ interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
 const Dialog: React.FC<DialogProps> = ({ open, onOpenChange, children, className, overlayClassName }) => {
   if (!open) return null
 
-  return (
-    <div
-      className={cn("fixed inset-0 z-[100] flex items-center justify-center p-4", overlayClassName)}
-      onClick={() => onOpenChange(false)}
-    >
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
-      <div onClick={(e) => e.stopPropagation()} className={cn("relative z-[101] max-w-[95vw]", className)}>
+  const portalRoot = ensurePortalRoot()
+  if (!portalRoot) return null
+
+  return createPortal(
+    <div className={cn("fixed inset-0 z-[100] flex items-center justify-center p-4", overlayClassName)}>
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => onOpenChange(false)}
+      />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={cn("relative z-[101] max-w-[95vw]", className)}
+      >
         {children}
       </div>
-    </div>
+    </div>,
+    portalRoot
   )
 }
 
