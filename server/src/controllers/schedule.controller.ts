@@ -12,13 +12,17 @@ export const getAllSchedules = async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Database connection not available' })
     }
 
-    const { routeId, operatorId, isActive, direction } = req.query
+    const { routeId, operatorId, isActive, direction, hasDocument } = req.query
+
+    const hasDocumentFilter =
+      hasDocument === 'true' ? true : hasDocument === 'false' ? false : undefined
 
     const rows = await fetchSchedulesWithRelations({
       routeId: routeId ? String(routeId) : undefined,
       operatorId: operatorId ? String(operatorId) : undefined,
       direction: direction ? String(direction) : undefined,
       activeOnly: isActive === undefined ? undefined : isActive === 'true',
+      hasDocument: hasDocumentFilter,
     })
 
     const result = rows

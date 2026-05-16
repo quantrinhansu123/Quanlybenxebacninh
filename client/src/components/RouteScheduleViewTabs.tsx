@@ -1,8 +1,12 @@
+import { useState, useCallback } from "react"
 import { RefreshCw, FileText } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { NoticePdfInlineView, type NoticePdfSelection } from "@/components/notice/NoticePdfInlineView"
 import type { Schedule } from "@/types"
+import { getScheduleNoticeFileUrl } from "@/utils/schedule-notice-doc"
+import { buildThongBaoFileUrlFromPath } from "@/utils/operation-notice-file-url"
 
 type RouteViewTab = "info" | "schedules" | "documents" | "operation-notices"
 
@@ -113,6 +117,42 @@ function ScheduleMetaItem({
   )
 }
 
+function resolveNoticeFileUrlFromRow(row: Record<string, unknown>): string {
+  const fileUrl = String(row.File || row.fileUrl || "").trim()
+  if (fileUrl) return fileUrl
+  return buildThongBaoFileUrlFromPath(String(row.filePath || row.file_path || "").trim()) || ""
+}
+
+function NoticeOpenFileButton({
+  fileUrl,
+  title,
+  onOpen,
+  className,
+}: {
+  fileUrl: string
+  title: string
+  onOpen: (url: string, label: string) => void
+  className?: string
+}) {
+  const href = String(fileUrl || "").trim()
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={className ?? "h-8 px-3 text-xs rounded-lg shrink-0"}
+      disabled={!href}
+      title={href ? "Xem PDF trong view" : "Chưa có file"}
+      onClick={() => {
+        if (href) onOpen(href, title)
+      }}
+    >
+      <FileText className="mr-1.5 h-3.5 w-3.5" />
+      Mở file
+    </Button>
+  )
+}
+
 function getScheduleOperatingDays(schedule: Schedule, formatDaysOfWeek: (days: unknown) => string): string {
   const daysOfMonth = Array.isArray((schedule as any)?.daysOfMonth) ? (schedule as any).daysOfMonth : []
   if (daysOfMonth.length > 0) {
@@ -144,6 +184,14 @@ export function RouteScheduleViewTabs({
   formatDaysOfWeek,
   displayRouteCode,
 }: RouteScheduleViewTabsProps) {
+  const [pdfSelection, setPdfSelection] = useState<NoticePdfSelection>(null)
+
+  const openNoticePdfInView = useCallback((url: string, title: string) => {
+    const href = String(url || "").trim()
+    if (!href) return
+    setPdfSelection({ url: href, title })
+  }, [])
+
   return (
     <Tabs
       value={routeViewTab}
@@ -163,6 +211,10 @@ export function RouteScheduleViewTabs({
           {operationNoticesFromSchedules.length ? ` (${operationNoticesFromSchedules.length})` : ""}
         </TabsTrigger>
       </TabsList>
+
+      {pdfSelection ? (
+        <NoticePdfInlineView selection={pdfSelection} onClose={() => setPdfSelection(null)} maxPageWidth={880} />
+      ) : null}
 
       <TabsContent value="info" className="space-y-4">
         <div className="bg-slate-50 border rounded-xl p-4">
@@ -208,6 +260,34 @@ export function RouteScheduleViewTabs({
             <div className="font-semibold text-slate-900">{routeViewData.operationStatus || "—"}</div>
           </div>
         </div>
+
+        {noticeDocsForRouteView.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-slate-800">Văn bản thông báo</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {noticeDocsForRouteView.map((d) => (
+                <div
+                  key={d.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 truncate">
+                      {d.number ? `Số TB ${d.number}` : "Văn bản"}
+                    </div>
+                    {d.displayText ? (
+                      <p className="mt-0.5 text-xs text-slate-600 line-clamp-2">{d.displayText}</p>
+                    ) : null}
+                  </div>
+                  <NoticeOpenFileButton
+                    fileUrl={String(d.fileUrl || "")}
+                    title={d.number ? `Số TB ${d.number}` : "Văn bản"}
+                    onOpen={openNoticePdfInView}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </TabsContent>
 
       <TabsContent value="schedules" className="space-y-3">
@@ -237,6 +317,7 @@ export function RouteScheduleViewTabs({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {routeViewSchedules.slice(0, 60).map((s) => {
+              const noticeFileUrl = getScheduleNoticeFileUrl(s)
               const scheduleMeta = (s as any)?.metadata?.schedule_meta
               const noticeMeta = (s as any)?.metadata?.notice_meta
               const noticeRecord = (s as any)?.metadata?.notice
@@ -264,18 +345,12 @@ export function RouteScheduleViewTabs({
                         {direction}
                       </span>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
+                    <NoticeOpenFileButton
+                      fileUrl={noticeFileUrl}
+                      title={`Giờ ${formatDisplayTime(s.departureTime)} — ${direction}`}
+                      onOpen={openNoticePdfInView}
                       className="h-8 shrink-0 px-3 text-xs"
-                      disabled={!String(noticeMeta?.fileUrl || "").trim()}
-                      onClick={() => {
-                        const href = String(noticeMeta?.fileUrl || "").trim()
-                        if (href) window.open(href, "_blank", "noopener,noreferrer")
-                      }}
-                    >
-                      Xem văn bản
-                    </Button>
+                    />
                   </div>
 
                   {noticeText ? (
@@ -364,10 +439,10 @@ export function RouteScheduleViewTabs({
             size="sm"
             onClick={onSyncRouteViewFromAppSheet}
             disabled={!isAdmin || isSyncingRouteView || routeViewSchedulesLoading}
-            title={!isAdmin ? "Chỉ admin mới dùng được" : undefined}
+            title={!isAdmin ? "Chỉ admin mới dùng được" : "Đồng bộ ref schedules từ AppSheet"}
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingRouteView ? "animate-spin" : ""}`} />
-            Đồng bộ văn bản
+            Đồng bộ biểu đồ
           </Button>
         </div>
 
@@ -388,18 +463,11 @@ export function RouteScheduleViewTabs({
                       <span className="text-slate-500">Mã tuyến:</span> {d.routeRef || "—"}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs rounded-lg shrink-0"
-                    disabled={!String(d.fileUrl || "").trim()}
-                    onClick={() => {
-                      const href = String(d.fileUrl || "").trim()
-                      if (href) window.open(href, "_blank", "noopener,noreferrer")
-                    }}
-                  >
-                    Mở file
-                  </Button>
+                  <NoticeOpenFileButton
+                    fileUrl={String(d.fileUrl || "")}
+                    title={d.number ? `Số TB ${d.number}` : "Văn bản"}
+                    onOpen={openNoticePdfInView}
+                  />
                 </div>
                 {d.displayText ? (
                   <div className="mt-3 text-sm text-slate-700 break-words whitespace-pre-wrap">{d.displayText}</div>
@@ -440,10 +508,20 @@ export function RouteScheduleViewTabs({
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {operationNoticesFromSchedules.map((item) => (
+            {operationNoticesFromSchedules.map((item) => {
+              const noticeFileUrl = resolveNoticeFileUrlFromRow(item.row)
+              const noticeTitle = String(item.row.SoThongBao || item.row.ID_TB || item.id)
+              return (
               <div key={item.id} className="rounded-lg border border-slate-200 p-4 bg-white">
-                <div className="text-sm font-semibold text-slate-900 break-words mb-3">
-                  {String(item.row.SoThongBao || item.row.ID_TB || item.id)}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="text-sm font-semibold text-slate-900 break-words min-w-0">
+                    {noticeTitle}
+                  </div>
+                  <NoticeOpenFileButton
+                    fileUrl={noticeFileUrl}
+                    title={noticeTitle}
+                    onOpen={openNoticePdfInView}
+                  />
                 </div>
                 <div className="grid grid-cols-1 gap-2 text-sm">
                   {Object.entries(item.row).map(([key, value]) => (
@@ -456,7 +534,7 @@ export function RouteScheduleViewTabs({
                   ))}
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </TabsContent>

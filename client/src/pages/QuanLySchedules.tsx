@@ -11,6 +11,7 @@ import {
   Trash2,
   Eye,
   Database,
+  FileText,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/table"
 import { ActionMenu } from "@/components/ui/ActionMenu"
 import { RouteScheduleViewTabs } from "@/components/RouteScheduleViewTabs"
+import { NoticePdfInlineView, type NoticePdfSelection } from "@/components/notice/NoticePdfInlineView"
 import {
   Dialog,
   DialogContent,
@@ -37,16 +39,61 @@ import {
 
 import type { Schedule } from "@/types"
 import { scheduleService } from "@/services/schedule.service"
+import { routeService } from "@/services/route.service"
 import { gtvtSyncService } from "@/services/gtvt-sync.service"
 import { useAuthStore } from "@/features/auth/store/authStore"
+import {
+  getScheduleNoticeFileUrl,
+  getScheduleNoticeId,
+} from "@/utils/schedule-notice-doc"
 
 type DirectionFilter = "all" | "Đi" | "Về"
 type FrequencyType = "daily" | "weekly" | "specific_days"
+/** all | row-yes/no: lọc dòng; route-yes/no: lọc theo tuyến có ít nhất 1 file TB */
+type VanBanFilter = "all" | "row-yes" | "row-no" | "route-yes" | "route-no"
+
+function scheduleHasVanBan(s: Schedule): boolean {
+  return Boolean(getScheduleNoticeFileUrl(s))
+}
+
+function getScheduleRouteKey(s: Schedule): string {
+  return String(s.routeId || s.route?.routeCode || "").trim()
+}
 
 const ITEMS_PER_PAGE = 50
 
 type RouteOption = { id: string; code: string; name: string }
 type OperatorOption = { id: string; name: string; code?: string }
+
+type RouteViewData = {
+  id?: string
+  routeCode?: string
+  routeName?: string
+  departureStation?: string
+  departureProvince?: string
+  arrivalStation?: string
+  arrivalProvince?: string
+  itinerary?: string
+  routePath?: string
+  routeType?: string
+  operationStatus?: string
+}
+
+function mapRouteApiToViewData(route: Record<string, unknown>): RouteViewData {
+  return {
+    id: String(route.id || ""),
+    routeCode: String(route.routeCode || ""),
+    routeName: String(route.routeName || route.routeCode || ""),
+    departureStation: (route.departureStation as string) || undefined,
+    departureProvince: (route.departureProvince as string) || undefined,
+    arrivalStation: (route.arrivalStation as string) || undefined,
+    arrivalProvince: (route.arrivalProvince as string) || undefined,
+    itinerary: (route.itinerary as string) || undefined,
+    routePath: (route.routePath as string) || undefined,
+    routeType: (route.routeType as string) || undefined,
+    operationStatus: (route.operationStatus as string) || undefined,
+  }
+}
 
 const daysOfWeekOptions: Array<{ value: number; label: string }> = [
   { value: 2, label: "T2" },
@@ -71,10 +118,11 @@ export default function QuanLySchedules() {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [routeViewOpen, setRouteViewOpen] = useState(false)
   const [routeViewLoading, setRouteViewLoading] = useState(false)
-  const [routeViewData, setRouteViewData] = useState<any | null>(null)
+  const [routeViewData, setRouteViewData] = useState<RouteViewData | null>(null)
   const [routeViewSchedules, setRouteViewSchedules] = useState<Schedule[]>([])
   const [routeViewSchedulesLoading, setRouteViewSchedulesLoading] = useState(false)
   const [routeViewTab, setRouteViewTab] = useState<"info" | "schedules" | "documents" | "operation-notices">("info")
+  const [tablePdfSelection, setTablePdfSelection] = useState<NoticePdfSelection>(null)
   const [isSyncingRouteView, setIsSyncingRouteView] = useState(false)
   const [isSyncingFromAppSheet, setIsSyncingFromAppSheet] = useState(false)
   const [isImportingFromAppSheet, setIsImportingFromAppSheet] = useState(false)
@@ -86,11 +134,11 @@ export default function QuanLySchedules() {
   const [filterRouteId, setFilterRouteId] = useState<string>("")
   const [filterOperatorId, setFilterOperatorId] = useState<string>("")
   const [direction, setDirection] = useState<DirectionFilter>("all")
+  const [filterVanBan, setFilterVanBan] = useState<VanBanFilter>("all")
 
   const [isLoading, setIsLoading] = useState(false)
 
   const [currentPage, setCurrentPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(schedules.length / ITEMS_PER_PAGE))
 
   // Create dialog
   const [createOpen, setCreateOpen] = useState(false)
@@ -128,7 +176,7 @@ export default function QuanLySchedules() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, filterRouteId, filterOperatorId, direction])
+  }, [searchQuery, filterRouteId, filterOperatorId, direction, filterVanBan])
 
   const loadSchedules = async (forceRefresh = false) => {
     setIsLoading(true)
@@ -137,7 +185,9 @@ export default function QuanLySchedules() {
       const routeId = filterRouteId || undefined
       const operatorId = filterOperatorId || undefined
       const dir = direction === "all" ? undefined : direction
-      const data = await scheduleService.getAll(routeId, operatorId, undefined, dir)
+      const hasDocument =
+        filterVanBan === "row-yes" ? true : filterVanBan === "row-no" ? false : undefined
+      const data = await scheduleService.getAll(routeId, operatorId, undefined, dir, hasDocument)
       setSchedules(data)
       if (data.length > 0 && !form.routeId && data[0].routeId) {
         setForm((p) => ({ ...p, routeId: data[0].routeId }))
@@ -153,7 +203,17 @@ export default function QuanLySchedules() {
   useEffect(() => {
     void loadSchedules(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterRouteId, filterOperatorId, direction])
+  }, [filterRouteId, filterOperatorId, direction, filterVanBan])
+
+  const routeKeysWithVanBan = useMemo(() => {
+    const keys = new Set<string>()
+    for (const s of schedules) {
+      if (!scheduleHasVanBan(s)) continue
+      const key = getScheduleRouteKey(s)
+      if (key) keys.add(key)
+    }
+    return keys
+  }, [schedules])
 
   const routes = useMemo<RouteOption[]>(() => {
     const byId = new Map<string, RouteOption>()
@@ -189,15 +249,30 @@ export default function QuanLySchedules() {
   }, [schedules])
 
   const filteredSchedules = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return schedules
+    let list = schedules
 
-    return schedules.filter((s) => {
+    if (filterVanBan === "route-yes") {
+      list = list.filter((s) => {
+        const key = getScheduleRouteKey(s)
+        return key && routeKeysWithVanBan.has(key)
+      })
+    } else if (filterVanBan === "route-no") {
+      list = list.filter((s) => {
+        const key = getScheduleRouteKey(s)
+        return key && !routeKeysWithVanBan.has(key)
+      })
+    }
+
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return list
+
+    return list.filter((s) => {
       const routeName = s.route?.routeName || ""
       const routeCode = s.route?.routeCode || ""
       const opName = s.operator?.name || ""
       return (
         (s.scheduleCode || "").toLowerCase().includes(q) ||
+        (s.notificationNumber || "").toLowerCase().includes(q) ||
         routeName.toLowerCase().includes(q) ||
         routeCode.toLowerCase().includes(q) ||
         opName.toLowerCase().includes(q) ||
@@ -205,7 +280,9 @@ export default function QuanLySchedules() {
         (s.direction || "").toLowerCase().includes(q)
       )
     })
-  }, [schedules, searchQuery])
+  }, [schedules, searchQuery, filterVanBan, routeKeysWithVanBan])
+
+  const totalPages = Math.max(1, Math.ceil(filteredSchedules.length / ITEMS_PER_PAGE))
 
   const paginated = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE
@@ -278,31 +355,28 @@ export default function QuanLySchedules() {
 
   const noticeDocsForRouteView = useMemo(() => {
     const routeCode = String(routeViewData?.routeCode || "").trim()
-    if (!routeCode) return []
-    const codeUpper = routeCode.toUpperCase()
-    const codeNoBus = codeUpper.replace(/^BUS-/, "")
     const byId = new Map<string, { id: string; routeRef: string; number?: string; displayText?: string; fileUrl?: string }>()
 
-    for (const s of routeViewSchedules as any[]) {
-      const noticeMeta = s?.metadata?.notice_meta
-      const noticeId = String(noticeMeta?.id || "").trim()
-      const fileUrl = String(noticeMeta?.fileUrl || "").trim()
-      const routeRefRaw = String(noticeMeta?.routeRef || "").trim()
+    for (const s of routeViewSchedules) {
+      const fileUrl = getScheduleNoticeFileUrl(s)
+      const noticeId = getScheduleNoticeId(s)
+      const noticeMeta = (s as { metadata?: { notice_meta?: { number?: string; routeRef?: string; displayText?: string } } })
+        .metadata?.notice_meta
       if (!noticeId && !fileUrl) continue
-
-      const routeRefUpper = routeRefRaw.toUpperCase()
-      const matchesRoute =
-        (routeRefUpper && (routeRefUpper === codeUpper || routeRefUpper === codeNoBus)) ||
-        (!routeRefUpper && !!codeUpper)
-      if (!matchesRoute) continue
 
       const key = noticeId || fileUrl
       if (byId.has(key)) continue
+
+      const number =
+        String(s.notificationNumber || noticeMeta?.number || "").trim() || undefined
+      const routeRefRaw =
+        String(noticeMeta?.routeRef || s.route?.routeCode || routeCode || "").trim()
+
       byId.set(key, {
         id: noticeId || key,
-        routeRef: routeRefRaw || displayRouteCode(codeUpper),
-        number: String(noticeMeta?.number || "").trim() || undefined,
-        displayText: String(noticeMeta?.displayText || "").trim() || undefined,
+        routeRef: routeRefRaw || (routeCode ? displayRouteCode(routeCode) : "—"),
+        number,
+        displayText: String(noticeMeta?.displayText || "").trim() || (number ? `Số TB ${number}` : undefined),
         fileUrl: fileUrl || undefined,
       })
     }
@@ -331,15 +405,19 @@ export default function QuanLySchedules() {
       const key = id || String(noticeMeta?.number || noticeMeta?.displayText || "").trim()
       if (!key || byId.has(key)) continue
 
+      const fileUrl = getScheduleNoticeFileUrl(s as Schedule)
+
       if (notice && typeof notice === "object") {
-        byId.set(key, notice as Record<string, unknown>)
+        const row = { ...(notice as Record<string, unknown>) }
+        if (fileUrl && !row.File) row.File = fileUrl
+        byId.set(key, row)
       } else {
         byId.set(key, {
-          ID_TB: noticeMeta?.id || null,
+          ID_TB: getScheduleNoticeId(s as Schedule) || noticeMeta?.id || null,
           Ref_Tuyen: noticeMeta?.routeRef || null,
-          SoThongBao: noticeMeta?.number || null,
+          SoThongBao: s.notificationNumber || noticeMeta?.number || null,
           ThongBaoHienThi: noticeMeta?.displayText || null,
-          File: noticeMeta?.fileUrl || null,
+          File: fileUrl || noticeMeta?.fileUrl || null,
         })
       }
     }
@@ -349,16 +427,22 @@ export default function QuanLySchedules() {
 
   const reloadRouteViewSchedules = async (routeId: string, routeCode?: string) => {
     try {
-      const scheds = await scheduleService.getAll(routeId, undefined, true, undefined)
+      const scheds = await scheduleService.getAll(routeId, undefined, undefined, undefined)
       setRouteViewSchedules(scheds)
-      const route = scheds[0]?.route
-      if (route) {
-        setRouteViewData({
-          routeCode: route.routeCode,
-          routeName: route.routeName,
-        })
-      } else if (routeCode) {
-        setRouteViewData({ routeCode, routeName: routeCode })
+      const routeDetail = await routeService.getById(routeId).catch(() => null)
+      if (routeDetail) {
+        setRouteViewData(mapRouteApiToViewData(routeDetail as unknown as Record<string, unknown>))
+      } else {
+        const route = scheds[0]?.route
+        if (route) {
+          setRouteViewData({
+            id: routeId,
+            routeCode: route.routeCode,
+            routeName: route.routeName,
+          })
+        } else if (routeCode) {
+          setRouteViewData({ id: routeId, routeCode, routeName: routeCode })
+        }
       }
     } catch (e) {
       setRouteViewSchedules([])
@@ -452,30 +536,56 @@ export default function QuanLySchedules() {
     }
   }
 
-  const handleViewRoute = async (routeId?: string) => {
-    const id = String(routeId || "").trim()
-    if (!id) {
-      toast.error("Schedule chưa có routeId")
+  const handleViewRoute = async (schedule: Schedule) => {
+    const routeId = String(schedule.routeId || schedule.route?.id || "").trim()
+    const routeCode = String(schedule.route?.routeCode || "").trim()
+
+    if (!routeId && !routeCode) {
+      toast.error("Schedule chưa có tuyến (thiếu thông báo khai thác hoặc routes)")
       return
     }
+
     setRouteViewOpen(true)
     setRouteViewTab("info")
     setRouteViewLoading(true)
-    setRouteViewData(null)
-    setRouteViewSchedules([])
     setRouteViewSchedulesLoading(true)
+    setRouteViewSchedules([])
+    setRouteViewData(
+      routeCode
+        ? { id: routeId || undefined, routeCode, routeName: schedule.route?.routeName || routeCode }
+        : null,
+    )
+
     try {
-      const scheds = await scheduleService.getAll(id, undefined, true, undefined)
-      const route = scheds[0]?.route
-      setRouteViewData(
-        route
-          ? {
-              routeCode: route.routeCode,
-              routeName: route.routeName,
-            }
-          : null,
-      )
-      setRouteViewSchedules(scheds)
+      if (routeId) {
+        const [routeDetail, scheds] = await Promise.all([
+          routeService.getById(routeId).catch(() => null),
+          scheduleService.getAll(routeId, undefined, undefined, undefined),
+        ])
+        setRouteViewSchedules(scheds)
+        if (routeDetail) {
+          setRouteViewData(mapRouteApiToViewData(routeDetail as unknown as Record<string, unknown>))
+        } else if (schedule.route) {
+          setRouteViewData({
+            id: routeId,
+            routeCode: schedule.route.routeCode,
+            routeName: schedule.route.routeName,
+          })
+        }
+      } else {
+        const all = await scheduleService.getAll(undefined, undefined, undefined, undefined)
+        const codeUpper = routeCode.toUpperCase()
+        const codeNoBus = codeUpper.replace(/^BUS-/, "")
+        const scheds = all.filter((s) => {
+          const c = String(s.route?.routeCode || "").trim().toUpperCase()
+          return c === codeUpper || c === codeNoBus || c.replace(/^BUS-/, "") === codeNoBus
+        })
+        setRouteViewSchedules(scheds)
+        setRouteViewData({
+          routeCode,
+          routeName: schedule.route?.routeName || routeCode,
+        })
+      }
     } catch (e) {
       console.error(e)
       setRouteViewSchedules([])
@@ -584,6 +694,16 @@ export default function QuanLySchedules() {
                 ))}
               </Select>
             </div>
+            <div className="w-64">
+              <Label className="text-xs text-slate-500 mb-1 block">Văn bản</Label>
+              <Select value={filterVanBan} onChange={(e) => setFilterVanBan(e.target.value as VanBanFilter)}>
+                <option value="all">Tất cả</option>
+                <option value="row-yes">Dòng có file</option>
+                <option value="row-no">Dòng không có file</option>
+                <option value="route-yes">Tuyến có văn bản</option>
+                <option value="route-no">Tuyến không có văn bản</option>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -591,6 +711,9 @@ export default function QuanLySchedules() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="whitespace-nowrap">ID_NutChay</TableHead>
+                <TableHead className="whitespace-nowrap">SoThongBao</TableHead>
+                <TableHead className="whitespace-nowrap">Văn bản</TableHead>
                 <TableHead>Tuyến</TableHead>
                 <TableHead>Đơn vị</TableHead>
                 <TableHead className="text-center">Giờ</TableHead>
@@ -604,20 +727,45 @@ export default function QuanLySchedules() {
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={10}>
                       <div className="animate-pulse h-8 bg-slate-100 rounded w-full" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-16 text-slate-500">
+                  <TableCell colSpan={10} className="text-center py-16 text-slate-500">
                     Không có schedules
                   </TableCell>
                 </TableRow>
               ) : (
                 paginated.map((s) => (
                   <TableRow key={s.id}>
+                    <TableCell className="font-mono text-xs text-slate-700 max-w-[140px] truncate" title={s.scheduleCode || undefined}>
+                      {s.scheduleCode || "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-700 max-w-[160px] truncate" title={s.notificationNumber || undefined}>
+                      {s.notificationNumber || "—"}
+                    </TableCell>
+                    <TableCell className="max-w-[140px]">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 text-xs rounded-lg w-fit"
+                        disabled={!scheduleHasVanBan(s)}
+                        title={scheduleHasVanBan(s) ? "Xem PDF trong view" : "Chưa có file"}
+                        onClick={() => {
+                          const url = getScheduleNoticeFileUrl(s)
+                          if (!url) return
+                          const label = s.notificationNumber?.trim() || s.scheduleCode || "Văn bản"
+                          setTablePdfSelection({ url, title: `Số TB ${label}` })
+                        }}
+                      >
+                        <FileText className="h-3.5 w-3.5 mr-1 shrink-0" />
+                        Mở file
+                      </Button>
+                    </TableCell>
                     <TableCell>
                       {s.route?.routeCode ? (
                         <div className="flex flex-col">
@@ -659,7 +807,7 @@ export default function QuanLySchedules() {
                         items={[
                           {
                             label: "Xem tuyến",
-                            onClick: () => handleViewRoute((s as any).routeId),
+                            onClick: () => handleViewRoute(s),
                             variant: "info",
                           },
                           {
@@ -714,7 +862,8 @@ export default function QuanLySchedules() {
           </div>
         )}
 
-        {/* Create Dialog */}
+        {/* Create Dialog — mount only when open to avoid portal teardown races */}
+        {createOpen && (
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent className="max-w-[920px]">
             <DialogHeader>
@@ -870,6 +1019,7 @@ export default function QuanLySchedules() {
             </div>
           </DialogContent>
         </Dialog>
+        )}
 
         {/* Route View Dialog */}
         <Dialog
@@ -877,11 +1027,13 @@ export default function QuanLySchedules() {
           onOpenChange={(open) => {
             setRouteViewOpen(open)
             if (!open) {
-              setRouteViewData(null)
-              setRouteViewSchedules([])
-              setRouteViewLoading(false)
-              setRouteViewSchedulesLoading(false)
-              setRouteViewTab("info")
+              requestAnimationFrame(() => {
+                setRouteViewData(null)
+                setRouteViewSchedules([])
+                setRouteViewLoading(false)
+                setRouteViewSchedulesLoading(false)
+                setRouteViewTab("info")
+              })
             }
           }}
         >
@@ -912,6 +1064,22 @@ export default function QuanLySchedules() {
             )}
           </DialogContent>
         </Dialog>
+
+        {tablePdfSelection ? (
+          <div
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4"
+            role="presentation"
+            onMouseDown={() => setTablePdfSelection(null)}
+          >
+            <div className="w-full max-w-5xl" onMouseDown={(e) => e.stopPropagation()}>
+              <NoticePdfInlineView
+                selection={tablePdfSelection}
+                onClose={() => setTablePdfSelection(null)}
+                maxPageWidth={900}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

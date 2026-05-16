@@ -62,7 +62,7 @@ async function main() {
   console.log('[2/4] Processing rows...')
   let skipped = 0
   const records: Array<{
-    routeCode: string; operatorRef: string | null; noticeNumber: string
+    idAppsheet: string | null; routeCode: string; operatorRef: string | null; noticeNumber: string
     issueDate: string | null; effectiveDate: string | null; filePath: string | null
     fileUrl: string | null; issuingAuthority: string | null; status: string | null
     noticeType: string | null
@@ -78,6 +78,7 @@ async function main() {
     if (!fileUrl) { skipped++; continue }
 
     records.push({
+      idAppsheet: (row.ID_TB || '').trim() || null,
       routeCode,
       operatorRef: row.Ref_DonVi?.trim() || null,
       noticeNumber,
@@ -104,6 +105,7 @@ async function main() {
   await db.execute(sql.raw(`DROP TABLE IF EXISTS _tmp_notices`))
   await db.execute(sql.raw(`
     CREATE TEMP TABLE _tmp_notices (
+      id_appsheet TEXT,
       route_code TEXT NOT NULL,
       operator_ref TEXT,
       notice_number TEXT NOT NULL,
@@ -123,7 +125,7 @@ async function main() {
   for (let i = 0; i < records.length; i += CHUNK) {
     const chunk = records.slice(i, i + CHUNK)
     const values = chunk.map(r =>
-      `(${esc(r.routeCode)},${esc(r.operatorRef)},${esc(r.noticeNumber)},` +
+      `(${esc(r.idAppsheet)},${esc(r.routeCode)},${esc(r.operatorRef)},${esc(r.noticeNumber)},` +
       `${esc(r.issueDate)},${esc(r.effectiveDate)},${esc(r.filePath)},` +
       `${esc(r.fileUrl)},${esc(r.issuingAuthority)},${esc(r.status)},${esc(r.noticeType)})`
     ).join(',')
@@ -135,6 +137,7 @@ async function main() {
   // Upsert: UPDATE existing + INSERT new
   const updateResult = await db.execute(sql.raw(`
     UPDATE operation_notices on2 SET
+      id_appsheet = COALESCE(NULLIF(TRIM(t.id_appsheet), ''), on2.id_appsheet),
       operator_ref = t.operator_ref,
       issue_date = t.issue_date,
       effective_date = t.effective_date,
@@ -150,8 +153,8 @@ async function main() {
   console.log(`  Updated existing: ${(updateResult as any).count ?? 'ok'}`)
 
   const insertResult = await db.execute(sql.raw(`
-    INSERT INTO operation_notices (route_code, operator_ref, notice_number, issue_date, effective_date, file_path, file_url, issuing_authority, status, notice_type)
-    SELECT t.route_code, t.operator_ref, t.notice_number, t.issue_date, t.effective_date, t.file_path, t.file_url, t.issuing_authority, t.status, t.notice_type
+    INSERT INTO operation_notices (id_appsheet, route_code, operator_ref, notice_number, issue_date, effective_date, file_path, file_url, issuing_authority, status, notice_type)
+    SELECT t.id_appsheet, t.route_code, t.operator_ref, t.notice_number, t.issue_date, t.effective_date, t.file_path, t.file_url, t.issuing_authority, t.status, t.notice_type
     FROM _tmp_notices t
     WHERE NOT EXISTS (
       SELECT 1 FROM operation_notices on2

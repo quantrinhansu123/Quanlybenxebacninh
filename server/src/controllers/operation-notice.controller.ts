@@ -1,9 +1,18 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
 import { operationNotices } from '../db/schema/index.js'
-import { eq, and, isNotNull, ne, ilike } from 'drizzle-orm'
+import { eq, and, ilike } from 'drizzle-orm'
+import { generateOperationNoticeFileUrlsFromFilePath } from '../services/operation-notice-sync.service.js'
+import { buildThongBaoFileUrlFromPath } from '../utils/operation-notice-file-url.js'
 
 /** Proxy PDF file to bypass CORS restrictions from external hosts */
+function mapNoticesWithFileUrl<T extends { filePath?: string | null; fileUrl?: string | null }>(rows: T[]) {
+  return rows.map((row) => {
+    const fileUrl = row.fileUrl?.trim() || buildThongBaoFileUrlFromPath(row.filePath) || null
+    return { ...row, fileUrl }
+  })
+}
+
 export const proxyPdf = async (req: Request, res: Response) => {
   try {
     const { url } = req.query
@@ -32,6 +41,18 @@ export const proxyPdf = async (req: Request, res: Response) => {
   }
 }
 
+/** Tạo file_url từ file_path (AppSheet gettablefileurl). */
+export const generateOperationNoticeFileUrls = async (req: Request, res: Response) => {
+  try {
+    const dryRun = req.body?.dryRun === true
+    const result = await generateOperationNoticeFileUrlsFromFilePath(dryRun)
+    return res.json(result)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to generate operation notice file URLs'
+    return res.status(500).json({ error: message })
+  }
+}
+
 export const getOperationNotices = async (req: Request, res: Response) => {
   try {
     if (!db) {
@@ -44,11 +65,7 @@ export const getOperationNotices = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'routeCode is required' })
     }
 
-    const baseConditions = [
-      eq(operationNotices.routeCode, routeCode),
-      isNotNull(operationNotices.fileUrl),
-      ne(operationNotices.fileUrl, ''),
-    ]
+    const baseConditions = [eq(operationNotices.routeCode, routeCode)]
 
     // If noticeNumber is provided, try exact match first, then filePath fuzzy match.
     // schedules.notification_number sometimes stores a file-ID prefix (e.g. "6acde563")
@@ -63,7 +80,7 @@ export const getOperationNotices = async (req: Request, res: Response) => {
         .where(and(...baseConditions, eq(operationNotices.noticeNumber, nn)))
         .orderBy(operationNotices.issueDate)
 
-      if (exact.length > 0) return res.json(exact)
+      if (exact.length > 0) return res.json(mapNoticesWithFileUrl(exact))
 
       // 2) filePath fuzzy: notice whose file_path contains the noticeNumber token
       const byFilePath = await db
@@ -72,7 +89,7 @@ export const getOperationNotices = async (req: Request, res: Response) => {
         .where(and(...baseConditions, ilike(operationNotices.filePath, `%${nn}%`)))
         .orderBy(operationNotices.issueDate)
 
-      if (byFilePath.length > 0) return res.json(byFilePath)
+      if (byFilePath.length > 0) return res.json(mapNoticesWithFileUrl(byFilePath))
 
       // 3) Normalized partial match on notice_number (different separators / spacing)
       const norm = nn.replace(/[\s\/\-\.]/g, '')
@@ -88,7 +105,7 @@ export const getOperationNotices = async (req: Request, res: Response) => {
           normDb.includes(norm) ||
           norm.includes(normDb)
       })
-      return res.json(fuzzy)
+      return res.json(mapNoticesWithFileUrl(fuzzy))
     }
 
     // No noticeNumber — return all for route
@@ -98,7 +115,7 @@ export const getOperationNotices = async (req: Request, res: Response) => {
       .where(and(...baseConditions))
       .orderBy(operationNotices.issueDate)
 
-    return res.json(data)
+    return res.json(mapNoticesWithFileUrl(data))
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Failed to fetch operation notices' })
   }

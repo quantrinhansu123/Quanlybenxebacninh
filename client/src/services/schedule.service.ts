@@ -2,12 +2,19 @@ import api from '@/lib/api'
 import type { Schedule, ScheduleInput, ValidateDayResponse, TripLimitResponse } from '@/types'
 
 export const scheduleService = {
-  getAll: async (routeId?: string, operatorId?: string, isActive?: boolean, direction?: string): Promise<Schedule[]> => {
+  getAll: async (
+    routeId?: string,
+    operatorId?: string,
+    isActive?: boolean,
+    direction?: string,
+    hasDocument?: boolean,
+  ): Promise<Schedule[]> => {
     const params = new URLSearchParams()
     if (routeId) params.append('routeId', routeId)
     if (operatorId) params.append('operatorId', operatorId)
     if (isActive !== undefined) params.append('isActive', String(isActive))
     if (direction) params.append('direction', direction)
+    if (hasDocument !== undefined) params.append('hasDocument', String(hasDocument))
 
     const queryString = params.toString()
     const url = queryString ? `/schedules?${queryString}` : '/schedules'

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react"
 import { createPortal } from "react-dom"
 import { MoreVertical, Eye, Edit, Trash2, X, Plus } from "lucide-react"
+import { getPortalRoot } from "@/lib/portal-root"
 import { Button } from "./button"
 
 /** Chọn icon theo label — hỗ trợ "Xem chi tiết", "Chỉnh sửa", "Xóa" */
@@ -28,9 +29,14 @@ interface ActionMenuProps {
 
 export function ActionMenu({ items, className = "" }: ActionMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useLayoutEffect(() => {
     if (isOpen && menuRef.current) {
@@ -62,10 +68,9 @@ export function ActionMenu({ items, className = "" }: ActionMenuProps) {
   }, [isOpen])
 
   const handleItemClick = (item: ActionMenuItem) => {
-    if (!item.disabled) {
-      item.onClick()
-      setIsOpen(false)
-    }
+    if (item.disabled) return
+    setIsOpen(false)
+    item.onClick()
   }
 
   const getItemStyles = (variant?: string) => {
@@ -81,7 +86,7 @@ export function ActionMenu({ items, className = "" }: ActionMenuProps) {
     }
   }
 
-  const menuContent = isOpen && (
+  const menuContent = isOpen ? (
     <div ref={portalRef}>
       <div
         className="fixed inset-0 z-[9998]"
@@ -108,7 +113,7 @@ export function ActionMenu({ items, className = "" }: ActionMenuProps) {
         ))}
       </div>
     </div>
-  )
+  ) : null
 
   return (
     <div className={`relative ${className}`} ref={menuRef}>
@@ -125,7 +130,7 @@ export function ActionMenu({ items, className = "" }: ActionMenuProps) {
         <MoreVertical className="h-4 w-4" />
       </Button>
 
-      {menuContent && createPortal(menuContent, document.body)}
+      {mounted ? createPortal(menuContent, getPortalRoot()) : null}
     </div>
   )
 }

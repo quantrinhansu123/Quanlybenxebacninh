@@ -991,44 +991,6 @@ export default function QuanLyTuyen() {
                 </div>
               </div>
 
-              {/* All columns (raw) */}
-              <details className="bg-white border rounded-lg p-4">
-                <summary className="cursor-pointer select-none text-lg font-medium">
-                  Tất cả cột (raw)
-                  <span className="ml-2 text-sm font-normal text-gray-500">
-                    (click để mở/đóng)
-                  </span>
-                </summary>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
-                  {Object.entries(selectedRoute as any).map(([k, v]) => {
-                    const value =
-                      v === null || v === undefined
-                        ? "—"
-                        : typeof v === "object"
-                          ? JSON.stringify(v)
-                          : String(v)
-                    return (
-                      <div key={k} className="flex items-start gap-3">
-                        <div className="w-48 shrink-0 text-gray-500 font-medium break-words">
-                          {k}
-                        </div>
-                        <div className="flex-1 text-gray-900 break-words">
-                          {value}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <div className="mt-4">
-                  <div className="text-sm font-medium text-gray-700 mb-2">JSON đầy đủ</div>
-                  <pre className="text-xs bg-gray-50 border rounded-lg p-3 overflow-auto max-h-[360px] whitespace-pre-wrap break-words">
-                    {JSON.stringify(selectedRoute, null, 2)}
-                  </pre>
-                </div>
-              </details>
-
               {/* Status & Type */}
               <div className="grid grid-cols-2 gap-4">
                 <div>

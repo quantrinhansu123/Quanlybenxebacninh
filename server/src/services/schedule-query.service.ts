@@ -1,5 +1,6 @@
 import { db } from '../db/drizzle.js'
 import { sql } from 'drizzle-orm'
+import { buildThongBaoFileUrlFromPath } from '../utils/operation-notice-file-url.js'
 
 export type ScheduleDbRow = {
   id: string
@@ -23,11 +24,14 @@ export type ScheduleDbRow = {
   route_code: string | null
   route_code_old: string | null
   route_type: string | null
+  operator_ref: string | null
   operator_id: string | null
   operator_name: string | null
   operator_code: string | null
+  notice_id: string | null
   notice_issue_date: string | null
   notice_effective_date: string | null
+  notice_file_path: string | null
 }
 
 const shouldUseRouteCodeOld = (routeCode?: string | null, routeCodeOld?: string | null, routeType?: string | null): boolean => {
@@ -117,14 +121,20 @@ export function mapScheduleDbRowToApi(row: ScheduleDbRow) {
           routeName: displayRouteCode,
         }
       : undefined,
-    operatorId: row.operator_id || '',
+    operatorId: row.operator_id || row.operator_ref || '',
     operator: row.operator_id
       ? {
           id: row.operator_id,
           name: row.operator_name || '',
           code: row.operator_code || undefined,
         }
-      : undefined,
+      : row.operator_ref
+        ? {
+            id: row.operator_ref,
+            name: row.operator_ref,
+            code: row.operator_ref,
+          }
+        : undefined,
     departureTime,
     frequencyType: mapFrequencyType(daysOfMonth),
     daysOfWeek: daysOfMonth.length >= 28 ? [1, 2, 3, 4, 5, 6, 7] : [],
@@ -135,11 +145,21 @@ export function mapScheduleDbRowToApi(row: ScheduleDbRow) {
     daysOfMonth,
     calendarType: mapCalendarType(row.loai_ngay),
     notificationNumber: row.so_thong_bao || undefined,
+    notificationFileUrl: buildThongBaoFileUrlFromPath(row.notice_file_path) || undefined,
     refThongBaoKhaiThac: row.ref_thongbao_khaithac || undefined,
     tripStatus: row.trang_thai_chuyen || undefined,
     metadata: {
       ...(row.metadata && typeof row.metadata === 'object' ? row.metadata : {}),
       schedule_meta: scheduleMeta,
+      notice_meta: row.ref_thongbao_khaithac || row.notice_file_path
+        ? {
+            id: row.ref_thongbao_khaithac || undefined,
+            filePath: row.notice_file_path?.trim() || undefined,
+            fileUrl: buildThongBaoFileUrlFromPath(row.notice_file_path) || undefined,
+            number: row.so_thong_bao || undefined,
+            routeRef: row.route_code || undefined,
+          }
+        : undefined,
     },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -152,6 +172,7 @@ export async function fetchSchedulesWithRelations(filters: {
   direction?: string
   activeOnly?: boolean
   scheduleId?: string
+  hasDocument?: boolean
 }): Promise<ScheduleDbRow[]> {
   if (!db) throw new Error('Database connection not available')
 
@@ -163,13 +184,19 @@ export async function fetchSchedulesWithRelations(filters: {
     clauses.push(sql`r.id = ${filters.routeId}::uuid`)
   }
   if (filters.operatorId) {
-    clauses.push(sql`o.id = ${filters.operatorId}::uuid`)
+    clauses.push(sql`(o.id::text = ${filters.operatorId} OR TRIM(n.operator_ref) = TRIM(${filters.operatorId}))`)
   }
   if (filters.direction) {
     clauses.push(sql`s."Chieu" = ${filters.direction}`)
   }
   if (filters.activeOnly) {
     clauses.push(sql`COALESCE(s."TrangThaiChuyen", '') ILIKE '%hoạt động%' OR COALESCE(s."TrangThaiChuyen", '') = ''`)
+  }
+  if (filters.hasDocument === true) {
+    clauses.push(sql`NULLIF(TRIM(n.file_path), '') IS NOT NULL`)
+  }
+  if (filters.hasDocument === false) {
+    clauses.push(sql`NULLIF(TRIM(n.file_path), '') IS NULL`)
   }
 
   const whereSql = sql.join(clauses, sql` AND `)
@@ -197,15 +224,25 @@ export async function fetchSchedulesWithRelations(filters: {
       r.route_code,
       r.route_code_old,
       r.route_type,
+      n.id AS notice_id,
+      n.operator_ref,
       o.id AS operator_id,
       o.name AS operator_name,
       o.code AS operator_code,
       n.issue_date AS notice_issue_date,
-      n.effective_date AS notice_effective_date
+      n.effective_date AS notice_effective_date,
+      n.file_path AS notice_file_path
     FROM schedules s
     LEFT JOIN operation_notices n
-      ON s."Ref_ThongBaoKhaiThac" IS NOT NULL
-      AND n.file_path ILIKE '%' || s."Ref_ThongBaoKhaiThac" || '%'
+      ON NULLIF(TRIM(s."Ref_ThongBaoKhaiThac"), '') IS NOT NULL
+      AND (
+        TRIM(n.id_appsheet) = TRIM(s."Ref_ThongBaoKhaiThac")
+        OR (
+          n.id_appsheet IS NULL
+          AND n.file_path IS NOT NULL
+          AND n.file_path ILIKE '%' || TRIM(s."Ref_ThongBaoKhaiThac") || '%'
+        )
+      )
     LEFT JOIN routes r ON UPPER(TRIM(r.route_code)) = UPPER(TRIM(n.route_code))
     LEFT JOIN operators o ON TRIM(o.firebase_id) = TRIM(n.operator_ref)
     WHERE ${whereSql}
