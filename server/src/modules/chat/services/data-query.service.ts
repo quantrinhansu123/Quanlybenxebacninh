@@ -10,7 +10,6 @@ import {
   operators,
   routes,
   vehicleBadges,
-  schedules
 } from '../../../db/schema/index.js'
 import { eq, and, ilike, sql, gte, count, lt } from 'drizzle-orm'
 import type { IntentResult, QueryResult } from '../types/chat.types.js'
@@ -217,11 +216,11 @@ export class DataQueryService {
     }
 
     try {
-      const results = await db
-        .select()
-        .from(schedules)
-        .where(eq(schedules.isActive, true))
-        .limit(20)
+      const { fetchSchedulesWithRelations, mapScheduleDbRowToApi } = await import(
+        '../../../services/schedule-query.service.js'
+      )
+      const rows = await fetchSchedulesWithRelations({ activeOnly: true })
+      const results = rows.slice(0, 20).map(mapScheduleDbRowToApi)
 
       if (results.length === 0) {
         return { success: false, error: 'Chưa có lịch trình nào', source: 'schedules' }

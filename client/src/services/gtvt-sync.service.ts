@@ -30,7 +30,16 @@ export const gtvtSyncService = {
     const response = await api.post<GtvtSyncSummaryResponse>(
       '/integrations/gtvt/sync-routes-schedules',
       { dryRun, routeCode },
-      { timeout: 120000 }
+      { timeout: 300000 }
+    )
+    return response.data
+  },
+
+  importSchedulesFromAppSheet: async (dryRun = false, routeCode?: string): Promise<GtvtSyncSummaryResponse> => {
+    const response = await api.post<GtvtSyncSummaryResponse>(
+      '/integrations/gtvt/import-schedules-from-appsheet',
+      { dryRun, routeCode },
+      { timeout: 600000 }
     )
     return response.data
   },

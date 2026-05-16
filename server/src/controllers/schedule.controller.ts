@@ -1,50 +1,10 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
-import { schedules, routes, operators, dispatchRecords } from '../db/schema/index.js'
+import { dispatchRecords } from '../db/schema/index.js'
 import { eq, and, gte, lt, ne, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import LunarCalendar from 'lunar-calendar'
-
-const shouldUseRouteCodeOld = (routeCode?: string | null, routeCodeOld?: string | null, routeType?: string | null): boolean => {
-  const oldCode = (routeCodeOld || '').trim()
-  if (!oldCode) return false
-  const type = (routeType || '').trim().toLowerCase()
-  const code = (routeCode || '').trim().toUpperCase()
-  return type === 'bus' || code.startsWith('BUS-')
-}
-
-const getDisplayRouteCode = (routeCode?: string | null, routeCodeOld?: string | null, routeType?: string | null): string => {
-  if (shouldUseRouteCodeOld(routeCode, routeCodeOld, routeType)) {
-    return (routeCodeOld || '').trim()
-  }
-  return (routeCode || '').trim()
-}
-
-const mapRoutePayload = (route?: { id?: string; routeCode?: string | null; routeCodeOld?: string | null; routeType?: string | null } | null) => {
-  if (!route?.id) return undefined
-  const displayCode = getDisplayRouteCode(route.routeCode, route.routeCodeOld, route.routeType)
-  return {
-    id: route.id,
-    routeName: displayCode,
-    routeCode: displayCode,
-  }
-}
-
-const scheduleSchema = z.object({
-  scheduleCode: z.string().optional(), // Optional - will be auto-generated if not provided
-  routeId: z.string().uuid('Invalid route ID'),
-  operatorId: z.string().uuid('Invalid operator ID'),
-  departureTime: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)'),
-  frequencyType: z.enum(['daily', 'weekly', 'specific_days']),
-  daysOfWeek: z.array(z.number().int().min(1).max(7)).optional(),
-  effectiveFrom: z.string().min(1, 'Effective from date is required'),
-  effectiveTo: z.string().optional(),
-  direction: z.string().optional(),
-  daysOfMonth: z.array(z.number().int().min(1).max(31)).optional(),
-  calendarType: z.string().optional(),
-  notificationNumber: z.string().optional(),
-  tripStatus: z.string().optional(),
-})
+import { fetchSchedulesWithRelations, mapScheduleDbRowToApi } from '../services/schedule-query.service.js'
 
 export const getAllSchedules = async (req: Request, res: Response) => {
   try {
@@ -54,84 +14,18 @@ export const getAllSchedules = async (req: Request, res: Response) => {
 
     const { routeId, operatorId, isActive, direction } = req.query
 
-    // Build where conditions
-    const conditions = []
-    if (routeId) {
-      conditions.push(eq(schedules.routeId, routeId as string))
-    }
-    if (operatorId) {
-      conditions.push(eq(schedules.operatorId, operatorId as string))
-    }
-    if (isActive !== undefined) {
-      conditions.push(eq(schedules.isActive, isActive === 'true'))
-    }
-    if (direction) {
-      conditions.push(eq(schedules.direction, direction as string))
-    }
+    const rows = await fetchSchedulesWithRelations({
+      routeId: routeId ? String(routeId) : undefined,
+      operatorId: operatorId ? String(operatorId) : undefined,
+      direction: direction ? String(direction) : undefined,
+      activeOnly: isActive === undefined ? undefined : isActive === 'true',
+    })
 
-    // Query with joins
-    const data = await db
-      .select({
-        id: schedules.id,
-        scheduleCode: schedules.scheduleCode,
-        routeId: schedules.routeId,
-        operatorId: schedules.operatorId,
-        departureTime: schedules.departureTime,
-        frequencyType: schedules.frequencyType,
-        daysOfWeek: schedules.daysOfWeek,
-        effectiveFrom: schedules.effectiveFrom,
-        effectiveTo: schedules.effectiveTo,
-        isActive: schedules.isActive,
-        direction: schedules.direction,
-        daysOfMonth: schedules.daysOfMonth,
-        calendarType: schedules.calendarType,
-        notificationNumber: schedules.notificationNumber,
-        tripStatus: schedules.tripStatus,
-        metadata: schedules.metadata,
-        createdAt: schedules.createdAt,
-        updatedAt: schedules.updatedAt,
-        route: {
-          id: routes.id,
-          routeName: routes.routeCode,
-          routeCode: routes.routeCode,
-          routeCodeOld: routes.routeCodeOld,
-          routeType: routes.routeType,
-        },
-        operator: {
-          id: operators.id,
-          name: operators.name,
-          code: operators.code,
-        },
-      })
-      .from(schedules)
-      .leftJoin(routes, eq(schedules.routeId, routes.id))
-      .leftJoin(operators, eq(schedules.operatorId, operators.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(schedules.departureTime)
+    const result = rows
+      .map(mapScheduleDbRowToApi)
+      .sort((a, b) => a.departureTime.localeCompare(b.departureTime, 'vi'))
 
-    const result = data.map((item) => ({
-      id: item.id,
-      scheduleCode: item.scheduleCode,
-      routeId: item.routeId,
-      route: mapRoutePayload(item.route),
-      operatorId: item.operatorId,
-      operator: item.operator?.id ? item.operator : undefined,
-      departureTime: item.departureTime,
-      frequencyType: item.frequencyType,
-      daysOfWeek: (item.daysOfWeek as number[]) || [],
-      effectiveFrom: item.effectiveFrom,
-      effectiveTo: item.effectiveTo,
-      isActive: item.isActive,
-      direction: item.direction,
-      daysOfMonth: (item.daysOfMonth as number[]) || [],
-      calendarType: item.calendarType,
-      notificationNumber: item.notificationNumber,
-      tripStatus: item.tripStatus,
-      metadata: item.metadata,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    }))
-
+    res.setHeader('Cache-Control', 'private, no-store')
     return res.json(result)
   } catch (error: any) {
     if (error.name === 'ZodError') {
@@ -148,71 +42,12 @@ export const getScheduleById = async (req: Request, res: Response) => {
     }
 
     const { id } = req.params
-
-    const data = await db
-      .select({
-        id: schedules.id,
-        scheduleCode: schedules.scheduleCode,
-        routeId: schedules.routeId,
-        operatorId: schedules.operatorId,
-        departureTime: schedules.departureTime,
-        frequencyType: schedules.frequencyType,
-        daysOfWeek: schedules.daysOfWeek,
-        effectiveFrom: schedules.effectiveFrom,
-        effectiveTo: schedules.effectiveTo,
-        isActive: schedules.isActive,
-        direction: schedules.direction,
-        daysOfMonth: schedules.daysOfMonth,
-        calendarType: schedules.calendarType,
-        notificationNumber: schedules.notificationNumber,
-        tripStatus: schedules.tripStatus,
-        createdAt: schedules.createdAt,
-        updatedAt: schedules.updatedAt,
-        route: {
-          id: routes.id,
-          routeName: routes.routeCode,
-          routeCode: routes.routeCode,
-          routeCodeOld: routes.routeCodeOld,
-          routeType: routes.routeType,
-        },
-        operator: {
-          id: operators.id,
-          name: operators.name,
-          code: operators.code,
-        },
-      })
-      .from(schedules)
-      .leftJoin(routes, eq(schedules.routeId, routes.id))
-      .leftJoin(operators, eq(schedules.operatorId, operators.id))
-      .where(eq(schedules.id, id))
-      .limit(1)
-
-    if (!data || data.length === 0) {
+    const rows = await fetchSchedulesWithRelations({ scheduleId: id })
+    if (!rows.length) {
       return res.status(404).json({ error: 'Schedule not found' })
     }
 
-    const item = data[0]
-    return res.json({
-      id: item.id,
-      scheduleCode: item.scheduleCode,
-      routeId: item.routeId,
-      route: mapRoutePayload(item.route),
-      operatorId: item.operatorId,
-      operator: item.operator?.id ? item.operator : undefined,
-      departureTime: item.departureTime,
-      frequencyType: item.frequencyType,
-      daysOfWeek: (item.daysOfWeek as number[]) || [],
-      effectiveFrom: item.effectiveFrom,
-      effectiveTo: item.effectiveTo,
-      isActive: item.isActive,
-      direction: item.direction,
-      daysOfMonth: (item.daysOfMonth as number[]) || [],
-      calendarType: item.calendarType,
-      notificationNumber: item.notificationNumber,
-      tripStatus: item.tripStatus,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    })
+    return res.json(mapScheduleDbRowToApi(rows[0]!))
   } catch (error: any) {
     if (error.name === 'ZodError') {
       return res.status(400).json({ error: error.errors[0].message })
@@ -221,224 +56,20 @@ export const getScheduleById = async (req: Request, res: Response) => {
   }
 }
 
-export const createSchedule = async (req: Request, res: Response) => {
-  try {
-    if (!db) {
-      return res.status(500).json({ error: 'Database connection not available' })
-    }
-
-    const validated = scheduleSchema.parse(req.body)
-
-    // Generate schedule code if not provided
-    const scheduleCode = validated.scheduleCode || `SCH-${Date.now()}`
-
-    const [inserted] = await db
-      .insert(schedules)
-      .values({
-        scheduleCode,
-        routeId: validated.routeId,
-        operatorId: validated.operatorId,
-        departureTime: validated.departureTime,
-        frequencyType: validated.frequencyType,
-        daysOfWeek: validated.daysOfWeek || null,
-        effectiveFrom: validated.effectiveFrom,
-        effectiveTo: validated.effectiveTo || null,
-        isActive: true,
-      })
-      .returning()
-
-    // Fetch with relations
-    const data = await db
-      .select({
-        id: schedules.id,
-        scheduleCode: schedules.scheduleCode,
-        routeId: schedules.routeId,
-        operatorId: schedules.operatorId,
-        departureTime: schedules.departureTime,
-        frequencyType: schedules.frequencyType,
-        daysOfWeek: schedules.daysOfWeek,
-        effectiveFrom: schedules.effectiveFrom,
-        effectiveTo: schedules.effectiveTo,
-        isActive: schedules.isActive,
-        direction: schedules.direction,
-        daysOfMonth: schedules.daysOfMonth,
-        calendarType: schedules.calendarType,
-        notificationNumber: schedules.notificationNumber,
-        tripStatus: schedules.tripStatus,
-        createdAt: schedules.createdAt,
-        updatedAt: schedules.updatedAt,
-        route: {
-          id: routes.id,
-          routeName: routes.routeCode,
-          routeCode: routes.routeCode,
-          routeCodeOld: routes.routeCodeOld,
-          routeType: routes.routeType,
-        },
-        operator: {
-          id: operators.id,
-          name: operators.name,
-          code: operators.code,
-        },
-      })
-      .from(schedules)
-      .leftJoin(routes, eq(schedules.routeId, routes.id))
-      .leftJoin(operators, eq(schedules.operatorId, operators.id))
-      .where(eq(schedules.id, inserted.id))
-      .limit(1)
-
-    const item = data[0]
-    return res.status(201).json({
-      id: item.id,
-      scheduleCode: item.scheduleCode,
-      routeId: item.routeId,
-      route: mapRoutePayload(item.route),
-      operatorId: item.operatorId,
-      operator: item.operator?.id ? item.operator : undefined,
-      departureTime: item.departureTime,
-      frequencyType: item.frequencyType,
-      daysOfWeek: (item.daysOfWeek as number[]) || [],
-      effectiveFrom: item.effectiveFrom,
-      effectiveTo: item.effectiveTo,
-      isActive: item.isActive,
-      direction: item.direction,
-      daysOfMonth: (item.daysOfMonth as number[]) || [],
-      calendarType: item.calendarType,
-      notificationNumber: item.notificationNumber,
-      tripStatus: item.tripStatus,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    })
-  } catch (error: any) {
-    if (error.code === '23505') {
-      return res.status(409).json({ error: 'Schedule with this code already exists' })
-    }
-    if (error.name === 'ZodError') {
-      return res.status(400).json({ error: error.errors[0].message })
-    }
-    return res.status(500).json({ error: error.message || 'Failed to create schedule' })
-  }
+export const createSchedule = async (_req: Request, res: Response) => {
+  return res.status(501).json({
+    error: 'Bảng schedules chỉ đồng bộ từ AppSheet. Dùng "Thêm data AppSheet" hoặc import GTVT.',
+  })
 }
 
-export const updateSchedule = async (req: Request, res: Response) => {
-  try {
-    if (!db) {
-      return res.status(500).json({ error: 'Database connection not available' })
-    }
-
-    const { id } = req.params
-    const validated = scheduleSchema.partial().parse(req.body)
-
-    const updateData: any = { updatedAt: new Date() }
-    if (validated.scheduleCode) updateData.scheduleCode = validated.scheduleCode
-    if (validated.routeId) updateData.routeId = validated.routeId
-    if (validated.operatorId) updateData.operatorId = validated.operatorId
-    if (validated.departureTime) updateData.departureTime = validated.departureTime
-    if (validated.frequencyType) updateData.frequencyType = validated.frequencyType
-    if (validated.daysOfWeek !== undefined) updateData.daysOfWeek = validated.daysOfWeek || null
-    if (validated.effectiveFrom) updateData.effectiveFrom = validated.effectiveFrom
-    if (validated.effectiveTo !== undefined) updateData.effectiveTo = validated.effectiveTo || null
-    if (validated.direction !== undefined) updateData.direction = validated.direction || null
-    if (validated.daysOfMonth !== undefined) updateData.daysOfMonth = validated.daysOfMonth || null
-    if (validated.calendarType !== undefined) updateData.calendarType = validated.calendarType || null
-    if (validated.notificationNumber !== undefined) updateData.notificationNumber = validated.notificationNumber || null
-    if (validated.tripStatus !== undefined) updateData.tripStatus = validated.tripStatus || null
-
-    const [updated] = await db
-      .update(schedules)
-      .set(updateData)
-      .where(eq(schedules.id, id))
-      .returning()
-
-    if (!updated) {
-      return res.status(404).json({ error: 'Schedule not found' })
-    }
-
-    // Fetch with relations
-    const data = await db
-      .select({
-        id: schedules.id,
-        scheduleCode: schedules.scheduleCode,
-        routeId: schedules.routeId,
-        operatorId: schedules.operatorId,
-        departureTime: schedules.departureTime,
-        frequencyType: schedules.frequencyType,
-        daysOfWeek: schedules.daysOfWeek,
-        effectiveFrom: schedules.effectiveFrom,
-        effectiveTo: schedules.effectiveTo,
-        isActive: schedules.isActive,
-        direction: schedules.direction,
-        daysOfMonth: schedules.daysOfMonth,
-        calendarType: schedules.calendarType,
-        notificationNumber: schedules.notificationNumber,
-        tripStatus: schedules.tripStatus,
-        createdAt: schedules.createdAt,
-        updatedAt: schedules.updatedAt,
-        route: {
-          id: routes.id,
-          routeName: routes.routeCode,
-          routeCode: routes.routeCode,
-          routeCodeOld: routes.routeCodeOld,
-          routeType: routes.routeType,
-        },
-        operator: {
-          id: operators.id,
-          name: operators.name,
-          code: operators.code,
-        },
-      })
-      .from(schedules)
-      .leftJoin(routes, eq(schedules.routeId, routes.id))
-      .leftJoin(operators, eq(schedules.operatorId, operators.id))
-      .where(eq(schedules.id, id))
-      .limit(1)
-
-    const item = data[0]
-    return res.json({
-      id: item.id,
-      scheduleCode: item.scheduleCode,
-      routeId: item.routeId,
-      route: mapRoutePayload(item.route),
-      operatorId: item.operatorId,
-      operator: item.operator?.id ? item.operator : undefined,
-      departureTime: item.departureTime,
-      frequencyType: item.frequencyType,
-      daysOfWeek: (item.daysOfWeek as number[]) || [],
-      effectiveFrom: item.effectiveFrom,
-      effectiveTo: item.effectiveTo,
-      isActive: item.isActive,
-      direction: item.direction,
-      daysOfMonth: (item.daysOfMonth as number[]) || [],
-      calendarType: item.calendarType,
-      notificationNumber: item.notificationNumber,
-      tripStatus: item.tripStatus,
-      createdAt: item.createdAt,
-      updatedAt: item.updatedAt,
-    })
-  } catch (error: any) {
-    if (error.name === 'ZodError') {
-      return res.status(400).json({ error: error.errors[0].message })
-    }
-    return res.status(500).json({ error: error.message || 'Failed to update schedule' })
-  }
+export const updateSchedule = async (_req: Request, res: Response) => {
+  return res.status(501).json({
+    error: 'Bảng schedules chỉ đồng bộ từ AppSheet.',
+  })
 }
 
-export const deleteSchedule = async (req: Request, res: Response): Promise<void> => {
-  try {
-    if (!db) {
-      res.status(500).json({ error: 'Database connection not available' })
-      return
-    }
-
-    const { id } = req.params
-
-    await db
-      .delete(schedules)
-      .where(eq(schedules.id, id))
-
-    res.status(204).send()
-  } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to delete schedule' })
-  }
+export const deleteSchedule = async (_req: Request, res: Response): Promise<void> => {
+  res.status(501).json({ error: 'Bảng schedules chỉ đồng bộ từ AppSheet.' })
 }
 
 /**
@@ -501,38 +132,26 @@ export async function calculateTripLimit(
   vehiclePlateNumber: string,
   date: string // YYYY-MM-DD
 ): Promise<{ maxTrips: number; currentTrips: number; remaining: number; canIssue: boolean }> {
-  // 1. Query active "Đi" schedules for this route
-  const activeSchedules = await db!
-    .select({
-      frequencyType: schedules.frequencyType,
-      daysOfWeek: schedules.daysOfWeek,
-      daysOfMonth: schedules.daysOfMonth,
-      calendarType: schedules.calendarType,
-      effectiveFrom: schedules.effectiveFrom,
-      effectiveTo: schedules.effectiveTo,
+  const activeSchedules = (
+    await fetchSchedulesWithRelations({
+      routeId,
+      direction: 'Đi',
+      activeOnly: true,
     })
-    .from(schedules)
-    .where(
-      and(
-        eq(schedules.routeId, routeId),
-        eq(schedules.direction, 'Đi'),
-        eq(schedules.isActive, true)
-      )
-    )
+  ).map(mapScheduleDbRowToApi)
 
-  // 2. Filter schedules valid for the given date
   const validSchedules = activeSchedules.filter((s) =>
     isScheduleValidForDay(
       {
         frequencyType: s.frequencyType,
-        daysOfWeek: (s.daysOfWeek as number[]) || [],
-        daysOfMonth: (s.daysOfMonth as number[]) || [],
+        daysOfWeek: s.daysOfWeek || [],
+        daysOfMonth: s.daysOfMonth || [],
         calendarType: s.calendarType || 'solar',
-        effectiveFrom: s.effectiveFrom,
-        effectiveTo: s.effectiveTo,
+        effectiveFrom: s.effectiveFrom || null,
+        effectiveTo: s.effectiveTo || null,
       },
-      date
-    )
+      date,
+    ),
   )
   const maxTrips = validSchedules.length
 
@@ -609,27 +228,14 @@ export const validateScheduleDay = async (req: Request, res: Response) => {
 
     const { scheduleId, date } = parsed.data
 
-    const data = await db
-      .select({
-        id: schedules.id,
-        frequencyType: schedules.frequencyType,
-        daysOfMonth: schedules.daysOfMonth,
-        daysOfWeek: schedules.daysOfWeek,
-        calendarType: schedules.calendarType,
-        effectiveFrom: schedules.effectiveFrom,
-        effectiveTo: schedules.effectiveTo,
-      })
-      .from(schedules)
-      .where(eq(schedules.id, scheduleId))
-      .limit(1)
-
-    if (!data || data.length === 0) {
+    const rows = await fetchSchedulesWithRelations({ scheduleId })
+    if (!rows.length) {
       return res.status(404).json({ error: 'Schedule not found' })
     }
 
-    const schedule = data[0]
-    const daysOfMonth = (schedule.daysOfMonth as number[]) || []
-    const daysOfWeek = (schedule.daysOfWeek as number[]) || []
+    const schedule = mapScheduleDbRowToApi(rows[0]!)
+    const daysOfMonth = schedule.daysOfMonth || []
+    const daysOfWeek = schedule.daysOfWeek || []
     const calendarType = schedule.calendarType || 'solar'
     const frequencyType = schedule.frequencyType
 

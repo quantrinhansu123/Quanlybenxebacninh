@@ -3,22 +3,17 @@ import type { Schedule, ScheduleInput, ValidateDayResponse, TripLimitResponse } 
 
 export const scheduleService = {
   getAll: async (routeId?: string, operatorId?: string, isActive?: boolean, direction?: string): Promise<Schedule[]> => {
-    try {
-      const params = new URLSearchParams()
-      if (routeId) params.append('routeId', routeId)
-      if (operatorId) params.append('operatorId', operatorId)
-      if (isActive !== undefined) params.append('isActive', String(isActive))
-      if (direction) params.append('direction', direction)
+    const params = new URLSearchParams()
+    if (routeId) params.append('routeId', routeId)
+    if (operatorId) params.append('operatorId', operatorId)
+    if (isActive !== undefined) params.append('isActive', String(isActive))
+    if (direction) params.append('direction', direction)
 
-      const queryString = params.toString()
-      const url = queryString ? `/schedules?${queryString}` : '/schedules'
+    const queryString = params.toString()
+    const url = queryString ? `/schedules?${queryString}` : '/schedules'
 
-      const response = await api.get<Schedule[]>(url)
-      return response.data
-    } catch (error) {
-      console.error('Error fetching schedules:', error)
-      return []
-    }
+    const response = await api.get<Schedule[]>(url)
+    return response.data
   },
 
   getById: async (id: string): Promise<Schedule> => {

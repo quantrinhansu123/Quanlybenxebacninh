@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express'
-import { syncRoutesSchedulesFromAppSheet } from '../services/gtvt-sync.service.js'
+import { syncRoutesSchedulesFromAppSheet, importSchedulesFromAppSheet as importSchedulesFromAppSheetService } from '../services/gtvt-sync.service.js'
 import { db } from '../db/drizzle.js'
 import { routes, operators } from '../db/schema/index.js'
 import { appsheetFind } from '../services/gtvt-appsheet.client.js'
@@ -29,6 +29,16 @@ export const syncRoutesSchedules = async (req: Request, res: Response) => {
   const dryRun = !!req.body?.dryRun
   const routeCode = typeof req.body?.routeCode === 'string' ? req.body.routeCode : undefined
   const summary = await syncRoutesSchedulesFromAppSheet(dryRun, routeCode)
+  if (!dryRun) {
+    lastSync = { at: new Date().toISOString(), summary }
+  }
+  return res.json({ dryRun, ...summary })
+}
+
+export const importSchedulesFromAppSheet = async (req: Request, res: Response) => {
+  const dryRun = !!req.body?.dryRun
+  const routeCode = typeof req.body?.routeCode === 'string' ? req.body.routeCode : undefined
+  const summary = await importSchedulesFromAppSheetService(dryRun, routeCode)
   if (!dryRun) {
     lastSync = { at: new Date().toISOString(), summary }
   }
@@ -82,7 +92,7 @@ export const compareAppSheetSupabase = async (req: Request, res: Response) => {
 
   const dbSchedRows = await db.execute(
     // eslint-disable-next-line drizzle/enforce-query-usage
-    sql`SELECT r.route_code as route_code, s.departure_time as departure_time FROM schedules s JOIN routes r ON r.id = s.route_id`,
+    sql`SELECT r.route_code as route_code, s."GioXuatBen" as departure_time FROM schedules s JOIN routes r ON r.id = s.route_id`,
   )
   const dbSchedKeys = new Set(
     (dbSchedRows as any[]).map((x) => `${String(x.route_code || '').trim().toUpperCase()}|${String(x.departure_time || '').slice(0, 5)}`),

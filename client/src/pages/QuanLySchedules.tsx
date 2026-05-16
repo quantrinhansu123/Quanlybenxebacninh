@@ -10,6 +10,7 @@ import {
   Pencil,
   Trash2,
   Eye,
+  Database,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -26,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ActionMenu } from "@/components/ui/ActionMenu"
+import { RouteScheduleViewTabs } from "@/components/RouteScheduleViewTabs"
 import {
   Dialog,
   DialogContent,
@@ -35,8 +37,6 @@ import {
 
 import type { Schedule } from "@/types"
 import { scheduleService } from "@/services/schedule.service"
-import { routeService } from "@/services/route.service"
-import { quanlyDataService } from "@/services/quanly-data.service"
 import { gtvtSyncService } from "@/services/gtvt-sync.service"
 import { useAuthStore } from "@/features/auth/store/authStore"
 
@@ -69,14 +69,15 @@ function parseNumberList(input: string): number[] {
 
 export default function QuanLySchedules() {
   const [schedules, setSchedules] = useState<Schedule[]>([])
-  const [routes, setRoutes] = useState<RouteOption[]>([])
-  const [operators, setOperators] = useState<OperatorOption[]>([])
   const [routeViewOpen, setRouteViewOpen] = useState(false)
   const [routeViewLoading, setRouteViewLoading] = useState(false)
   const [routeViewData, setRouteViewData] = useState<any | null>(null)
   const [routeViewSchedules, setRouteViewSchedules] = useState<Schedule[]>([])
   const [routeViewSchedulesLoading, setRouteViewSchedulesLoading] = useState(false)
+  const [routeViewTab, setRouteViewTab] = useState<"info" | "schedules" | "documents" | "operation-notices">("info")
+  const [isSyncingRouteView, setIsSyncingRouteView] = useState(false)
   const [isSyncingFromAppSheet, setIsSyncingFromAppSheet] = useState(false)
+  const [isImportingFromAppSheet, setIsImportingFromAppSheet] = useState(false)
 
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === "admin"
@@ -84,7 +85,7 @@ export default function QuanLySchedules() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterRouteId, setFilterRouteId] = useState<string>("")
   const [filterOperatorId, setFilterOperatorId] = useState<string>("")
-  const [direction, setDirection] = useState<DirectionFilter>("Đi")
+  const [direction, setDirection] = useState<DirectionFilter>("all")
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -129,58 +130,21 @@ export default function QuanLySchedules() {
     setCurrentPage(1)
   }, [searchQuery, filterRouteId, filterOperatorId, direction])
 
-  useEffect(() => {
-    let cancelled = false
-    async function init() {
-      setIsLoading(true)
-      try {
-        const data = await quanlyDataService.getAll(["routes", "operators"], true)
-        if (cancelled) return
-        setRoutes(
-          (data.routes || [])
-            .map((r) => ({
-              id: String((r as any).id || "").trim(),
-              code: String((r as any).code || (r as any).routeCode || "").trim(),
-              name: String((r as any).name || (r as any).routeName || "").trim(),
-            }))
-            .filter((r) => r.id && r.code),
-        )
-        setOperators(
-          (data.operators || [])
-            .map((o) => ({
-              id: String((o as any).id || "").trim(),
-              name: String((o as any).name || "").trim(),
-              code: String((o as any).code || "").trim() || undefined,
-            }))
-            .filter((o) => o.id && o.name),
-        )
-      } catch (e) {
-        toast.error("Không thể tải routes/operators")
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-    void init()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const loadSchedules = async (forceRefresh = false) => {
     setIsLoading(true)
+    setSchedules([])
     try {
       const routeId = filterRouteId || undefined
       const operatorId = filterOperatorId || undefined
       const dir = direction === "all" ? undefined : direction
-      const data = await scheduleService.getAll(routeId, operatorId, true, dir)
+      const data = await scheduleService.getAll(routeId, operatorId, undefined, dir)
       setSchedules(data)
-      // If creating and form has empty selects, prefill
-      if (data.length > 0 && !form.routeId && routes.length > 0) {
-        const firstRoute = routes.find((r) => r.id === data[0].routeId)
-        if (firstRoute) setForm((p) => ({ ...p, routeId: firstRoute.id }))
+      if (data.length > 0 && !form.routeId && data[0].routeId) {
+        setForm((p) => ({ ...p, routeId: data[0].routeId }))
       }
     } catch (e) {
-      toast.error("Không thể tải schedules")
+      setSchedules([])
+      toast.error("Không thể tải schedules từ database")
     } finally {
       setIsLoading(false)
     }
@@ -190,6 +154,39 @@ export default function QuanLySchedules() {
     void loadSchedules(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterRouteId, filterOperatorId, direction])
+
+  const routes = useMemo<RouteOption[]>(() => {
+    const byId = new Map<string, RouteOption>()
+    for (const schedule of schedules) {
+      const id = String(schedule.routeId || "").trim()
+      const route = schedule.route
+      if (!id || !route) continue
+      const code = String(route.routeCode || "").trim()
+      const name = String(route.routeName || code).trim()
+      if (!code) continue
+      if (!byId.has(id)) {
+        byId.set(id, { id, code, name })
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.code.localeCompare(b.code, "vi"))
+  }, [schedules])
+
+  const operators = useMemo<OperatorOption[]>(() => {
+    const byId = new Map<string, OperatorOption>()
+    for (const schedule of schedules) {
+      const id = String(schedule.operatorId || "").trim()
+      const operator = schedule.operator
+      if (!id || !operator?.name) continue
+      if (!byId.has(id)) {
+        byId.set(id, {
+          id,
+          name: String(operator.name).trim(),
+          code: String(operator.code || "").trim() || undefined,
+        })
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, "vi"))
+  }, [schedules])
 
   const filteredSchedules = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -277,12 +274,131 @@ export default function QuanLySchedules() {
     return Array.from(new Set(labels)).join(", ")
   }
 
+  const displayRouteCode = (code: string) => code.replace(/^BUS-/i, "")
+
+  const noticeDocsForRouteView = useMemo(() => {
+    const routeCode = String(routeViewData?.routeCode || "").trim()
+    if (!routeCode) return []
+    const codeUpper = routeCode.toUpperCase()
+    const codeNoBus = codeUpper.replace(/^BUS-/, "")
+    const byId = new Map<string, { id: string; routeRef: string; number?: string; displayText?: string; fileUrl?: string }>()
+
+    for (const s of routeViewSchedules as any[]) {
+      const noticeMeta = s?.metadata?.notice_meta
+      const noticeId = String(noticeMeta?.id || "").trim()
+      const fileUrl = String(noticeMeta?.fileUrl || "").trim()
+      const routeRefRaw = String(noticeMeta?.routeRef || "").trim()
+      if (!noticeId && !fileUrl) continue
+
+      const routeRefUpper = routeRefRaw.toUpperCase()
+      const matchesRoute =
+        (routeRefUpper && (routeRefUpper === codeUpper || routeRefUpper === codeNoBus)) ||
+        (!routeRefUpper && !!codeUpper)
+      if (!matchesRoute) continue
+
+      const key = noticeId || fileUrl
+      if (byId.has(key)) continue
+      byId.set(key, {
+        id: noticeId || key,
+        routeRef: routeRefRaw || displayRouteCode(codeUpper),
+        number: String(noticeMeta?.number || "").trim() || undefined,
+        displayText: String(noticeMeta?.displayText || "").trim() || undefined,
+        fileUrl: fileUrl || undefined,
+      })
+    }
+
+    return Array.from(byId.values())
+  }, [routeViewSchedules, routeViewData?.routeCode])
+
+  const operationNoticesFromSchedules = useMemo(() => {
+    const routeCode = String(routeViewData?.routeCode || "").trim()
+    if (!routeCode) return []
+    const codeUpper = routeCode.toUpperCase()
+    const codeNoBus = codeUpper.replace(/^BUS-/, "")
+    const byId = new Map<string, Record<string, unknown>>()
+
+    for (const s of routeViewSchedules as any[]) {
+      const notice = s?.metadata?.notice
+      const noticeMeta = s?.metadata?.notice_meta
+      if (!notice && !noticeMeta?.id) continue
+
+      const routeRef = String(notice?.Ref_Tuyen || noticeMeta?.routeRef || "").trim()
+      const routeRefUpper = routeRef.toUpperCase()
+      const matchesRoute = !routeRef || routeRefUpper === codeUpper || routeRefUpper === codeNoBus
+      if (!matchesRoute) continue
+
+      const id = String(notice?.ID_TB || noticeMeta?.id || "").trim()
+      const key = id || String(noticeMeta?.number || noticeMeta?.displayText || "").trim()
+      if (!key || byId.has(key)) continue
+
+      if (notice && typeof notice === "object") {
+        byId.set(key, notice as Record<string, unknown>)
+      } else {
+        byId.set(key, {
+          ID_TB: noticeMeta?.id || null,
+          Ref_Tuyen: noticeMeta?.routeRef || null,
+          SoThongBao: noticeMeta?.number || null,
+          ThongBaoHienThi: noticeMeta?.displayText || null,
+          File: noticeMeta?.fileUrl || null,
+        })
+      }
+    }
+
+    return Array.from(byId.entries()).map(([id, row]) => ({ id, row }))
+  }, [routeViewSchedules, routeViewData?.routeCode])
+
+  const reloadRouteViewSchedules = async (routeId: string, routeCode?: string) => {
+    try {
+      const scheds = await scheduleService.getAll(routeId, undefined, true, undefined)
+      setRouteViewSchedules(scheds)
+      const route = scheds[0]?.route
+      if (route) {
+        setRouteViewData({
+          routeCode: route.routeCode,
+          routeName: route.routeName,
+        })
+      } else if (routeCode) {
+        setRouteViewData({ routeCode, routeName: routeCode })
+      }
+    } catch (e) {
+      setRouteViewSchedules([])
+      throw e
+    }
+  }
+
+  const syncRouteViewFromAppSheet = async () => {
+    if (!routeViewData?.routeCode || !routeViewData?.id) return
+    if (!isAdmin) {
+      toast.error("Chỉ admin mới đồng bộ được")
+      return
+    }
+    if (!window.confirm(`Đồng bộ Ref thông báo khai thác (AppSheet) cho tuyến ${displayRouteCode(routeViewData.routeCode)}?`)) return
+
+    setIsSyncingRouteView(true)
+    try {
+      const result = await gtvtSyncService.syncRoutesSchedules(false, routeViewData.routeCode)
+      if (result.errors?.length) {
+        const first = result.errors[0]
+        const msg = typeof first === "string" ? first : first?.message
+        toast.warning(msg || "Đồng bộ xong nhưng có lỗi")
+      } else {
+        toast.success("Đã đồng bộ dữ liệu tuyến")
+      }
+      await reloadRouteViewSchedules(routeViewData.id, routeViewData.routeCode)
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể đồng bộ dữ liệu tuyến")
+    } finally {
+      setIsSyncingRouteView(false)
+    }
+  }
+
   const handleSyncFromAppSheet = async () => {
     if (!isAdmin) {
       toast.error("Chỉ admin mới đồng bộ được")
       return
     }
-    if (!window.confirm("Đồng bộ FULL schedules từ AppSheet → Supabase?")) return
+    if (!window.confirm("Đồng bộ Ref thông báo khai thác từ AppSheet → Supabase? (chỉ cột ref_thongbao_khaithac)")) return
     setIsSyncingFromAppSheet(true)
     try {
       const result = await gtvtSyncService.syncRoutesSchedules(false)
@@ -302,6 +418,40 @@ export default function QuanLySchedules() {
     }
   }
 
+  const handleImportFromAppSheet = async () => {
+    if (!isAdmin) {
+      toast.error("Chỉ admin mới import được")
+      return
+    }
+    if (
+      !window.confirm(
+        "Import schedules từ BieuDoChayXeChiTiet? firebase_id = ID_NutChay. Dòng thiếu tuyến/đơn vị/giờ sẽ bỏ qua.",
+      )
+    ) {
+      return
+    }
+    setIsImportingFromAppSheet(true)
+    try {
+      const result = await gtvtSyncService.importSchedulesFromAppSheet(false)
+      const errors = (result as { errors?: Array<string | { message?: string }> }).errors
+      if (errors?.length) {
+        const first = errors[0]
+        const msg = typeof first === "string" ? first : first?.message
+        toast.warning(msg || "Import xong nhưng có lỗi")
+      } else {
+        const upserted = (result as { schedules?: { upserted?: number; skipped?: number } }).schedules?.upserted ?? 0
+        const skipped = (result as { schedules?: { skipped?: number } }).schedules?.skipped ?? 0
+        toast.success(`Đã import ${upserted} schedules (bỏ qua ${skipped})`)
+      }
+      await loadSchedules(true)
+    } catch (e) {
+      console.error(e)
+      toast.error("Không thể import schedules từ AppSheet")
+    } finally {
+      setIsImportingFromAppSheet(false)
+    }
+  }
+
   const handleViewRoute = async (routeId?: string) => {
     const id = String(routeId || "").trim()
     if (!id) {
@@ -309,21 +459,28 @@ export default function QuanLySchedules() {
       return
     }
     setRouteViewOpen(true)
+    setRouteViewTab("info")
     setRouteViewLoading(true)
     setRouteViewData(null)
     setRouteViewSchedules([])
     setRouteViewSchedulesLoading(true)
     try {
-      const [route, scheds] = await Promise.all([
-        routeService.getById(id),
-        // do NOT pass direction="all" because API treats it as a real filter
-        scheduleService.getAll(id, undefined, true, undefined),
-      ])
-      setRouteViewData(route)
-      setRouteViewSchedules(scheds || [])
+      const scheds = await scheduleService.getAll(id, undefined, true, undefined)
+      const route = scheds[0]?.route
+      setRouteViewData(
+        route
+          ? {
+              routeCode: route.routeCode,
+              routeName: route.routeName,
+            }
+          : null,
+      )
+      setRouteViewSchedules(scheds)
     } catch (e) {
       console.error(e)
-      toast.error("Không thể tải chi tiết tuyến")
+      setRouteViewSchedules([])
+      setRouteViewData(null)
+      toast.error("Không thể tải chi tiết tuyến từ database")
       setRouteViewOpen(false)
     } finally {
       setRouteViewLoading(false)
@@ -342,7 +499,7 @@ export default function QuanLySchedules() {
             <div>
               <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Quản lý schedules</h1>
               <p className="text-slate-500 text-sm mt-1">
-                Quản lý biểu đồ giờ / lịch chạy (Buýt/Tuyến cố định)
+                Dữ liệu hiển thị chỉ lấy từ bảng schedules trên Supabase ({schedules.length.toLocaleString()} bản ghi)
               </p>
             </div>
           </div>
@@ -359,11 +516,20 @@ export default function QuanLySchedules() {
             <Button
               onClick={handleSyncFromAppSheet}
               disabled={!isAdmin || isSyncingFromAppSheet}
-              title={!isAdmin ? "Chỉ admin mới dùng được" : "Đồng bộ full schedules từ AppSheet"}
+              title={!isAdmin ? "Chỉ admin mới dùng được" : "Chỉ cập nhật ref_thongbao_khaithac"}
               className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingFromAppSheet ? "animate-spin" : ""}`} />
               Đồng bộ AppSheet
+            </Button>
+            <Button
+              onClick={handleImportFromAppSheet}
+              disabled={!isAdmin || isImportingFromAppSheet}
+              title={!isAdmin ? "Chỉ admin mới dùng được" : "Import BieuDoChayXeChiTiet → schedules (firebase_id = ID_NutChay)"}
+              className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+            >
+              <Database className={`h-4 w-4 mr-2 ${isImportingFromAppSheet ? "animate-pulse" : ""}`} />
+              Thêm data AppSheet
             </Button>
             <Button
               onClick={() => setCreateOpen(true)}
@@ -715,12 +881,13 @@ export default function QuanLySchedules() {
               setRouteViewSchedules([])
               setRouteViewLoading(false)
               setRouteViewSchedulesLoading(false)
+              setRouteViewTab("info")
             }
           }}
         >
-          <DialogContent className="w-[96vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[98vw] max-w-7xl max-h-[92vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Chi tiết tuyến</DialogTitle>
+              <DialogTitle className="text-xl">Chi tiết tuyến</DialogTitle>
             </DialogHeader>
 
             {routeViewLoading ? (
@@ -728,65 +895,20 @@ export default function QuanLySchedules() {
             ) : !routeViewData ? (
               <div className="p-4 text-sm text-slate-600">Không có dữ liệu tuyến</div>
             ) : (
-              <div className="space-y-4">
-                <div className="bg-slate-50 border rounded-xl p-4">
-                  <div className="text-sm text-slate-500">Mã tuyến</div>
-                  <div className="text-2xl font-bold text-slate-900">{routeViewData.routeCode || "—"}</div>
-                  <div className="text-sm text-slate-600 mt-1">{routeViewData.routeName || ""}</div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white border rounded-xl p-4">
-                    <div className="text-sm text-slate-500">Bến đi</div>
-                    <div className="text-lg font-semibold text-slate-900">{routeViewData.departureStation || "—"}</div>
-                    <div className="text-sm text-slate-600">{routeViewData.departureProvince || ""}</div>
-                  </div>
-                  <div className="bg-white border rounded-xl p-4">
-                    <div className="text-sm text-slate-500">Bến đến</div>
-                    <div className="text-lg font-semibold text-slate-900">{routeViewData.arrivalStation || "—"}</div>
-                    <div className="text-sm text-slate-600">{routeViewData.arrivalProvince || ""}</div>
-                  </div>
-                </div>
-
-                {routeViewData.itinerary ? (
-                  <div className="bg-white border rounded-xl p-4">
-                    <div className="text-sm text-slate-500 mb-1">Hành trình</div>
-                    <div className="text-sm text-slate-800 whitespace-pre-wrap break-words">
-                      {routeViewData.itinerary}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="bg-white border rounded-xl p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-800">Lịch chạy của tuyến</div>
-                    <div className="text-sm text-slate-500">({routeViewSchedules.length})</div>
-                  </div>
-
-                  {routeViewSchedulesLoading ? (
-                    <div className="mt-3 text-sm text-slate-600">Đang tải lịch...</div>
-                  ) : routeViewSchedules.length === 0 ? (
-                    <div className="mt-3 text-sm text-slate-600">Chưa có schedule</div>
-                  ) : (
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {routeViewSchedules.slice(0, 12).map((s) => (
-                        <div key={s.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="text-lg font-bold text-slate-900 tabular-nums">{s.departureTime || "—"}</div>
-                            <div className="text-xs text-slate-500">{s.direction || "—"}</div>
-                          </div>
-                          <div className="mt-2 text-sm text-slate-700">
-                            <span className="text-slate-500">Ngày trong tuần:</span>{" "}
-                            <span className="font-semibold">
-                              {formatDaysOfWeek((s as any).daysOfWeek) || "—"}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <RouteScheduleViewTabs
+                routeViewTab={routeViewTab}
+                onRouteViewTabChange={setRouteViewTab}
+                routeViewData={routeViewData}
+                routeViewSchedules={routeViewSchedules}
+                routeViewSchedulesLoading={routeViewSchedulesLoading}
+                noticeDocsForRouteView={noticeDocsForRouteView}
+                operationNoticesFromSchedules={operationNoticesFromSchedules}
+                isAdmin={isAdmin}
+                isSyncingRouteView={isSyncingRouteView}
+                onSyncRouteViewFromAppSheet={syncRouteViewFromAppSheet}
+                formatDaysOfWeek={formatDaysOfWeek}
+                displayRouteCode={displayRouteCode}
+              />
             )}
           </DialogContent>
         </Dialog>

@@ -124,6 +124,7 @@ export interface Schedule {
   daysOfMonth?: number[]
   calendarType?: string
   notificationNumber?: string
+  refThongBaoKhaiThac?: string
   notificationFileUrl?: string
   tbRefTuyen?: string
   tripStatus?: string

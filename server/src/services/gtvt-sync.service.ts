@@ -9,6 +9,9 @@ type SyncSummary = {
   errors: string[]
 }
 
+const REF_THONGBAO_SYNC_BATCH_SIZE = 500
+const SCHEDULE_IMPORT_BATCH_SIZE = 500
+
 function pick(row: any, keys: string[]): string | undefined {
   for (const k of keys) {
     const v = row?.[k]
@@ -38,6 +41,61 @@ function buildScheduleCode(routeCode: string, direction: string | null, departur
   const dir = (direction || '').trim() || 'NA'
   const base = `BDG-${routeCode}-${dir}-${hhmm}-${firebaseId}`.replace(/\s+/g, '')
   return base.slice(0, 50)
+}
+
+function parseDaysOfMonth(raw: string): number[] {
+  const s = String(raw || '').trim()
+  if (!s) return []
+  return Array.from(
+    new Set(
+      s
+        .split(/[,;]/)
+        .map((part) => parseInt(part.trim(), 10))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 31),
+    ),
+  ).sort((a, b) => a - b)
+}
+
+function extractDaysSegment(raw: string): string {
+  const s = String(raw || '').trim()
+  if (!s) return ''
+  const parts = s.split(' - ').map((part) => part.trim()).filter(Boolean)
+  if (parts.length >= 3) return parts[parts.length - 1]!
+  return s
+}
+
+function mapFrequencyType(daysOfMonth: number[]): 'daily' | 'weekly' | 'specific_days' {
+  if (daysOfMonth.length >= 28) return 'daily'
+  if (daysOfMonth.length > 0) return 'specific_days'
+  return 'weekly'
+}
+
+function normalizeEffectiveDate(raw: string | undefined): string | null {
+  const value = String(raw || '').trim()
+  if (!value) return null
+  const iso = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (iso) return iso[1]!
+  const dmy = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2]!.padStart(2, '0')}-${dmy[1]!.padStart(2, '0')}`
+  }
+  return null
+}
+
+function resolveEffectiveTo(s: any): string | null {
+  return normalizeEffectiveDate(pick(s, ['HieuLucDen', 'effectiveTo', 'NgayBiNgung']))
+}
+
+function resolveScheduleDays(s: any): { daysOfMonth: number[]; daysOfWeek: number[]; frequencyType: 'daily' | 'weekly' | 'specific_days' } {
+  const displayText = pick(s, ['Biểu đồ hiển thị', 'BieuDoHienThi', 'bieu_do_hien_thi'])
+  const rawDays = pick(s, ['NgayHoatDong', 'NgayHoatDongGoc']) || extractDaysSegment(displayText || '')
+  const daysOfMonth = parseDaysOfMonth(rawDays)
+  const daysOfWeek = daysOfMonth.length >= 28 ? [1, 2, 3, 4, 5, 6, 7] : []
+  return {
+    daysOfMonth,
+    daysOfWeek,
+    frequencyType: mapFrequencyType(daysOfMonth),
+  }
 }
 
 async function upsertRoutesFromAppSheet(rows: any[], dryRun: boolean, summary: SyncSummary) {
@@ -229,7 +287,7 @@ async function upsertSchedulesFromAppSheet(scheduleRows: any[], notifRows: any[]
 
   for (const s of scheduleRows) {
     const firebaseId = pick(s, ['ID_NutChay', 'ID', 'firebaseId', 'id'])
-    const notifId = pick(s, ['Ref_ThongBaoKhaiThac', 'ThongBao', 'RefTB', 'notificationRef'])
+    const notifId = pick(s, ['Ref_ThongBaoKhaiThac', 'ref_thongbao_khaithac', 'ThongBao', 'RefTB', 'notificationRef'])
     const notif = notifId ? notifMap.get(notifId) : undefined
     const routeCode = (notif?.routeRef || pick(s, ['Ref_Tuyen', 'routeCode', 'RouteCode']) || '').trim().toUpperCase()
     const operatorRef = (notif?.operatorRef || pick(s, ['Ref_DonVi', 'operatorRef']) || '').trim()
@@ -245,10 +303,14 @@ async function upsertSchedulesFromAppSheet(scheduleRows: any[], notifRows: any[]
 
     const direction = pick(s, ['Chieu', 'direction', 'Huong'])
     const scheduleCode = buildScheduleCode(routeCode, direction || null, departureTime, firebaseId)
+    const scheduleDays = resolveScheduleDays(s)
+    const noticeRow = notifId
+      ? (notifRows.find((x: any) => pick(x, ['ID_TB', 'id', 'Id', 'firebaseId']) === notifId) || null)
+      : null
 
     // Extra fields from BieuDoChayXeChiTiet (for UI display)
     const scheduleExtra = {
-      SoThongBao: pick(s, ['SoThongBao']),
+      SoThongBao: pick(s, ['SoThongBao']) || notif?.notificationNumber || pick(noticeRow, ['SoThongBao']) || null,
       Chieu: direction || null,
       GioXuatBen: departureTime,
       NgayHoatDong: pick(s, ['NgayHoatDong']),
@@ -259,41 +321,39 @@ async function upsertSchedulesFromAppSheet(scheduleRows: any[], notifRows: any[]
       NgayHoatDongGoc: pick(s, ['NgayHoatDongGoc']),
       NgayBiNgung: pick(s, ['NgayBiNgung']),
       TrangThaiTongHop: pick(s, ['TrangThaiTongHop']),
-      // Keep firebaseId/ref for tracing
+      BieuDoHienThi: pick(s, ['Biểu đồ hiển thị', 'BieuDoHienThi', 'bieu_do_hien_thi']),
       Ref_ThongBaoKhaiThac: notifId || null,
     }
 
     normalized.push({
-      firebaseId,
-      scheduleCode,
-      routeId,
-      operatorId,
-      departureTime,
-      frequencyType: 'daily',
-      daysOfWeek: [],
-      daysOfMonth: [],
-      effectiveFrom: pick(s, ['HieuLucTu', 'effectiveFrom', 'NgayHoatDong']) || new Date().toISOString().slice(0, 10),
-      effectiveTo: pick(s, ['HieuLucDen', 'effectiveTo', 'NgayBiNgung']) || null,
-      direction: direction || null,
-      calendarType: pick(s, ['LoaiLich', 'calendarType', 'LoaiNgay']) || null,
-      notificationNumber: (pick(s, ['SoThongBao']) || notif?.notificationNumber) || null,
-      tripStatus: (pick(s, ['TrangThaiChuyen', 'TinhTrangChuyen', 'tripStatus']) || null),
-      isActive: true,
-      source: 'appsheet',
+      idNutChay: firebaseId,
+      refThongBaoKhaiThac: notifId || null,
+      soThongBao: (pick(s, ['SoThongBao']) || notif?.notificationNumber || pick(noticeRow, ['SoThongBao'])) || null,
+      chieu: direction || null,
+      gioXuatBen: departureTime,
+      ngayHoatDong: scheduleDays.daysOfMonth.length > 0 ? scheduleDays.daysOfMonth : null,
+      ngayHoatDongGoc: pick(s, ['NgayHoatDong', 'NgayHoatDongGoc']) || null,
+      loaiNgay: pick(s, ['LoaiNgay']) || null,
+      trangThaiChuyen: (pick(s, ['TrangThaiChuyen', 'TinhTrangChuyen', 'tripStatus']) || 'Hoạt động'),
+      ghiChu: scheduleExtra.GhiChu || null,
+      thoiGianNhap: pick(s, ['ThoiGianNhap']) || null,
+      soChuyenThangCt: scheduleExtra.SoChuyen_Thang_CT || null,
+      ngayBiNgung: resolveEffectiveTo(s),
       syncedAt: new Date(),
       metadata: {
         appsheet_row: s,
-        // Keep full notice row for "văn bản" display
-        notice: notifId ? (notifRows.find((x: any) => pick(x, ['ID_TB', 'id', 'Id', 'firebaseId']) === notifId) || null) : null,
+        notice: noticeRow,
         notice_meta: {
           id: notifId || null,
-          routeRef: notif?.routeRef || null,
-          displayText: notif?.displayText || null,
-          fileUrl: notif?.notificationFileUrl || null,
-          number: notif?.notificationNumber || null,
-        }
-        ,
+          routeRef: notif?.routeRef || pick(noticeRow, ['Ref_Tuyen']) || null,
+          displayText: notif?.displayText || pick(noticeRow, ['ThongBaoHienThi']) || null,
+          fileUrl: notif?.notificationFileUrl || pick(noticeRow, ['File']) || null,
+          number: notif?.notificationNumber || pick(noticeRow, ['SoThongBao']) || null,
+        },
         schedule_meta: scheduleExtra,
+        route_id: routeId,
+        operator_id: operatorId,
+        schedule_code: scheduleCode,
       },
     })
   }
@@ -307,38 +367,198 @@ async function upsertSchedulesFromAppSheet(scheduleRows: any[], notifRows: any[]
 
   if (normalized.length === 0) return
 
-  const result = await db
-    .insert(schedules)
-    .values(normalized)
-    .onConflictDoUpdate({
-      target: schedules.firebaseId,
-      set: {
-        scheduleCode: sql`excluded.schedule_code`,
-        routeId: sql`excluded.route_id`,
-        operatorId: sql`excluded.operator_id`,
-        departureTime: sql`excluded.departure_time`,
-        frequencyType: sql`excluded.frequency_type`,
-        daysOfWeek: sql`excluded.days_of_week`,
-        effectiveFrom: sql`excluded.effective_from`,
-        effectiveTo: sql`excluded.effective_to`,
-        isActive: sql`true`,
-        direction: sql`excluded.direction`,
-        daysOfMonth: sql`excluded.days_of_month`,
-        calendarType: sql`excluded.calendar_type`,
-        notificationNumber: sql`excluded.notification_number`,
-        tripStatus: sql`excluded.trip_status`,
-        source: sql`excluded.source`,
-        syncedAt: sql`excluded.synced_at`,
-        metadata: sql`COALESCE(${schedules.metadata}, '{}'::jsonb) || COALESCE(excluded.metadata, '{}'::jsonb)`,
-        updatedAt: sql`now()`,
-      },
-    })
-    .returning({ id: schedules.id })
+  const conflictUpdate = {
+    refThongBaoKhaiThac: sql`excluded."Ref_ThongBaoKhaiThac"`,
+    soThongBao: sql`excluded."SoThongBao"`,
+    chieu: sql`excluded."Chieu"`,
+    gioXuatBen: sql`excluded."GioXuatBen"`,
+    ngayHoatDong: sql`excluded."NgayHoatDong"`,
+    ngayHoatDongGoc: sql`excluded."NgayHoatDongGoc"`,
+    loaiNgay: sql`excluded."LoaiNgay"`,
+    trangThaiChuyen: sql`excluded."TrangThaiChuyen"`,
+    ghiChu: sql`excluded."GhiChu"`,
+    thoiGianNhap: sql`excluded."ThoiGianNhap"`,
+    soChuyenThangCt: sql`excluded."SoChuyen_Thang_CT"`,
+    ngayBiNgung: sql`excluded."NgayBiNgung"`,
+    syncedAt: sql`excluded.synced_at`,
+    metadata: sql`COALESCE(${schedules.metadata}, '{}'::jsonb) || COALESCE(excluded.metadata, '{}'::jsonb)`,
+    updatedAt: sql`now()`,
+  } as const
 
-  summary.schedules.upserted = result.length
+  let upserted = 0
+  for (let i = 0; i < normalized.length; i += SCHEDULE_IMPORT_BATCH_SIZE) {
+    const chunk = normalized.slice(i, i + SCHEDULE_IMPORT_BATCH_SIZE)
+    try {
+      const result = await db
+        .insert(schedules)
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: schedules.idNutChay,
+          set: conflictUpdate,
+        })
+        .returning({ id: schedules.id })
+      upserted += result.length
+    } catch (e) {
+      const cause = e instanceof Error && 'cause' in e ? (e as Error & { cause?: unknown }).cause : e
+      const message = cause instanceof Error ? cause.message : e instanceof Error ? e.message : String(e)
+      summary.errors.push(message)
+      break
+    }
+  }
+
+  summary.schedules.upserted = upserted
+}
+
+function filterScheduleRowsByRoute(
+  scheduleRows: unknown[],
+  notifRows: unknown[],
+  routeCode?: string,
+): unknown[] {
+  const codeFilter = (routeCode || '').trim().toUpperCase()
+  if (!codeFilter) return scheduleRows
+
+  const filteredNotifRows = (notifRows as any[]).filter((n) => {
+    const ref = pick(n, ['Ref_Tuyen', 'routeRef', 'RouteRef'])?.trim().toUpperCase()
+    return ref === codeFilter || (codeFilter.startsWith('BUS-') && ref === codeFilter.replace(/^BUS-/, ''))
+  })
+  const allowedNotifIds = new Set(
+    filteredNotifRows.map((n) => pick(n, ['ID_TB', 'id', 'Id', 'firebaseId'])).filter(Boolean) as string[],
+  )
+
+  return (scheduleRows as any[]).filter((s) => {
+    const notifId = pick(s, ['Ref_ThongBaoKhaiThac', 'ref_thongbao_khaithac', 'ThongBao', 'RefTB', 'notificationRef'])
+    return !!notifId && allowedNotifIds.has(notifId)
+  })
+}
+
+
+async function applyScheduleRefThongBaoUpdates(
+  updates: Array<{ firebaseId: string; ref: string }>,
+): Promise<number> {
+  if (!db || updates.length === 0) return 0
+
+  let updated = 0
+  for (let i = 0; i < updates.length; i += REF_THONGBAO_SYNC_BATCH_SIZE) {
+    const chunk = updates.slice(i, i + REF_THONGBAO_SYNC_BATCH_SIZE)
+    const valueRows = chunk.map((row) => sql`(${row.firebaseId}, ${row.ref})`)
+    const result = await db.execute(sql`
+      UPDATE schedules AS s
+      SET
+        "Ref_ThongBaoKhaiThac" = v.ref,
+        updated_at = NOW()
+      FROM (VALUES ${sql.join(valueRows, sql`, `)}) AS v(firebase_id, ref)
+      WHERE s."ID_NutChay" = v.firebase_id
+      RETURNING s.id
+    `)
+    updated += result.length
+  }
+
+  return updated
+}
+
+/** Tạm thời: chỉ cập nhật schedules.ref_thongbao_khaithac từ BieuDoChayXeChiTiet. */
+export async function syncScheduleRefThongBaoKhaiThacFromAppSheet(
+  dryRun: boolean,
+  routeCode?: string,
+): Promise<SyncSummary> {
+  const summary: SyncSummary = {
+    routes: { fetched: 0, upserted: 0 },
+    schedules: { fetched: 0, upserted: 0, skipped: 0 },
+    errors: [],
+  }
+
+  if (!db) {
+    summary.errors.push('Database not configured')
+    return summary
+  }
+
+  const columnCheck = await db.execute(sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'schedules'
+      AND column_name IN ('ref_thongbao_khaithac', 'Ref_ThongBaoKhaiThac')
+      LIMIT 1
+  `)
+  if (!columnCheck.length) {
+    summary.errors.push(
+      'Cột schedules.Ref_ThongBaoKhaiThac chưa có trên DB.',
+    )
+    return summary
+  }
+
+  try {
+    const codeFilter = (routeCode || '').trim().toUpperCase()
+    const [scheduleRows, notifRows] = await Promise.all([
+      appsheetFind('GTVT_APPSHEET_SCHEDULES_ENDPOINT'),
+      codeFilter ? appsheetFind('GTVT_APPSHEET_NOTIFICATIONS_ENDPOINT') : Promise.resolve([]),
+    ])
+    const filteredScheduleRows = filterScheduleRowsByRoute(scheduleRows, notifRows, routeCode)
+    summary.schedules.fetched = filteredScheduleRows.length
+
+    const updatesByFirebaseId = new Map<string, string>()
+    for (const row of filteredScheduleRows as any[]) {
+      const firebaseId = pick(row, ['ID_NutChay', 'ID', 'firebaseId', 'id'])
+      const ref = pick(row, ['Ref_ThongBaoKhaiThac', 'ref_thongbao_khaithac', 'ThongBao', 'RefTB', 'notificationRef'])
+      if (!firebaseId || !ref) {
+        summary.schedules.skipped++
+        continue
+      }
+      updatesByFirebaseId.set(firebaseId, ref)
+    }
+    const updates = [...updatesByFirebaseId.entries()].map(([firebaseId, ref]) => ({ firebaseId, ref }))
+
+    if (dryRun) {
+      summary.schedules.upserted = updates.length
+      return summary
+    }
+
+    const updated = await applyScheduleRefThongBaoUpdates(updates)
+    summary.schedules.upserted = updated
+    summary.schedules.skipped += updates.length - updated
+  } catch (e) {
+    summary.errors.push(e instanceof Error ? e.message : String(e))
+  }
+
+  return summary
 }
 
 export async function syncRoutesSchedulesFromAppSheet(dryRun: boolean, routeCode?: string): Promise<SyncSummary> {
+  return syncScheduleRefThongBaoKhaiThacFromAppSheet(dryRun, routeCode)
+}
+
+/** Import schedules từ BieuDoChayXeChiTiet (firebase_id = ID_NutChay). */
+export async function importSchedulesFromAppSheet(dryRun: boolean, routeCode?: string): Promise<SyncSummary> {
+  const summary: SyncSummary = {
+    routes: { fetched: 0, upserted: 0 },
+    schedules: { fetched: 0, upserted: 0, skipped: 0 },
+    errors: [],
+  }
+
+  try {
+    const codeFilter = (routeCode || '').trim().toUpperCase()
+    const [scheduleRows, notifRows] = await Promise.all([
+      appsheetFind('GTVT_APPSHEET_SCHEDULES_ENDPOINT'),
+      appsheetFind('GTVT_APPSHEET_NOTIFICATIONS_ENDPOINT'),
+    ])
+    const filteredNotifRows = codeFilter
+      ? (notifRows as any[]).filter((n) => {
+          const ref = pick(n, ['Ref_Tuyen', 'routeRef', 'RouteRef'])?.trim().toUpperCase()
+          return ref === codeFilter || (codeFilter.startsWith('BUS-') && ref === codeFilter.replace(/^BUS-/, ''))
+        })
+      : (notifRows as any[])
+    const filteredScheduleRows = filterScheduleRowsByRoute(scheduleRows, filteredNotifRows, routeCode)
+
+    await upsertSchedulesFromAppSheet(filteredScheduleRows, filteredNotifRows, dryRun, summary)
+  } catch (e) {
+    summary.errors.push(e instanceof Error ? e.message : String(e))
+  }
+
+  return summary
+}
+
+/** Đồng bộ đầy đủ tuyến + schedules (tạm chưa gọi từ API). */
+export async function syncRoutesSchedulesFromAppSheetFull(dryRun: boolean, routeCode?: string): Promise<SyncSummary> {
   const summary: SyncSummary = {
     routes: { fetched: 0, upserted: 0 },
     schedules: { fetched: 0, upserted: 0, skipped: 0 },
@@ -361,7 +581,6 @@ export async function syncRoutesSchedulesFromAppSheet(dryRun: boolean, routeCode
         })
       : (routeRows as any[])
 
-    // Filter schedules by joined notification route ref (Ref_Tuyen)
     const filteredNotifRows = codeFilter
       ? (notifRows as any[]).filter((n) => {
           const ref = pick(n, ['Ref_Tuyen', 'routeRef', 'RouteRef'])?.trim().toUpperCase()
@@ -369,15 +588,7 @@ export async function syncRoutesSchedulesFromAppSheet(dryRun: boolean, routeCode
         })
       : (notifRows as any[])
 
-    const allowedNotifIds = codeFilter
-      ? new Set(filteredNotifRows.map((n) => pick(n, ['ID_TB', 'id', 'Id', 'firebaseId'])).filter(Boolean) as string[])
-      : null
-    const filteredScheduleRows = allowedNotifIds
-      ? (scheduleRows as any[]).filter((s) => {
-          const notifId = pick(s, ['Ref_ThongBaoKhaiThac', 'ThongBao', 'RefTB', 'notificationRef'])
-          return !!notifId && allowedNotifIds.has(notifId)
-        })
-      : (scheduleRows as any[])
+    const filteredScheduleRows = filterScheduleRowsByRoute(scheduleRows, filteredNotifRows, routeCode)
 
     await upsertRoutesFromAppSheet(filteredRouteRows, dryRun, summary)
     await upsertSchedulesFromAppSheet(filteredScheduleRows, filteredNotifRows, dryRun, summary)

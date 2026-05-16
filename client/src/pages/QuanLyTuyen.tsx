@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog"
 import { routeService, LegacyRoute } from "@/services/route.service"
 import { scheduleService } from "@/services/schedule.service"
+import { operationNoticeService } from "@/services/operation-notice.service"
+import type { OperationNotice } from "@/types"
 import type { Schedule } from "@/types"
 import { gtvtSyncService } from "@/services/gtvt-sync.service"
 // Manual sync imports disabled — auto sync via SharedWorker
@@ -52,6 +54,9 @@ export default function QuanLyTuyen() {
   const [compareDialogOpen, setCompareDialogOpen] = useState(false)
   const [compareTab, setCompareTab] = useState<"routes" | "schedules" | "operators">("routes")
   const [compareData, setCompareData] = useState<Awaited<ReturnType<typeof gtvtSyncService.compare>> | null>(null)
+  const [routeDetailTab, setRouteDetailTab] = useState<"info" | "schedules" | "documents" | "operation-notices">("info")
+  const [routeOperationNotices, setRouteOperationNotices] = useState<OperationNotice[]>([])
+  const [routeOperationNoticesLoading, setRouteOperationNoticesLoading] = useState(false)
   // Manual sync disabled — auto sync via SharedWorker
   // const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   // const [isSyncing, setIsSyncing] = useState(false)
@@ -102,7 +107,7 @@ export default function QuanLyTuyen() {
   }
 
   const handleSyncFromAppSheet = async () => {
-    if (!window.confirm("Đồng bộ AppSheet → Supabase? Dữ liệu tuyến + biểu đồ giờ sẽ upsert.")) return
+    if (!window.confirm("Đồng bộ Ref thông báo khai thác từ AppSheet → Supabase? (chỉ cột ref_thongbao_khaithac)")) return
     setIsSyncingFromAppSheet(true)
     try {
       const result = await gtvtSyncService.syncRoutesSchedules(false)
@@ -147,7 +152,7 @@ export default function QuanLyTuyen() {
   }
 
   const handleRunSync = async () => {
-    if (!syncDryRun && !window.confirm("Bạn có chắc muốn đồng bộ thật? Dữ liệu sẽ được ghi đè.")) {
+    if (!syncDryRun && !window.confirm("Bạn có chắc muốn đồng bộ thật? Chỉ cập nhật ref_thongbao_khaithac trên schedules.")) {
       return
     }
 
@@ -259,6 +264,7 @@ export default function QuanLyTuyen() {
 
   const handleView = (route: LegacyRoute) => {
     setSelectedRoute(route)
+    setRouteDetailTab("info")
     setDialogOpen(true)
   }
 
@@ -284,13 +290,54 @@ export default function QuanLyTuyen() {
     }
   }, [dialogOpen, selectedRoute?.id])
 
+  useEffect(() => {
+    if (!dialogOpen || !selectedRoute?.routeCode) {
+      setRouteOperationNotices([])
+      return
+    }
+
+    let cancelled = false
+    setRouteOperationNoticesLoading(true)
+
+    const routeCodes = Array.from(
+      new Set(
+        [selectedRoute.routeCode, displayRouteCode(selectedRoute.routeCode)]
+          .map((code) => code.trim())
+          .filter(Boolean),
+      ),
+    )
+
+    Promise.all(routeCodes.map((code) => operationNoticeService.getByRouteCode(code)))
+      .then((groups) => {
+        if (cancelled) return
+        const byId = new Map<string, OperationNotice>()
+        for (const group of groups) {
+          for (const notice of group) {
+            byId.set(notice.id, notice)
+          }
+        }
+        setRouteOperationNotices(Array.from(byId.values()))
+      })
+      .catch((e) => {
+        console.error("Failed to load operation notices for route:", e)
+        if (!cancelled) setRouteOperationNotices([])
+      })
+      .finally(() => {
+        if (!cancelled) setRouteOperationNoticesLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dialogOpen, selectedRoute?.routeCode])
+
   const syncSchedulesForSelectedRoute = async () => {
     if (!selectedRoute) return
     if (!isAdmin) {
       toast.error("Chỉ admin mới đồng bộ được")
       return
     }
-    if (!window.confirm(`Đồng bộ biểu đồ giờ cho tuyến ${displayRouteCode(selectedRoute.routeCode)}?`)) return
+    if (!window.confirm(`Đồng bộ Ref thông báo khai thác cho tuyến ${displayRouteCode(selectedRoute.routeCode)}?`)) return
     setIsSyncingSchedules(true)
     try {
       const result = await gtvtSyncService.syncRoutesSchedules(false, selectedRoute.routeCode)
@@ -302,6 +349,21 @@ export default function QuanLyTuyen() {
       // Reload schedules list from DB
       const data = await scheduleService.getAll(selectedRoute.id, undefined, true)
       setRouteSchedules(data)
+      const routeCodes = Array.from(
+        new Set(
+          [selectedRoute.routeCode, displayRouteCode(selectedRoute.routeCode)]
+            .map((code) => code.trim())
+            .filter(Boolean),
+        ),
+      )
+      const noticeGroups = await Promise.all(routeCodes.map((code) => operationNoticeService.getByRouteCode(code)))
+      const byId = new Map<string, OperationNotice>()
+      for (const group of noticeGroups) {
+        for (const notice of group) {
+          byId.set(notice.id, notice)
+        }
+      }
+      setRouteOperationNotices(Array.from(byId.values()))
     } catch (e) {
       console.error(e)
       toast.error("Không thể đồng bộ biểu đồ giờ")
@@ -357,6 +419,44 @@ export default function QuanLyTuyen() {
     }
 
     return Array.from(byId.values())
+  }, [routeSchedules, selectedRoute?.routeCode])
+
+  const operationNoticesFromSchedules = useMemo(() => {
+    const routeCode = (selectedRoute?.routeCode || "").trim()
+    if (!routeCode) return []
+    const codeUpper = routeCode.toUpperCase()
+    const codeNoBus = codeUpper.replace(/^BUS-/, "")
+
+    const byId = new Map<string, Record<string, unknown>>()
+    for (const s of routeSchedules as any[]) {
+      const notice = s?.metadata?.notice
+      const noticeMeta = s?.metadata?.notice_meta
+      if (!notice && !noticeMeta?.id) continue
+
+      const routeRef = String(notice?.Ref_Tuyen || noticeMeta?.routeRef || "").trim()
+      const routeRefUpper = routeRef.toUpperCase()
+      const matchesRoute =
+        !routeRef || routeRefUpper === codeUpper || routeRefUpper === codeNoBus
+      if (!matchesRoute) continue
+
+      const id = String(notice?.ID_TB || noticeMeta?.id || "").trim()
+      const key = id || String(noticeMeta?.number || noticeMeta?.displayText || "").trim()
+      if (!key || byId.has(key)) continue
+
+      if (notice && typeof notice === "object") {
+        byId.set(key, notice as Record<string, unknown>)
+      } else {
+        byId.set(key, {
+          ID_TB: noticeMeta?.id || null,
+          Ref_Tuyen: noticeMeta?.routeRef || null,
+          SoThongBao: noticeMeta?.number || null,
+          ThongBaoHienThi: noticeMeta?.displayText || null,
+          File: noticeMeta?.fileUrl || null,
+        })
+      }
+    }
+
+    return Array.from(byId.entries()).map(([id, row]) => ({ id, row }))
   }, [routeSchedules, selectedRoute?.routeCode])
 
   const formatDate = (dateStr: string) => {
@@ -761,7 +861,30 @@ export default function QuanLyTuyen() {
             <DialogTitle className="text-xl">Chi tiết tuyến xe</DialogTitle>
           </DialogHeader>
           {selectedRoute && (
-            <div className="space-y-6">
+            <Tabs
+              value={routeDetailTab}
+              onValueChange={(v) =>
+                setRouteDetailTab(v as "info" | "schedules" | "documents" | "operation-notices")
+              }
+              className="space-y-4"
+            >
+              <TabsList className="w-full justify-start">
+                <TabsTrigger value="info">Chi tiết</TabsTrigger>
+                <TabsTrigger value="schedules">
+                  Biểu đồ giờ{routeSchedules.length ? ` (${routeSchedules.length})` : ""}
+                </TabsTrigger>
+                <TabsTrigger value="documents">
+                  Văn bản{noticeDocsForSelectedRoute.length ? ` (${noticeDocsForSelectedRoute.length})` : ""}
+                </TabsTrigger>
+                <TabsTrigger value="operation-notices">
+                  Thông báo khai thác
+                  {routeOperationNotices.length || operationNoticesFromSchedules.length
+                    ? ` (${routeOperationNotices.length || operationNoticesFromSchedules.length})`
+                    : ""}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="info" className="space-y-6">
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 bg-blue-50 p-4 rounded-lg">
@@ -942,12 +1065,20 @@ export default function QuanLyTuyen() {
                 </div>
               </div>
 
-              {/* Schedules (Biểu đồ giờ + văn bản) */}
-              <div className="border-t pt-4 space-y-3">
+              {selectedRoute.notes ? (
+                <div className="border-t pt-4">
+                  <p className="text-base text-gray-500 mb-1">Ghi chú</p>
+                  <p className="text-base">{selectedRoute.notes}</p>
+                </div>
+              ) : null}
+              </TabsContent>
+
+              <TabsContent value="schedules" className="space-y-3">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-gray-400" />
-                  <p className="text-lg font-medium">Biểu đồ giờ & văn bản</p>
+                  <p className="text-lg font-medium">Biểu đồ giờ</p>
                   </div>
                   <Button
                     variant="outline"
@@ -991,61 +1122,9 @@ export default function QuanLyTuyen() {
                           </span>
                         </div>
                         <div className="pt-2 text-gray-600">
-                          Danh sách dưới đây lấy từ DB `schedules` (đồng bộ từ AppSheet `BieuDoChayXeChiTiet` + `THONGBAO_KHAITHAC`).
+                          Danh sách dưới đây lấy từ DB `schedules` (đồng bộ từ AppSheet `BieuDoChayXeChiTiet`).
                         </div>
                       </div>
-                    </div>
-
-                    <div className="bg-white border rounded-lg p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-gray-700">
-                          File THONGBAO_KHAITHAC (theo <span className="font-semibold">Ref_Tuyen</span>)
-                        </p>
-                        <span className="text-sm text-gray-500">({noticeDocsForSelectedRoute.length})</span>
-                      </div>
-
-                      {noticeDocsForSelectedRoute.length === 0 ? (
-                        <div className="mt-2 text-sm text-gray-500">
-                          Chưa có file văn bản cho tuyến này. (Cần đồng bộ để lấy `THONGBAO_KHAITHAC.File` theo `Ref_Tuyen`.)
-                        </div>
-                      ) : (
-                        <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
-                          {noticeDocsForSelectedRoute.slice(0, 12).map((d) => (
-                            <div key={d.id} className="rounded-lg border border-gray-200 p-3 bg-gray-50">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="text-sm font-semibold text-gray-900 break-words">
-                                    {d.number ? `Số TB ${d.number}` : "Văn bản"}
-                                  </div>
-                                  <div className="text-sm text-gray-600 break-words">
-                                    <span className="text-gray-500">Mã tuyến:</span> {d.routeRef || "---"}
-                                  </div>
-                                </div>
-
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 px-3 text-xs rounded-lg shrink-0"
-                                  disabled={!String(d.fileUrl || "").trim()}
-                                  title={!String(d.fileUrl || "").trim() ? "Không có file" : "Mở file THONGBAO_KHAITHAC"}
-                                  onClick={() => {
-                                    const href = String(d.fileUrl || "").trim()
-                                    if (href) window.open(href, "_blank", "noopener,noreferrer")
-                                  }}
-                                >
-                                  Mở file
-                                </Button>
-                              </div>
-
-                              {d.displayText ? (
-                                <div className="mt-2 text-sm text-gray-700 break-words">
-                                  {d.displayText}
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
 
                     <div className="bg-gray-50 p-4 rounded-lg">
@@ -1210,15 +1289,201 @@ export default function QuanLyTuyen() {
                   </>
                 )}
               </div>
+              </TabsContent>
 
-              {/* Notes */}
-              {selectedRoute.notes && (
-                <div className="border-t pt-4">
-                  <p className="text-base text-gray-500 mb-1">Ghi chú</p>
-                  <p className="text-base">{selectedRoute.notes}</p>
+              <TabsContent value="documents" className="space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-lg font-medium text-gray-800">Văn bản THONGBAO_KHAITHAC</p>
+                    <p className="text-sm text-gray-500">
+                      Liên kết theo <span className="font-semibold">Ref_Tuyen</span> = mã tuyến AppSheet.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={syncSchedulesForSelectedRoute}
+                    disabled={!isAdmin || isSyncingSchedules || schedulesLoading}
+                    title={!isAdmin ? "Chỉ admin mới dùng được" : undefined}
+                  >
+                    <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingSchedules ? "animate-spin" : ""}`} />
+                    Đồng bộ văn bản
+                  </Button>
                 </div>
-              )}
-            </div>
+
+                {schedulesLoading ? (
+                  <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
+                    Đang tải văn bản...
+                  </div>
+                ) : noticeDocsForSelectedRoute.length === 0 ? (
+                  <div className="bg-amber-50 p-4 rounded-lg text-sm text-amber-700">
+                    Chưa có văn bản cho tuyến này. Bấm đồng bộ để lấy `THONGBAO_KHAITHAC.File` theo `Ref_Tuyen`.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {noticeDocsForSelectedRoute.map((d) => (
+                      <div key={d.id} className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-gray-900 break-words">
+                              {d.number ? `Số TB ${d.number}` : "Văn bản"}
+                            </div>
+                            <div className="text-sm text-gray-600 break-words">
+                              <span className="text-gray-500">Mã tuyến:</span> {d.routeRef || "---"}
+                            </div>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 text-xs rounded-lg shrink-0"
+                            disabled={!String(d.fileUrl || "").trim()}
+                            title={!String(d.fileUrl || "").trim() ? "Không có file" : "Mở file THONGBAO_KHAITHAC"}
+                            onClick={() => {
+                              const href = String(d.fileUrl || "").trim()
+                              if (href) window.open(href, "_blank", "noopener,noreferrer")
+                            }}
+                          >
+                            Mở file
+                          </Button>
+                        </div>
+
+                        {d.displayText ? (
+                          <div className="mt-3 text-sm text-gray-700 break-words whitespace-pre-wrap">
+                            {d.displayText}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="operation-notices" className="space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-lg font-medium text-gray-800">Thông báo khai thác</p>
+                    <p className="text-sm text-gray-500">
+                      Nguồn bảng AppSheet <span className="font-semibold">THONGBAO_KHAITHAC</span> (DB: `operation_notices` + metadata lịch chạy).
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={syncSchedulesForSelectedRoute}
+                    disabled={!isAdmin || isSyncingSchedules || schedulesLoading || routeOperationNoticesLoading}
+                    title={!isAdmin ? "Chỉ admin mới dùng được" : undefined}
+                  >
+                    <RefreshCw
+                      className={`mr-2 h-4 w-4 ${
+                        isSyncingSchedules || routeOperationNoticesLoading ? "animate-spin" : ""
+                      }`}
+                    />
+                    Đồng bộ thông báo
+                  </Button>
+                </div>
+
+                {routeOperationNoticesLoading || schedulesLoading ? (
+                  <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-600">
+                    Đang tải thông báo khai thác...
+                  </div>
+                ) : routeOperationNotices.length === 0 && operationNoticesFromSchedules.length === 0 ? (
+                  <div className="bg-amber-50 p-4 rounded-lg text-sm text-amber-700">
+                    Chưa có thông báo khai thác cho tuyến này. Bấm đồng bộ để lấy dữ liệu từ `THONGBAO_KHAITHAC`.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {routeOperationNotices.length > 0 ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {routeOperationNotices.map((notice) => (
+                          <div key={notice.id} className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-gray-900 break-words">
+                                  {notice.noticeNumber || "Thông báo"}
+                                </div>
+                                <div className="text-sm text-gray-600 break-words">
+                                  <span className="text-gray-500">Mã tuyến:</span> {notice.routeCode || "---"}
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-3 text-xs rounded-lg shrink-0"
+                                disabled={!String(notice.fileUrl || "").trim()}
+                                title={!String(notice.fileUrl || "").trim() ? "Không có file" : "Mở file thông báo"}
+                                onClick={() => {
+                                  const href = String(notice.fileUrl || "").trim()
+                                  if (href) window.open(href, "_blank", "noopener,noreferrer")
+                                }}
+                              >
+                                Mở file
+                              </Button>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                              <div>
+                                <span className="text-gray-500">Ngày ban hành:</span>{" "}
+                                <span className="font-medium">{notice.issueDate || "---"}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Ngày hiệu lực:</span>{" "}
+                                <span className="font-medium">{notice.effectiveDate || "---"}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Trạng thái:</span>{" "}
+                                <span className="font-medium">{notice.status || "---"}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Loại TB:</span>{" "}
+                                <span className="font-medium">{notice.noticeType || "---"}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Ref đơn vị:</span>{" "}
+                                <span className="font-medium">{notice.operatorRef || "---"}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Cơ quan ban hành:</span>{" "}
+                                <span className="font-medium">{notice.issuingAuthority || "---"}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {operationNoticesFromSchedules.length > 0 ? (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium text-gray-700">
+                          Bản ghi AppSheet (từ metadata lịch chạy)
+                        </p>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {operationNoticesFromSchedules.map((item) => (
+                            <div key={item.id} className="rounded-lg border border-gray-200 p-4 bg-white">
+                              <div className="text-sm font-semibold text-gray-900 break-words mb-3">
+                                {String(item.row.SoThongBao || item.row.ID_TB || item.id)}
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 text-sm">
+                                {Object.entries(item.row).map(([key, value]) => (
+                                  <div key={key} className="flex items-start gap-2">
+                                    <span className="text-gray-500 shrink-0">{key}</span>
+                                    <span className="font-medium break-words">
+                                      {value === null || value === undefined || value === ""
+                                        ? "---"
+                                        : String(value)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
