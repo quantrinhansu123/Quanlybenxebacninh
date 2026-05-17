@@ -34,6 +34,8 @@
     "etl:analyze": "tsx src/db/migrations/etl/analyze-data.ts",
     "etl:sync-bus-schedules:dry": "tsx src/db/migrations/etl/sync-bus-schedules-from-sheet.ts --dry-run",
     "etl:sync-bus-schedules": "tsx src/db/migrations/etl/sync-bus-schedules-from-sheet.ts",
+    "etl:sync-vehicle-badges": "tsx src/db/migrations/etl/sync-vehicle-badges-from-sheet.ts",
+    "etl:sync-vehicle-badges:dry": "tsx src/db/migrations/etl/sync-vehicle-badges-from-sheet.ts --dry-run",
     "etl:validate": "tsx src/db/migrations/etl/validate-migration.ts",
     "etl:rollback": "tsx src/db/migrations/etl/rollback.ts"
   },

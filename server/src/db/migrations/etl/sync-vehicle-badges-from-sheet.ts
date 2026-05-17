@@ -157,7 +157,11 @@ async function main() {
       departure_station,
       arrival_station
     FROM routes
-    WHERE route_type = 'bus'
+    WHERE (
+      LOWER(TRIM(route_type)) IN ('bus', 'xe buýt', 'xe buyt')
+      OR route_type ILIKE '%buýt%'
+      OR route_type ILIKE '%buyt%'
+    )
       AND firebase_id IS NOT NULL
   `))
   const busRouteMap = new Map<string, { routeId: string; routeCode: string | null; routeName: string | null }>()
@@ -178,15 +182,16 @@ async function main() {
   }
   console.log(`  BUS route lookup: ${busRouteMap.size} routes`)
 
-  // 2. Create temp table & insert all data
-  console.log('[2/6] Creating temp table...')
-  await db.execute(sql.raw(`DROP TABLE IF EXISTS _tmp_badges`))
+  // 2) Staging table (không dùng TEMP — Supabase pooler mất session giữa các query)
+  console.log('[2/6] Creating staging table...')
+  await db.execute(sql.raw(`DROP TABLE IF EXISTS _sync_vehicle_badges_tmp`))
   await db.execute(sql.raw(`
-    CREATE TEMP TABLE _tmp_badges (
+    CREATE TABLE _sync_vehicle_badges_tmp (
       firebase_id TEXT PRIMARY KEY, badge_number TEXT, badge_type TEXT,
       issue_date TEXT, expiry_date TEXT, status TEXT, is_active BOOLEAN,
-      metadata JSONB, vehicle_fb_ref TEXT, resolved_plate TEXT,
-      route_fb_ref TEXT, resolved_route_id UUID, resolved_route_code TEXT, resolved_route_name TEXT
+      ref_gpkd TEXT, ma_ho_so TEXT, ref_thong_bao TEXT, ref_don_vi TEXT, loai_cap TEXT, ly_do_cap_lai TEXT, so_phu_hieu_cu TEXT,
+      vehicle_fb_ref TEXT, resolved_plate TEXT,
+      route_fb_ref TEXT, resolved_route_id UUID, resolved_route_code TEXT
     )
   `))
 
@@ -204,7 +209,6 @@ async function main() {
     const chunk = rows.slice(i, i + CHUNK)
     const values = chunk.map(r => {
       const status = mapStatus(r.TrangThai)
-      const meta = buildMeta(r)
       const isBus = isBusBadgeType(r.LoaiPH)
       if (isBus) {
         busBadgeTotal++
@@ -215,8 +219,6 @@ async function main() {
       const routeFbRef = isBus && routeFbRefRaw ? routeFbRefRaw : null
       let resolvedRouteId: string | null = null
       let resolvedRouteCode: string | null = null
-      let resolvedRouteName: string | null = null
-
       if (isBus) {
         if (!routeFbRef) {
           busMissingRef++
@@ -226,21 +228,25 @@ async function main() {
           if (matchedRoute) {
             resolvedRouteId = matchedRoute.routeId
             resolvedRouteCode = matchedRoute.routeCode
-            resolvedRouteName = matchedRoute.routeName
             busResolvedRoute++
           } else {
             busUnresolvedRoute++
             if (unresolvedSamples.length < 20) unresolvedSamples.push(`${r.ID_PhuHieu}:${routeFbRef}`)
           }
         }
+      } else {
+        const refTuyen = (r.Ref_Tuyen || '').trim()
+        if (refTuyen) resolvedRouteCode = refTuyen.slice(0, 50)
       }
 
       return `(${esc(r.ID_PhuHieu)},${esc(r.SoPhuHieu || null)},${esc(r.LoaiPH || null)},` +
         `${esc(parseDate(r.NgayCap))},${esc(parseDate(r.NgayHetHan))},${esc(status)},` +
-        `${status === 'active'},${esc(JSON.stringify(meta))},${esc(r.BienSoXe || null)},${esc(resolvedPlate)},` +
-        `${esc(routeFbRef)},${esc(resolvedRouteId)}::uuid,${esc(resolvedRouteCode)},${esc(resolvedRouteName)})`
+        `${status === 'active'},${esc(r.Ref_GPKD || null)},${esc(r.MaHoSo || null)},${esc(null)},${esc(r.Ref_DonViCapPhuHieu || null)},` +
+        `${esc(r.LoaiCap || null)},${esc(r.LyDoCapLai || null)},${esc(r.SoPhuHieuCu || null)},` +
+        `${esc(r.BienSoXe || null)},${esc(resolvedPlate)},` +
+        `${esc(routeFbRef)},${esc(resolvedRouteId)}::uuid,${esc(resolvedRouteCode)})`
     }).join(',')
-    await db.execute(sql.raw(`INSERT INTO _tmp_badges VALUES ${values}`))
+    await db.execute(sql.raw(`INSERT INTO _sync_vehicle_badges_tmp VALUES ${values}`))
     inserted += chunk.length
   }
   console.log(`  Inserted ${inserted} rows into temp table`)
@@ -254,7 +260,7 @@ async function main() {
     SELECT COUNT(*) FILTER (WHERE resolved_plate IS NOT NULL) as resolved,
            COUNT(*) FILTER (WHERE resolved_plate IS NULL AND vehicle_fb_ref IS NOT NULL) as unresolved,
            COUNT(*) FILTER (WHERE vehicle_fb_ref IS NULL OR vehicle_fb_ref = '') as no_ref
-    FROM _tmp_badges
+    FROM _sync_vehicle_badges_tmp
   `))
   const rs = (resolvedStats as any)[0]
   console.log(`  Plate resolution: ${rs.resolved} resolved, ${rs.unresolved} unresolved, ${rs.no_ref} no vehicle ref`)
@@ -265,23 +271,33 @@ async function main() {
     UPDATE vehicle_badges vb SET
       badge_number = COALESCE(NULLIF(t.badge_number, ''), vb.badge_number),
       badge_type = COALESCE(NULLIF(t.badge_type, ''), vb.badge_type),
-      issue_date = COALESCE(NULLIF(t.issue_date, '')::date, vb.issue_date),
-      expiry_date = COALESCE(NULLIF(t.expiry_date, '')::date, vb.expiry_date),
+      issue_date = COALESCE(
+        CASE WHEN NULLIF(t.issue_date, '') IS NOT NULL THEN NULLIF(t.issue_date, '')::date END,
+        vb.issue_date
+      ),
+      expiry_date = COALESCE(
+        CASE WHEN NULLIF(t.expiry_date, '') IS NOT NULL THEN NULLIF(t.expiry_date, '')::date END,
+        vb.expiry_date
+      ),
       status = t.status,
       is_active = t.is_active,
-      metadata = COALESCE(vb.metadata, '{}'::jsonb) || t.metadata,
       plate_number = COALESCE(t.resolved_plate, vb.plate_number),
       route_id = COALESCE(t.resolved_route_id, vb.route_id),
       route_code = COALESCE(NULLIF(t.resolved_route_code, ''), vb.route_code),
-      route_name = COALESCE(NULLIF(t.resolved_route_name, ''), vb.route_name),
-      source = 'sheet_sync',
-      synced_at = NOW(),
+      tuyen_bus_code = COALESCE(NULLIF(t.route_fb_ref, ''), vb.tuyen_bus_code),
+      "Ref_GPKD" = COALESCE(NULLIF(t.ref_gpkd, ''), vb."Ref_GPKD"),
+      "MaHoSo" = COALESCE(NULLIF(t.ma_ho_so, ''), vb."MaHoSo"),
+      "Ref_ThongBao" = COALESCE(NULLIF(t.ref_thong_bao, ''), vb."Ref_ThongBao"),
+      "Ref_DonViCapPhuHieu" = COALESCE(NULLIF(t.ref_don_vi, ''), vb."Ref_DonViCapPhuHieu"),
+      "LoaiCap" = COALESCE(NULLIF(t.loai_cap, ''), vb."LoaiCap"),
+      "LyDoCapLai" = COALESCE(NULLIF(t.ly_do_cap_lai, ''), vb."LyDoCapLai"),
+      "SoPhuHieuCu" = COALESCE(NULLIF(t.so_phu_hieu_cu, ''), vb."SoPhuHieuCu"),
       updated_at = NOW()
-    FROM _tmp_badges t
+    FROM _sync_vehicle_badges_tmp t
     WHERE vb.firebase_id = t.firebase_id
   `
   if (isDryRun) {
-    const countRes = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM vehicle_badges vb JOIN _tmp_badges t ON vb.firebase_id = t.firebase_id`))
+    const countRes = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM vehicle_badges vb JOIN _sync_vehicle_badges_tmp t ON vb.firebase_id = t.firebase_id`))
     console.log(`  [DRY] Would update: ${(countRes as any)[0]?.cnt || 0}`)
   } else {
     const upd = await db.execute(sql.raw(updateSql))
@@ -296,7 +312,7 @@ async function main() {
     UPDATE vehicle_badges vb SET
       plate_number = t.resolved_plate,
       updated_at = NOW()
-    FROM _tmp_badges t
+    FROM _sync_vehicle_badges_tmp t
     WHERE vb.firebase_id = t.firebase_id
       AND vb.plate_number LIKE 'UNKNOWN_%'
       AND t.resolved_plate IS NOT NULL
@@ -304,7 +320,7 @@ async function main() {
   if (isDryRun) {
     const countRes = await db.execute(sql.raw(`
       SELECT COUNT(*) as cnt FROM vehicle_badges vb
-      JOIN _tmp_badges t ON vb.firebase_id = t.firebase_id
+      JOIN _sync_vehicle_badges_tmp t ON vb.firebase_id = t.firebase_id
       WHERE vb.plate_number LIKE 'UNKNOWN_%' AND t.resolved_plate IS NOT NULL
     `))
     console.log(`  [DRY] Would fix: ${(countRes as any)[0]?.cnt || 0} UNKNOWN plates`)
@@ -318,8 +334,10 @@ async function main() {
   const insertSql = `
     INSERT INTO vehicle_badges (
       firebase_id, badge_number, plate_number, vehicle_id, badge_type,
-      route_id, route_code, route_name,
-      issue_date, expiry_date, status, is_active, metadata, source, synced_at, created_at, updated_at
+      route_id, route_code, tuyen_bus_code,
+      issue_date, expiry_date, status, is_active,
+      "Ref_GPKD", "MaHoSo", "Ref_ThongBao", "Ref_DonViCapPhuHieu", "LoaiCap", "LyDoCapLai", "SoPhuHieuCu",
+      created_at, updated_at
     )
     SELECT
       t.firebase_id, t.badge_number,
@@ -328,16 +346,18 @@ async function main() {
       t.badge_type,
       t.resolved_route_id,
       NULLIF(t.resolved_route_code, ''),
-      NULLIF(t.resolved_route_name, ''),
+      NULLIF(t.route_fb_ref, ''),
       NULLIF(t.issue_date, '')::date, NULLIF(t.expiry_date, '')::date, t.status, t.is_active,
-      t.metadata, 'sheet_sync', NOW(), NOW(), NOW()
-    FROM _tmp_badges t
+      NULLIF(t.ref_gpkd, ''), NULLIF(t.ma_ho_so, ''), NULLIF(t.ref_thong_bao, ''), NULLIF(t.ref_don_vi, ''),
+      NULLIF(t.loai_cap, ''), NULLIF(t.ly_do_cap_lai, ''), NULLIF(t.so_phu_hieu_cu, ''),
+      NOW(), NOW()
+    FROM _sync_vehicle_badges_tmp t
     LEFT JOIN id_mappings im ON im.firebase_id = t.vehicle_fb_ref AND im.entity_type = 'vehicles'
     LEFT JOIN vehicles v ON v.id = im.postgres_id::uuid
     WHERE NOT EXISTS (SELECT 1 FROM vehicle_badges vb WHERE vb.firebase_id = t.firebase_id)
   `
   if (isDryRun) {
-    const countRes = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM _tmp_badges t WHERE NOT EXISTS (SELECT 1 FROM vehicle_badges vb WHERE vb.firebase_id = t.firebase_id)`))
+    const countRes = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM _sync_vehicle_badges_tmp t WHERE NOT EXISTS (SELECT 1 FROM vehicle_badges vb WHERE vb.firebase_id = t.firebase_id)`))
     console.log(`  [DRY] Would insert: ${(countRes as any)[0]?.cnt || 0}`)
   } else {
     const ins = await db.execute(sql.raw(insertSql))
@@ -346,7 +366,7 @@ async function main() {
 
   // 6. Summary
   console.log('[6/6] Summary...')
-  await db.execute(sql.raw(`DROP TABLE IF EXISTS _tmp_badges`))
+  await db.execute(sql.raw(`DROP TABLE IF EXISTS _sync_vehicle_badges_tmp`))
   const total = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM vehicle_badges`))
   const unknown = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM vehicle_badges WHERE plate_number LIKE 'UNKNOWN_%'`))
   const nullDates = await db.execute(sql.raw(`SELECT COUNT(*) as cnt FROM vehicle_badges WHERE issue_date IS NULL AND expiry_date IS NULL`))

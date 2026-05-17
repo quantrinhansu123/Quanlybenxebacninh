@@ -60,9 +60,14 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           vehicleId: vehicleBadges.vehicleId,
           routeId: vehicleBadges.routeId,
           routeCode: vehicleBadges.routeCode,
-          routeName: vehicleBadges.routeName,
           tuyenBusCode: vehicleBadges.tuyenBusCode,
-          metadata: vehicleBadges.metadata,
+          refGpkd: vehicleBadges.refGpkd,
+          refThongBao: vehicleBadges.refThongBao,
+          refDonViCapPhuHieu: vehicleBadges.refDonViCapPhuHieu,
+          loaiCap: vehicleBadges.loaiCap,
+          lyDoCapLai: vehicleBadges.lyDoCapLai,
+          soPhuHieuCu: vehicleBadges.soPhuHieuCu,
+          maHoSo: vehicleBadges.maHoSo,
         }).from(vehicleBadges),
         db.select({
           id: vehiclesTable.id,
@@ -102,6 +107,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           distanceKm: routesTable.distanceKm,
           routeType: routesTable.routeType,
           itinerary: routesTable.itinerary,
+          firebaseId: routesTable.firebaseId,
         }).from(routesTable),
         db.select({
           id: vehicleTypesTable.id,
@@ -139,23 +145,21 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
 
       // Build route lookup by routeCode AND routeName (badges use routeName as ref)
       const routeItineraryByCode = new Map<string, string>()
-      const routeItineraryByName = new Map<string, string>()
-
-      // Helper to normalize route names for consistent matching
-      const normalizeRouteName = (name: string): string => {
-        return (name || '').trim().toUpperCase()
-      }
+      const routeDisplayByCode = new Map<string, string>()
 
       for (const route of routeData) {
         const r = route as any
-        if (r.itinerary) {
-          if (r.routeCode) routeItineraryByCode.set(r.routeCode, r.itinerary)
-          if (r.routeCodeOld) routeItineraryByCode.set(r.routeCodeOld, r.itinerary)
-          // Build route name from departure-arrival stations with normalization
-          const routeName = r.departureStation && r.arrivalStation
-            ? normalizeRouteName(`${r.departureStation} - ${r.arrivalStation}`)
-            : ''
-          if (routeName) routeItineraryByName.set(routeName, r.itinerary)
+        const displayName =
+          r.departureStation && r.arrivalStation
+            ? `${r.departureStation} - ${r.arrivalStation}`
+            : r.routeCode || ''
+        if (r.routeCode) {
+          if (r.itinerary) routeItineraryByCode.set(r.routeCode, r.itinerary)
+          routeDisplayByCode.set(r.routeCode, displayName)
+        }
+        if (r.routeCodeOld) {
+          if (r.itinerary) routeItineraryByCode.set(r.routeCodeOld, r.itinerary)
+          routeDisplayByCode.set(r.routeCodeOld, displayName)
         }
       }
 
@@ -223,46 +227,33 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           operatorIdsWithBadges.add(operatorId)
         }
 
-        // Extract metadata
-        const metadata = (b.metadata as any) || {}
-
-        // Match itinerary: Try routeCode first, fallback to matching by routeName
         const routeId = b.routeId || ''
         const routeCode = b.routeCode || ''
-        const routeName = normalizeRouteName(b.routeName || '')
-
-        let itinerary = ''
-        let matchedBy = 'NONE'
-        if (routeCode && routeItineraryByCode.has(routeCode)) {
-          itinerary = routeItineraryByCode.get(routeCode)!
-          matchedBy = 'CODE'
-        } else if (routeName && routeItineraryByName.has(routeName)) {
-          itinerary = routeItineraryByName.get(routeName)!
-          matchedBy = 'NAME'
-        }
-
-        // Debug first badge AND specific badge from screenshot
-        if (badges.length === 0 || b.badgeNumber === 'CD2425000093') {
-          console.log(`[QuanLyData] Badge matching: badgeNumber=${b.badgeNumber}, routeCode='${routeCode}', routeName='${routeName}' (normalized), rawRouteName='${b.routeName || ''}', matchedBy=${matchedBy}, itinerary=${itinerary ? 'YES' : 'NO'}`)
-        }
+        const itinerary = routeCode && routeItineraryByCode.has(routeCode)
+          ? routeItineraryByCode.get(routeCode)!
+          : ''
 
         badges.push({
           id: b.id,
           badge_number: b.badgeNumber || '',
           license_plate_sheet: plateNumber,
           badge_type: badgeType,
-          badge_color: metadata.badge_color || '',
+          badge_color: '',
           issue_date: b.issueDate || '',
           expiry_date: b.expiryDate || '',
           status: b.status || '',
-          file_code: metadata.file_number || '',
-          issue_type: metadata.issue_type || '',
-          issuing_authority_ref: operatorId,
+          file_code: b.maHoSo || '',
+          issue_type: b.loaiCap || '',
+          issuing_authority_ref: b.refDonViCapPhuHieu || operatorId,
+          business_license_ref: b.refGpkd || '',
           route_id: routeId,
-          route_code: b.routeCode || '',
-          route_name: b.routeName || '',
+          route_code: routeCode,
+          route_name: routeDisplayByCode.get(routeCode) || '',
           tuyen_bus_code: b.tuyenBusCode || '',
-          itinerary: itinerary,
+          ref_thong_bao: b.refThongBao || '',
+          ly_do_cap_lai: b.lyDoCapLai || '',
+          so_phu_hieu_cu: b.soPhuHieuCu || '',
+          itinerary,
           vehicle_type: '',
         })
       }
@@ -380,6 +371,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           distance: r.distanceKm || '',
           routeType: r.routeType || '',
           itinerary: r.itinerary || '',
+          firebaseId: r.firebaseId || '',
         })
       }
       
@@ -399,11 +391,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
       console.log(`[QuanLyData] Loaded ${badges.length} badges, ${vehicles.length} vehicles, ${operators.length} operators, ${routes.length} routes in ${loadTime}ms (source: Drizzle ORM)`)
       console.log(`[QuanLyData] Debug: ${allowedPlates.size} allowed plates from badges, ${vehicleData.length} total vehicles in database, filter=all-vehicles`)
       console.log(`[QuanLyData] Debug: vehiclesByPlate unique plates = ${vehiclesByPlate.size}, final vehicles array = ${vehicles.length}`)
-      console.log(`[QuanLyData] Route itinerary maps: ${routeItineraryByCode.size} by code, ${routeItineraryByName.size} by name`)
-
-      // Log first 5 route names for debugging
-      const sampleRouteNames = Array.from(routeItineraryByName.keys()).slice(0, 5)
-      console.log(`[QuanLyData] Sample route names: ${sampleRouteNames.join(', ')}`)
+      console.log(`[QuanLyData] Route itinerary map: ${routeItineraryByCode.size} by code`)
 
       // Log first 5 plates for debugging
       const samplePlates = Array.from(allowedPlates).slice(0, 5)
@@ -472,7 +460,8 @@ export const getQuanLyData = async (req: Request, res: Response) => {
         .where(eq(users.id, authReq.user.id))
         .limit(1)
 
-      if (user && user.benPhuTrach) {
+      const skipStationFilter = user?.role === 'admin'
+      if (user && user.benPhuTrach && !skipStationFilter) {
         const [location] = await db
           .select({
             name: locations.name,
@@ -501,7 +490,7 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     if (includes.includes('badges')) {
       let filteredBadges = data.badges
       if (stationCode || stationName) {
-        // ===== 1) Buýt: build allowed id_tuyen via danh_muc_tuyen_bus (matched by ma_ben/diem_dau) =====
+        // ===== 1) Buýt: id_tuyen từ danh_muc_tuyen_bus hoặc fallback routes.firebase_id =====
         const allowedBusRouteIds = new Set<string>()
         if (stationCode) {
           try {
@@ -515,6 +504,21 @@ export const getQuanLyData = async (req: Request, res: Response) => {
             }
           } catch (error) {
             console.error('[QuanLyData] Failed to load Buýt route ids via danh_muc_tuyen_bus:', error)
+          }
+        }
+        if (allowedBusRouteIds.size === 0 && stationName) {
+          const stationLower = stationName.trim().toLowerCase()
+          for (const r of data.routes) {
+            const route = r as { routeType?: string; startPoint?: string; firebaseId?: string }
+            const rt = (route.routeType || '').toLowerCase()
+            const isBus =
+              rt === 'bus' || rt.includes('buýt') || rt.includes('buyt') || rt.includes('xe buýt')
+            if (!isBus) continue
+            const startPoint = (route.startPoint || '').trim().toLowerCase()
+            if (startPoint === stationLower) {
+              const fid = (route.firebaseId || '').trim()
+              if (fid) allowedBusRouteIds.add(fid)
+            }
           }
         }
 
@@ -536,7 +540,7 @@ export const getQuanLyData = async (req: Request, res: Response) => {
         filteredBadges = data.badges.filter(b => {
           // "Buýt" badges: chỉ hiển thị nếu tuyen_bus_code thuộc danh sách id_tuyen của bến
           if (b.badge_type === 'Buýt') {
-            if (!stationCode || allowedBusRouteIds.size === 0) return false
+            if (allowedBusRouteIds.size === 0) return false
             const id = (b.tuyen_bus_code || '').trim()
             return !!id && allowedBusRouteIds.has(id)
           }

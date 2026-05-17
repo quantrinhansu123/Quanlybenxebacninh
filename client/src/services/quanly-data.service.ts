@@ -15,6 +15,8 @@ export interface QuanLyBadge {
   route_id: string
   route_code: string
   route_name: string
+  tuyen_bus_code?: string
+  route_ref?: string
   itinerary: string
   vehicle_type: string
 }

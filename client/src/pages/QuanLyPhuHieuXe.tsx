@@ -31,8 +31,6 @@ import { useUIStore } from "@/store/ui.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { DatePicker } from "@/components/DatePicker"
 import BadgeDetailDialog from "./badge-detail-dialog"
-import { useAuthStore } from "@/store/auth.store"
-
 // Helper function to convert Date to ISO string (YYYY-MM-DD)
 const formatDateToISO = (date: Date | null): string => {
   if (!date) return ""
@@ -78,7 +76,7 @@ export default function QuanLyPhuHieuXe() {
   const [badges, setBadges] = useState<VehicleBadge[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("")
-  const [filterBadgeType, setFilterBadgeType] = useState("Buýt")
+  const [filterBadgeType, setFilterBadgeType] = useState("")
   /** Nguồn dữ liệu: appsheet = PHUHIEUXE GTVT, backend = Database */
   
 
@@ -94,9 +92,6 @@ export default function QuanLyPhuHieuXe() {
   const [importData, setImportData] = useState<CreateVehicleBadgeInput[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Current User for Role-Based Filtering
-  const currentUser = useAuthStore((state) => state.user)
 
   // Form state with Date objects for date fields
   const [formData, setFormData] = useState<Omit<CreateVehicleBadgeInput, 'issue_date' | 'expiry_date'> & {
@@ -152,8 +147,11 @@ export default function QuanLyPhuHieuXe() {
     (badge: VehicleBadge) => {
       const ref = (badge.issuing_authority_ref || "").trim()
       if (!ref) return ""
+      const refLower = ref.toLowerCase()
       const op = operatorOptions.find(
-        (o) => o.id.toLowerCase() === ref.toLowerCase()
+        (o) =>
+          o.id.toLowerCase() === refLower ||
+          (o.code || "").trim().toLowerCase() === refLower
       )
       return (op?.name || "").trim()
     },
@@ -272,7 +270,8 @@ export default function QuanLyPhuHieuXe() {
 
   useEffect(() => {
     setTitle("Quản lý phù hiệu xe")
-    loadBadges()
+    quanlyDataService.clearCache()
+    loadBadges(true)
 
     // Load route IDs (id_tuyen) that current user has via locations endpoint
     ;(async () => {
@@ -320,6 +319,8 @@ export default function QuanLyPhuHieuXe() {
         itinerary: b.itinerary || '',
         // Store route_code for enrichment map matching
         route_code: b.route_code || '',
+        tuyen_bus_code: (b as { tuyen_bus_code?: string }).tuyen_bus_code || '',
+        route_ref: (b as { route_ref?: string }).route_ref || b.route_code || '',
       } as VehicleBadge))
       setBadges(badgeData)
     } catch (error) {
@@ -366,10 +367,10 @@ export default function QuanLyPhuHieuXe() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       const matchesSearch =
-        badge.badge_number.toLowerCase().includes(query) ||
-        badge.license_plate_sheet.toLowerCase().includes(query) ||
+        (badge.badge_number || "").toLowerCase().includes(query) ||
+        (badge.license_plate_sheet || "").toLowerCase().includes(query) ||
         resolveOperatorDisplayName(badge).toLowerCase().includes(query) ||
-        badge.file_code.toLowerCase().includes(query) ||
+        (badge.file_code || "").toLowerCase().includes(query) ||
         (badge.vehicle_id && badge.vehicle_id.toLowerCase().includes(query)) ||
         (badge.route_code && badge.route_code.toLowerCase().includes(query)) ||
         ((badge as any).tuyen_bus_code && (badge as any).tuyen_bus_code.toLowerCase().includes(query))
@@ -393,22 +394,9 @@ export default function QuanLyPhuHieuXe() {
       const routeRef = ((badge as any).route_ref || '').trim()
       if (!routeCode && !routeRef) return false
 
-      // Hide expired badges (Hết hiệu lực)
-      if (getStatusVariant(badge.status) === "inactive") {
+      // Hết hiệu lực: chỉ ẩn khi user chọn lọc trạng thái khác (backend đã lọc theo bến)
+      if (!filterStatus && getStatusVariant(badge.status) === "inactive") {
         return false
-      }
-
-      // Role-based Location filter - ONLY for "Tuyến cố định", NOT for "Buýt"
-      // Lookup: thử route_code trước, không có thì dùng route_ref (Ref_Tuyen)
-      if (badge.badge_type === "Tuyến cố định" && currentUser && currentUser.benPhuTrachName) {
-        const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
-        const rc = routeCode.toUpperCase()
-        const rr = routeRef.toUpperCase()
-        let stationEntry = rc ? routeStationMap.get(rc) : undefined
-        if (!stationEntry && rr) stationEntry = routeStationMap.get(rr)
-        const dep = (stationEntry?.startPoint || '').trim().toLowerCase()
-        if (!dep) return false
-        if (dep !== userLoc) return false
       }
     }
 
@@ -748,9 +736,13 @@ export default function QuanLyPhuHieuXe() {
     link.setAttribute("href", url)
     link.setAttribute("download", `phu-hieu-xe-${new Date().toISOString().split("T")[0]}.csv`)
     link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      document.body.appendChild(link)
+      link.click()
+    } finally {
+      link.remove()
+      URL.revokeObjectURL(url)
+    }
 
     toast.success("Xuất dữ liệu thành công")
   }
@@ -988,8 +980,8 @@ export default function QuanLyPhuHieuXe() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedBadges.map((badge) => (
-                  <TableRow key={badge.id}>
+                paginatedBadges.map((badge, index) => (
+                  <TableRow key={badge.id || `${badge.badge_number}-${badge.license_plate_sheet}-${index}`}>
                     <TableCell className="font-medium text-center text-base w-[120px]">
                       {badge.badge_number}
                     </TableCell>

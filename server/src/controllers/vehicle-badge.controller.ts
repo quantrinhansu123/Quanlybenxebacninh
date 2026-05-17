@@ -57,42 +57,39 @@ const mapFirebaseDataToBadge = (data: any, activePlates?: Set<string>) => {
   const vehicleRef = data.plateNumber || data.plate_number || data.BienSoXe || data.vehicle_id || ''
   const vehicleId = data.vehicleId || data.vehicle_id || ''
 
-  // Extract metadata fields (stored in JSONB)
-  const metadata = (data.metadata as any) || {}
-
   return {
     id: data.id || data.ID_PhuHieu || '',
     badge_number: data.badgeNumber || data.badge_number || data.SoPhuHieu || '',
     license_plate_sheet: data.plateNumber || data.plate_number || vehicleRef,
     badge_type: data.badgeType || data.badge_type || data.LoaiPH || '',
-    badge_color: metadata.badgeColor || metadata.badge_color || data.badge_color || data.MauPhuHieu || '',
+    badge_color: data.badge_color || data.MauPhuHieu || '',
     issue_date: data.issueDate || data.issue_date || data.NgayCap || '',
     expiry_date: data.expiryDate || data.expiry_date || data.NgayHetHan || '',
     status: status,
-    file_code: metadata.fileCode || metadata.file_number || data.file_code || data.MaHoSo || '',
-    issue_type: metadata.issueType || metadata.issue_type || data.issue_type || data.LoaiCap || '',
-    business_license_ref: metadata.business_license_ref || data.business_license_ref || data.Ref_GPKD || '',
-    issuing_authority_ref: metadata.issuing_authority_ref || data.operatorId || data.operator_id || data.Ref_DonViCapPhuHieu || '',
+    file_code: data.maHoSo || data.MaHoSo || data.file_code || '',
+    issue_type: data.loaiCap || data.LoaiCap || data.issue_type || '',
+    business_license_ref: data.refGpkd || data.Ref_GPKD || data.business_license_ref || '',
+    issuing_authority_ref: data.refDonViCapPhuHieu || data.Ref_DonViCapPhuHieu || data.operatorId || data.operator_id || '',
     vehicle_id: vehicleId,
-    route_id: metadata.route_ref || data.routeId || data.route_id || data.Ref_Tuyen || '',
+    route_id: data.routeId || data.route_id || data.Ref_Tuyen || '',
     bus_route_ref: data.routeCode || data.bus_route_ref || data.TuyenDuong || '',
     route_code: data.routeCode || data.route_code || '',
-    route_name: data.routeName || data.route_name || '',
+    route_name: data.route_name || '',
     itinerary: data.itinerary || '',
-    vehicle_type: metadata.vehicleType || metadata.vehicle_type || data.vehicle_type || data.LoaiXe || '',
-    notes: metadata.notes || data.notes || data.GhiChu || '',
-    created_at: data.createdAt || data.created_at || data.synced_at || new Date().toISOString(),
+    vehicle_type: data.vehicle_type || data.LoaiXe || '',
+    notes: data.notes || data.GhiChu || '',
+    created_at: data.createdAt || data.created_at || new Date().toISOString(),
     created_by: data.created_by || data.User || '',
     email_notification_sent: data.email_notification_sent || data.GuiEmailbao || false,
-    notification_ref: data.notification_ref || data.Ref_ThongBao || '',
-    previous_badge_number: metadata.old_badge_number || data.previous_badge_number || data.SoPhuHieuCu || '',
+    notification_ref: data.refThongBao || data.Ref_ThongBao || data.notification_ref || '',
+    previous_badge_number: data.soPhuHieuCu || data.SoPhuHieuCu || data.previous_badge_number || '',
     renewal_due_date: data.renewal_due_date || data.Hancap || '',
-    renewal_reason: data.renewal_reason || data.LyDoCapLai || '',
+    renewal_reason: data.lyDoCapLai || data.LyDoCapLai || data.renewal_reason || '',
     renewal_reminder_shown: data.renewal_reminder_shown || data.CanCapLaiPopup || false,
-    replacement_vehicle_id: metadata.replacement_vehicle || metadata.vehicle_replaced || data.replacement_vehicle_id || data.XeThayThe || '',
-    revocation_date: metadata.revoke_date || data.revocation_date || data.NgayThuHoi || '',
-    revocation_decision: metadata.revoke_decision || data.revocation_decision || data.QDThuHoi || '',
-    revocation_reason: metadata.revoke_reason || data.revocation_reason || data.LyDoThuHoi || '',
+    replacement_vehicle_id: data.replacement_vehicle_id || data.XeThayThe || '',
+    revocation_date: data.revocation_date || data.NgayThuHoi || '',
+    revocation_decision: data.revocation_decision || data.QDThuHoi || '',
+    revocation_reason: data.revocation_reason || data.LyDoThuHoi || '',
     warn_duplicate_plate: data.warn_duplicate_plate || data.CanhBaoTrungBienSoKhiCapPH || false,
     // Compute operational_status based on active dispatch records
     operational_status: activePlates && vehicleRef
@@ -398,11 +395,13 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
       route_code: routeCodeFromBody,
       route_name: routeNameFromBody,
       operator_id: operatorIdFromBody,
-      badge_color,
-      file_code,
       issue_type,
-      vehicle_type,
-      notes,
+      file_code,
+      business_license_ref,
+      issuing_authority_ref,
+      notification_ref,
+      previous_badge_number,
+      renewal_reason,
     } = req.body
 
     // Validate required fields
@@ -424,7 +423,6 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
     // Resolve route: UUID (backend) | routeCode (fixed) | firebaseId (bus) | route_code/route_name from body
     let resolvedRouteId: string | null = null
     let resolvedRouteCode: string | null = null
-    let resolvedRouteName: string | null = null
     const rawRouteId = routeIdFromBody && typeof routeIdFromBody === 'string' ? routeIdFromBody.trim() : ''
     if (rawRouteId) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawRouteId)
@@ -468,16 +466,10 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
       if (routeRow) {
         resolvedRouteId = routeRow.id
         resolvedRouteCode = routeRow.routeCode || null
-        const dep = (routeRow.departureStation || '').trim()
-        const arr = (routeRow.arrivalStation || '').trim()
-        resolvedRouteName = dep && arr ? `${dep} - ${arr}` : dep || arr || null
       } else if (routeCodeFromBody || routeNameFromBody) {
         resolvedRouteCode = typeof routeCodeFromBody === 'string' && routeCodeFromBody.trim()
           ? routeCodeFromBody.trim().slice(0, 50)
           : rawRouteId.slice(0, 50) || null
-        resolvedRouteName = typeof routeNameFromBody === 'string' && routeNameFromBody.trim()
-          ? routeNameFromBody.trim().slice(0, 255)
-          : null
       }
     }
     if (!resolvedRouteId && !resolvedRouteCode && bus_route_ref) {
@@ -506,14 +498,6 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
       return
     }
 
-    // Build metadata object for fields not in schema
-    const metadata: any = {}
-    if (badge_color) metadata.badgeColor = badge_color
-    if (file_code) metadata.fileCode = file_code
-    if (issue_type) metadata.issueType = issue_type
-    if (vehicle_type) metadata.vehicleType = vehicle_type
-    if (notes) metadata.notes = notes
-
     // Resolve operator_id (optional FK): support both UUID and firebaseId (IDDoanhNghiep)
     let operatorId: string | null = null
     const rawOperatorId = operatorIdFromBody && typeof operatorIdFromBody === 'string' ? operatorIdFromBody.trim() : ''
@@ -531,7 +515,6 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
       }
     }
 
-    // Create new badge in Drizzle (route_id + route_code + route_name from dropdown; operator_id from dropdown)
     const [data] = await db
       .insert(vehicleBadges)
       .values({
@@ -543,10 +526,18 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
         status: status || 'active',
         routeId: resolvedRouteId,
         routeCode: resolvedRouteCode,
-        routeName: resolvedRouteName,
         operatorId: operatorId,
-        metadata: Object.keys(metadata).length > 0 ? metadata : null,
-        source: 'manual',
+        refGpkd: business_license_ref ? String(business_license_ref).trim() : null,
+        refThongBao: notification_ref ? String(notification_ref).trim() : null,
+        refDonViCapPhuHieu: issuing_authority_ref
+          ? String(issuing_authority_ref).trim()
+          : rawOperatorId && !/^[0-9a-f-]{36}$/i.test(rawOperatorId)
+            ? rawOperatorId
+            : null,
+        loaiCap: issue_type ? String(issue_type).trim() : null,
+        lyDoCapLai: renewal_reason ? String(renewal_reason).trim() : null,
+        soPhuHieuCu: previous_badge_number ? String(previous_badge_number).trim() : null,
+        maHoSo: file_code ? String(file_code).trim() : null,
       })
       .returning()
 
@@ -565,7 +556,9 @@ export const createVehicleBadge = async (req: Request, res: Response): Promise<v
           plateNumber: data.plateNumber,
           issueDate: data.issueDate,
           expiryDate: data.expiryDate,
-          metadata: data.metadata,
+          refGpkd: data.refGpkd,
+          refThongBao: data.refThongBao,
+          refDonViCapPhuHieu: data.refDonViCapPhuHieu,
         },
       })
       console.log('[CREATE BADGE] Audit log created')
@@ -608,11 +601,13 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
       bus_route_ref,
       route_id: routeIdFromBody,
       operator_id: operatorIdFromBody,
-      badge_color,
-      file_code,
       issue_type,
-      vehicle_type,
-      notes,
+      file_code,
+      business_license_ref,
+      issuing_authority_ref,
+      notification_ref,
+      previous_badge_number,
+      renewal_reason,
     } = req.body
 
     // Resolve operator_id: support both UUID and firebaseId (IDDoanhNghiep) — same as create
@@ -639,14 +634,11 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
     // Resolve route when route_id provided (same as create)
     let resolvedRouteId: string | null | undefined = undefined
     let resolvedRouteCode: string | null | undefined = undefined
-    let resolvedRouteName: string | null | undefined = undefined
     if (routeIdFromBody && typeof routeIdFromBody === 'string' && routeIdFromBody.trim()) {
       const [routeRow] = await db
         .select({
           id: routes.id,
           routeCode: routes.routeCode,
-          departureStation: routes.departureStation,
-          arrivalStation: routes.arrivalStation,
         })
         .from(routes)
         .where(eq(routes.id, routeIdFromBody.trim()))
@@ -654,9 +646,6 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
       if (routeRow) {
         resolvedRouteId = routeRow.id
         resolvedRouteCode = routeRow.routeCode || null
-        const dep = (routeRow.departureStation || '').trim()
-        const arr = (routeRow.arrivalStation || '').trim()
-        resolvedRouteName = dep && arr ? `${dep} - ${arr}` : dep || arr || null
       }
     } else if (bus_route_ref !== undefined) {
       const raw = String(bus_route_ref).trim()
@@ -682,7 +671,6 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
       }
     }
 
-    // Get current badge to preserve existing metadata
     const [currentBadge] = await db
       .select()
       .from(vehicleBadges)
@@ -694,17 +682,7 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
       return
     }
 
-    // Build metadata object for fields not in schema
-    const currentMetadata = (currentBadge.metadata as any) || {}
-    const metadata: any = { ...currentMetadata }
-    if (badge_color !== undefined) metadata.badgeColor = badge_color
-    if (file_code !== undefined) metadata.fileCode = file_code
-    if (issue_type !== undefined) metadata.issueType = issue_type
-    if (vehicle_type !== undefined) metadata.vehicleType = vehicle_type
-    if (notes !== undefined) metadata.notes = notes
-
-    // Build update data
-    const updateData: any = {}
+    const updateData: Record<string, unknown> = {}
     if (badge_number !== undefined) updateData.badgeNumber = badge_number
     if (license_plate_sheet !== undefined) updateData.plateNumber = license_plate_sheet
     if (badge_type !== undefined) updateData.badgeType = badge_type
@@ -713,9 +691,14 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
     if (status !== undefined) updateData.status = status
     if (resolvedRouteId !== undefined) updateData.routeId = resolvedRouteId
     if (resolvedRouteCode !== undefined) updateData.routeCode = resolvedRouteCode
-    if (resolvedRouteName !== undefined) updateData.routeName = resolvedRouteName
     if (operatorId !== undefined) updateData.operatorId = operatorId || null
-    if (Object.keys(metadata).length > 0) updateData.metadata = metadata
+    if (business_license_ref !== undefined) updateData.refGpkd = business_license_ref || null
+    if (notification_ref !== undefined) updateData.refThongBao = notification_ref || null
+    if (issuing_authority_ref !== undefined) updateData.refDonViCapPhuHieu = issuing_authority_ref || null
+    if (issue_type !== undefined) updateData.loaiCap = issue_type || null
+    if (renewal_reason !== undefined) updateData.lyDoCapLai = renewal_reason || null
+    if (previous_badge_number !== undefined) updateData.soPhuHieuCu = previous_badge_number || null
+    if (file_code !== undefined) updateData.maHoSo = file_code ? String(file_code).trim() : null
 
     // Always update timestamp
     updateData.updatedAt = new Date()
@@ -750,14 +733,12 @@ export const updateVehicleBadge = async (req: Request, res: Response): Promise<v
           plateNumber: currentBadge.plateNumber,
           issueDate: currentBadge.issueDate,
           expiryDate: currentBadge.expiryDate,
-          metadata: currentBadge.metadata,
         },
         newValues: {
           badgeNumber: data.badgeNumber,
           plateNumber: data.plateNumber,
           issueDate: data.issueDate,
           expiryDate: data.expiryDate,
-          metadata: data.metadata,
         },
       })
       console.log('[UPDATE BADGE] Audit log created')
@@ -817,7 +798,6 @@ export const deleteVehicleBadge = async (req: Request, res: Response): Promise<v
             plateNumber: currentBadge.plateNumber,
             issueDate: currentBadge.issueDate,
             expiryDate: currentBadge.expiryDate,
-            metadata: currentBadge.metadata,
           },
           newValues: null,
         })

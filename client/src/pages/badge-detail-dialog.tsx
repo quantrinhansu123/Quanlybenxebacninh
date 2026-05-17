@@ -44,6 +44,7 @@ import {
 import { StatusBadge } from "@/components/layout/StatusBadge"
 import { type VehicleBadge } from "@/services/vehicle-badge.service"
 import { isOpenableDocumentUrl, normalizePdfHref } from "@/utils/pdf-href"
+import { getPortalRoot } from "@/lib/portal-root"
 
 // Local type for schedule diagram rows (previously from AppSheet, now empty)
 type NormalizedAppSheetSchedule = {
@@ -467,30 +468,7 @@ function BadgeDiagramTabContent({
   schedulePollLoading: boolean
   scheduleError: string | null
 }) {
-  const sourceLabel =
-    badge.badge_type === "Buýt"
-      ? "GIOCHAY_BUYT (+ BIEUDOCHAY_BUYT), AppSheet"
-      : "BieuDoChayXeChiTiet (+ THONGBAO_KHAITHAC), AppSheet"
-
-  if (!canMatchScheduleDiagram(badge)) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Phù hiệu chưa có mã tuyến
-        {badge.badge_type === "Buýt" ? " (tuyến buýt)" : " (mã / ref tuyến cố định)"} để lọc biểu đồ chạy.
-      </p>
-    )
-  }
-
-  if (scheduleError) {
-    return (
-      <p className="text-sm text-destructive">
-        Không tải được lịch AppSheet: {scheduleError}
-      </p>
-    )
-  }
-
-  const showLoading = rows.length === 0 && schedulePollLoading
-
+  // Hooks must run before any conditional return (Rules of Hooks)
   const [pdfPanel, setPdfPanel] = useState<{
     url: string
     noticeNumber: string
@@ -545,6 +523,30 @@ function BadgeDiagramTabContent({
     pdfPanelClosingRef.current = false
     setPdfPanel(null)
   }, [])
+
+  const sourceLabel =
+    badge.badge_type === "Buýt"
+      ? "GIOCHAY_BUYT (+ BIEUDOCHAY_BUYT), AppSheet"
+      : "BieuDoChayXeChiTiet (+ THONGBAO_KHAITHAC), AppSheet"
+
+  if (!canMatchScheduleDiagram(badge)) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Phù hiệu chưa có mã tuyến
+        {badge.badge_type === "Buýt" ? " (tuyến buýt)" : " (mã / ref tuyến cố định)"} để lọc biểu đồ chạy.
+      </p>
+    )
+  }
+
+  if (scheduleError) {
+    return (
+      <p className="text-sm text-destructive">
+        Không tải được lịch AppSheet: {scheduleError}
+      </p>
+    )
+  }
+
+  const showLoading = rows.length === 0 && schedulePollLoading
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -671,7 +673,7 @@ function BadgeDiagramTabContent({
               </div>
             </div>
           </>,
-          document.body,
+          getPortalRoot(),
         )}
     </div>
   )
