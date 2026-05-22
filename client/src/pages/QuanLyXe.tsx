@@ -116,12 +116,24 @@ export default function QuanLyXe() {
   const vehicles = useMemo((): Vehicle[] => {
     if (!quanlyData) return []
     const routeLocMap = new Map<string, { start: string, end: string }>()
+    const busRouteStartByFirebaseId = new Map<string, string>()
+    const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
     if (quanlyData.routes) {
       for (const r of quanlyData.routes) {
-        routeLocMap.set(r.code, {
-          start: (r.startPoint || '').trim().toLowerCase(),
-          end: (r.endPoint || '').trim().toLowerCase()
-        })
+        const code = (r.code || "").trim()
+        if (code) {
+          routeLocMap.set(code, {
+            start: (r.startPoint || "").trim().toLowerCase(),
+            end: (r.endPoint || "").trim().toLowerCase(),
+          })
+        }
+        const fid = ((r as { firebaseId?: string }).firebaseId || "").trim()
+        const rt = ((r as { routeType?: string }).routeType || "").toLowerCase()
+        const isBus =
+          rt === "bus" || rt.includes("buýt") || rt.includes("buyt") || rt.includes("xe buýt")
+        if (fid && isBus) {
+          busRouteStartByFirebaseId.set(fid, (r.startPoint || "").trim().toLowerCase())
+        }
       }
     }
 
@@ -130,13 +142,18 @@ export default function QuanLyXe() {
 
     if (quanlyData.badges) {
       for (const b of quanlyData.badges) {
+        if (!allowedBadgeTypes.includes(b.badge_type || "")) continue
         const plate = b.license_plate_sheet?.trim().toUpperCase()
         if (!plate) continue
 
         if (userLoc) {
-          const rData = routeLocMap.get(b.route_code) || { start: '', end: '' }
-          if (rData.start === userLoc) {
-            validPlates.add(plate)
+          if (b.badge_type === "Buýt") {
+            const tid = (b.tuyen_bus_code || "").trim()
+            const start = tid ? busRouteStartByFirebaseId.get(tid) : undefined
+            if (start === userLoc) validPlates.add(plate)
+          } else if (b.badge_type === "Tuyến cố định") {
+            const rData = routeLocMap.get(b.route_code) || { start: "", end: "" }
+            if (rData.start === userLoc) validPlates.add(plate)
           }
         } else {
           validPlates.add(plate)

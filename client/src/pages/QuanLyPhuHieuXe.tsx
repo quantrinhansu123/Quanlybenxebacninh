@@ -28,6 +28,7 @@ import { vehicleBadgeService, type VehicleBadge, type CreateVehicleBadgeInput } 
 import { quanlyDataService } from "@/services/quanly-data.service"
 import { locationService } from "@/services/location.service"
 import { useUIStore } from "@/store/ui.store"
+import { useAuthStore } from "@/store/auth.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { DatePicker } from "@/components/DatePicker"
 import BadgeDetailDialog from "./badge-detail-dialog"
@@ -119,6 +120,7 @@ export default function QuanLyPhuHieuXe() {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 50
   const setTitle = useUIStore((state) => state.setTitle)
+  const currentUser = useAuthStore((state) => state.user)
   const [userRouteIds, setUserRouteIds] = useState<string[]>([])
   // Gõ để lọc: Tên đơn vị
   const [operatorDropdownOpen, setOperatorDropdownOpen] = useState(false)
@@ -394,9 +396,20 @@ export default function QuanLyPhuHieuXe() {
       const routeRef = ((badge as any).route_ref || '').trim()
       if (!routeCode && !routeRef) return false
 
-      // Hết hiệu lực: chỉ ẩn khi user chọn lọc trạng thái khác (backend đã lọc theo bến)
+      // Hết hiệu lực (ẩn mặc định)
       if (!filterStatus && getStatusVariant(badge.status) === "inactive") {
         return false
+      }
+
+      // Tuyến cố định: bến phụ trách = điểm đầu tuyến (khớp backend + routeStationMap)
+      if (badge.badge_type === "Tuyến cố định" && currentUser?.benPhuTrachName) {
+        const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
+        const rc = routeCode.toUpperCase()
+        const rr = routeRef.toUpperCase()
+        let stationEntry = rc ? routeStationMap.get(rc) : undefined
+        if (!stationEntry && rr) stationEntry = routeStationMap.get(rr)
+        const dep = (stationEntry?.startPoint || "").trim().toLowerCase()
+        if (!dep || dep !== userLoc) return false
       }
     }
 

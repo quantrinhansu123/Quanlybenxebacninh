@@ -67,6 +67,7 @@ export function useOperatorManagement() {
   const loadOperators = async (forceRefresh = false) => {
     setIsLoading(true);
     try {
+      // Chỉ đơn vị có ≥1 phù hiệu Buýt hoặc Tuyến cố định (backend pre-filter qua vehicle_badges)
       const data = await quanlyDataService.getAll(["operators"], forceRefresh);
       setOperators((data.operators || []) as OperatorWithSource[]);
     } catch (error) {

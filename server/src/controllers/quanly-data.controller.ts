@@ -84,6 +84,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         }).from(vehiclesTable),
         db.select({
           id: operatorsTable.id,
+          firebaseId: operatorsTable.firebaseId,
           code: operatorsTable.code,
           name: operatorsTable.name,
           province: operatorsTable.province,
@@ -125,13 +126,26 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         }
       }
 
-      // Build operator name lookup (Drizzle data is array)
+      // Operator lookup: uuid id + firebase_id (vehicle_badges.operator_id lưu text → khớp firebase_id)
       const operatorNameMap = new Map<string, string>()
+      const operatorUuidSet = new Set<string>()
+      const operatorUuidByFirebaseId = new Map<string, string>()
       for (const op of operatorData) {
         const o = op as any
         if (o.id) {
+          operatorUuidSet.add(o.id)
           operatorNameMap.set(o.id, o.name || '')
         }
+        const fid = (o.firebaseId || '').trim()
+        if (fid && o.id) {
+          operatorUuidByFirebaseId.set(fid, o.id)
+        }
+      }
+      const resolveOperatorUuid = (ref: string): string | null => {
+        const key = ref.trim()
+        if (!key) return null
+        if (operatorUuidSet.has(key)) return key
+        return operatorUuidByFirebaseId.get(key) ?? null
       }
 
       // Build vehicle type name lookup
@@ -166,8 +180,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
       // Filter badges by allowed types (Drizzle data is array)
       const allowedPlates = new Set<string>()
       const platesWithValidBadge = new Set<string>() // plates with ≥1 non-expired badge
-      const operatorIdsWithBadges = new Set<string>()
-      const operatorNamesWithBadges = new Set<string>() // fallback for badges without operator FK
+      const operatorIdsWithBadges = new Set<string>() // operators.id (uuid) từ badge Buýt / Tuyến cố định
       const vehicleOperatorMap = new Map<string, string>() // plate -> operator name
       const vehicleBadgeExpiryMap = new Map<string, string>() // plate -> badge expiry date
       const badges: any[] = []
@@ -193,15 +206,19 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           continue
         }
 
+        const opRef = (b.operatorId || b.refDonViCapPhuHieu || '').trim()
+        const resolvedOpId = resolveOperatorUuid(opRef)
+        if (resolvedOpId) {
+          operatorIdsWithBadges.add(resolvedOpId)
+        }
+
         if (plateNumber) {
           const normalizedPlate = normalizePlate(plateNumber)
           allowedPlates.add(normalizedPlate)
 
-          // Map vehicle plate to operator name
-          const operatorId = b.operatorId || ''
-          if (operatorId && operatorNameMap.has(operatorId)) {
-            vehicleOperatorMap.set(normalizedPlate, operatorNameMap.get(operatorId)!)
-            operatorNamesWithBadges.add(operatorNameMap.get(operatorId)!.trim().toUpperCase())
+          if (resolvedOpId) {
+            const opName = operatorNameMap.get(resolvedOpId)
+            if (opName) vehicleOperatorMap.set(normalizedPlate, opName)
           }
 
           // Map vehicle plate to badge expiry date (keep latest expiry)
@@ -221,12 +238,6 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           }
         }
 
-        // Track operator IDs
-        const operatorId = b.operatorId || ''
-        if (operatorId) {
-          operatorIdsWithBadges.add(operatorId)
-        }
-
         const routeId = b.routeId || ''
         const routeCode = b.routeCode || ''
         const itinerary = routeCode && routeItineraryByCode.has(routeCode)
@@ -244,7 +255,7 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           status: b.status || '',
           file_code: b.maHoSo || '',
           issue_type: b.loaiCap || '',
-          issuing_authority_ref: b.refDonViCapPhuHieu || operatorId,
+          issuing_authority_ref: b.refDonViCapPhuHieu || b.operatorId || '',
           business_license_ref: b.refGpkd || '',
           route_id: routeId,
           route_code: routeCode,
@@ -332,9 +343,8 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         const o = op as any
         const operatorId = o.id
 
-        // Only include operators that have ≥1 Buýt or Tuyến cố định badge
-        if (!operatorIdsWithBadges.has(operatorId) &&
-            !operatorNamesWithBadges.has((o.name || '').trim().toUpperCase())) continue
+        // Chỉ đơn vị có ≥1 phù hiệu Buýt/TCD: badge.operator_id (text) khớp operators.firebase_id
+        if (!operatorIdsWithBadges.has(operatorId)) continue
 
         operators.push({
           id: operatorId,

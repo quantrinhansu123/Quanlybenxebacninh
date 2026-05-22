@@ -3,10 +3,6 @@
  * Migrated from Firebase RTDB: vehicle_badges, datasheet/PHUHIEUXE
  */
 import { pgTable, uuid, varchar, boolean, timestamp, text, index } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
-import { vehicles } from './vehicles.js'
-import { operators } from './operators.js'
-import { routes } from './routes.js'
 
 export const vehicleBadges = pgTable('vehicle_badges', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -14,10 +10,10 @@ export const vehicleBadges = pgTable('vehicle_badges', {
   // Core fields
   badgeNumber: varchar('badge_number', { length: 50 }),
   plateNumber: varchar('plate_number', { length: 20 }).notNull(),
-  // Foreign keys (nullable - may reference legacy data)
-  vehicleId: uuid('vehicle_id').references(() => vehicles.id),
-  operatorId: uuid('operator_id').references(() => operators.id),
-  routeId: uuid('route_id').references(() => routes.id),
+  // Ref text (AppSheet / firebase_id / uuid string) — không FK DB sau migration 021
+  vehicleId: text('vehicle_id'),
+  operatorId: text('operator_id'),
+  routeId: text('route_id'),
   // Badge details
   badgeType: varchar('badge_type', { length: 50 }),
   routeCode: varchar('route_code', { length: 50 }),
@@ -49,21 +45,6 @@ export const vehicleBadges = pgTable('vehicle_badges', {
   expiryIdx: index('badges_expiry_idx').on(table.expiryDate),
   refDonViIdx: index('vb_ref_don_vi_cap_idx').on(table.refDonViCapPhuHieu),
   refThongBaoIdx: index('vb_ref_thong_bao_idx').on(table.refThongBao),
-}))
-
-export const vehicleBadgesRelations = relations(vehicleBadges, ({ one }) => ({
-  vehicle: one(vehicles, {
-    fields: [vehicleBadges.vehicleId],
-    references: [vehicles.id],
-  }),
-  operator: one(operators, {
-    fields: [vehicleBadges.operatorId],
-    references: [operators.id],
-  }),
-  route: one(routes, {
-    fields: [vehicleBadges.routeId],
-    references: [routes.id],
-  }),
 }))
 
 export type VehicleBadge = typeof vehicleBadges.$inferSelect
