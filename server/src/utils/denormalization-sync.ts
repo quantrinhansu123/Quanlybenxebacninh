@@ -9,8 +9,8 @@
  */
 
 import { db } from '../db/drizzle.js'
-import { dispatchRecords, vehicles } from '../db/schema/index.js'
-import { eq, inArray } from 'drizzle-orm'
+import { dispatchRecords, vehicles, vehicleBadges } from '../db/schema/index.js'
+import { eq, inArray, or } from 'drizzle-orm'
 
 /**
  * Sync vehicle changes to all dispatch records that reference this vehicle
@@ -190,10 +190,26 @@ export async function syncOperatorChanges(operatorId: string, changes: {
   try {
     if (!db) throw new Error('Database not initialized')
 
-    // Find all vehicles with this operator
-    const vehicleRecords = await db.select({ id: vehicles.id })
+    // vehicles.operator_id đã bỏ — tìm xe qua phù hiệu
+    const badgeRows = await db
+      .select({ plateNumber: vehicleBadges.plateNumber })
+      .from(vehicleBadges)
+      .where(
+        or(
+          eq(vehicleBadges.operatorId, operatorId),
+          eq(vehicleBadges.refDonViCapPhuHieu, operatorId),
+        ),
+      )
+
+    const plateList = [...new Set(badgeRows.map((b) => (b.plateNumber || '').trim()).filter(Boolean))]
+    if (plateList.length === 0) {
+      return { vehiclesUpdated: 0, dispatchUpdated: 0, failed: 0 }
+    }
+
+    const vehicleRecords = await db
+      .select({ id: vehicles.id })
       .from(vehicles)
-      .where(eq(vehicles.operatorId, operatorId))
+      .where(inArray(vehicles.firebaseId, plateList))
 
     if (vehicleRecords.length === 0) {
       return { vehiclesUpdated: 0, dispatchUpdated: 0, failed: 0 }

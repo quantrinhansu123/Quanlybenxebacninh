@@ -75,6 +75,10 @@ export const getAllDispatchRecords = async (req: AuthRequest, res: Response) => 
       allowedPlates = await getStationAllowedPlates(userId);
     }
 
+    // Chỉ lọc khi có ít nhất 1 biển — Set rỗng (sai mapping cũ) từng ẩn hết xe trong bến
+    const allowedPlateList =
+      allowedPlates && allowedPlates.size > 0 ? Array.from(allowedPlates) : undefined;
+
     const records = await dispatchRepository.findAllWithFilters({
       status: status as string,
       vehicleId: vehicleId as string,
@@ -83,7 +87,7 @@ export const getAllDispatchRecords = async (req: AuthRequest, res: Response) => 
       entryBy: entryBy as string,
       limit: Number.isFinite(limit) && limit > 0 ? limit : 50,
       offset: Number.isFinite(offset) && offset >= 0 ? offset : 0,
-      allowedPlates: allowedPlates ? Array.from(allowedPlates) : undefined,
+      allowedPlates: allowedPlateList,
     })
     res.setHeader('Cache-Control', 'private, no-cache')
     return res.json(mapDispatchListToAPI(records))

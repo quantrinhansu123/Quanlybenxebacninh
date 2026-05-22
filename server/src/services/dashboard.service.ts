@@ -6,8 +6,8 @@
  */
 
 import { db } from '../db/drizzle.js';
-import { dispatchRecords, vehicles, routes, drivers, vehicleBadges } from '../db/schema/index.js';
-import { desc, gte, lte, lt, or, and, isNotNull, sql, eq, inArray } from 'drizzle-orm';
+import { dispatchRecords, vehicles, routes, drivers, vehicleBadges, vehicleDocuments } from '../db/schema/index.js';
+import { desc, gte, lte, lt, and, isNotNull, sql, eq, inArray } from 'drizzle-orm';
 import type { DispatchRecord } from '../db/schema/dispatch-records.js';
 import type { Vehicle } from '../db/schema/vehicles.js';
 import type { Route } from '../db/schema/routes.js';
@@ -152,7 +152,7 @@ function normalizePlate(plate: string | null | undefined): string {
 }
 
 function getAllowedPlateList(allowedPlates: Set<string> | null): string[] | null {
-  if (allowedPlates === null) return null;
+  if (allowedPlates === null || allowedPlates.size === 0) return null;
   return Array.from(allowedPlates);
 }
 
@@ -300,12 +300,9 @@ export class DashboardService {
     const allowedPlateList = getAllowedPlateList(allowedPlates);
 
     const dispatchConditions: any[] = [gte(dispatchRecords.entryTime, weekAgoDate)];
-    const vehiclesConditions: any[] = [
-      or(
-        and(isNotNull(vehicles.registrationExpiry), lte(vehicles.registrationExpiry, thirtyDaysLaterStr)),
-        and(isNotNull(vehicles.insuranceExpiry), lte(vehicles.insuranceExpiry, thirtyDaysLaterStr)),
-        and(isNotNull(vehicles.roadWorthinessExpiry), lte(vehicles.roadWorthinessExpiry, thirtyDaysLaterStr))
-      )!
+    const documentConditions: any[] = [
+      isNotNull(vehicleDocuments.expiryDate),
+      lte(vehicleDocuments.expiryDate, thirtyDaysLaterStr),
     ];
     const badgesConditions: any[] = [
       and(isNotNull(vehicleBadges.expiryDate), lte(vehicleBadges.expiryDate, thirtyDaysLaterStr))
@@ -325,14 +322,14 @@ export class DashboardService {
         };
       }
       dispatchConditions.push(inArray(dispatchRecords.vehiclePlateNumber, allowedPlateList));
-      vehiclesConditions.push(inArray(vehicles.plateNumber, allowedPlateList));
+      documentConditions.push(inArray(vehicles.plateNumber, allowedPlateList));
       badgesConditions.push(inArray(vehicleBadges.plateNumber, allowedPlateList));
     }
 
     // Query tables in PARALLEL with FILTERS to reduce data transfer
     const [
       dispatchRecordsData,
-      vehiclesWithExpiryData,
+      vehicleDocsWithExpiryData,
       routesData,
       vehicleBadgesData,
       driversWithExpiryData,
@@ -341,14 +338,16 @@ export class DashboardService {
       db.select().from(dispatchRecords)
         .where(and(...dispatchConditions))
         .orderBy(desc(dispatchRecords.entryTime)),
-      // Only vehicles with expiry dates in warning range (and scoped plate list if available)
+      // Giấy tờ xe (vehicle_documents) — cột hạn trên vehicles đã bỏ (migration 023)
       db.select({
-        id: vehicles.id,
+        vehicleId: vehicles.id,
         plateNumber: vehicles.plateNumber,
-        registrationExpiry: vehicles.registrationExpiry,
-        insuranceExpiry: vehicles.insuranceExpiry,
-        roadWorthinessExpiry: vehicles.roadWorthinessExpiry,
-      }).from(vehicles).where(and(...vehiclesConditions)),
+        documentType: vehicleDocuments.documentType,
+        expiryDate: vehicleDocuments.expiryDate,
+      })
+        .from(vehicleDocuments)
+        .innerJoin(vehicles, eq(vehicleDocuments.vehicleId, vehicles.id))
+        .where(and(...documentConditions)),
       // Routes are small, load all
       db.select().from(routes),
       // Only badges with expiry dates in warning range (and scoped plate list if available)
@@ -369,16 +368,21 @@ export class DashboardService {
       ),
     ]);
 
-    // Convert to lookup maps
+    // Convert to lookup maps (minimal — for badge plate fallback)
     const vehiclesMap: Record<string, Vehicle> = {};
-    vehiclesWithExpiryData.forEach((v) => { vehiclesMap[v.id] = v as Vehicle; });
+    vehicleDocsWithExpiryData.forEach((v) => {
+      vehiclesMap[v.vehicleId] = {
+        id: v.vehicleId,
+        plateNumber: v.plateNumber,
+      } as Vehicle;
+    });
 
     const routesMap: Record<string, Route> = {};
     routesData.forEach((r) => { routesMap[r.id] = r; });
 
     // Filter by allowed plates if applicable (SQL already filtered; keep runtime check for safety)
     let filteredDispatch = dispatchRecordsData;
-    let filteredVehicles = vehiclesWithExpiryData;
+    let filteredVehicleDocs = vehicleDocsWithExpiryData;
     let filteredBadges = vehicleBadgesData;
 
     if (allowedPlates !== null) {
@@ -387,7 +391,7 @@ export class DashboardService {
         if (!raw) return false;
         return allowedPlates.has(raw) || allowedPlates.has(normalizePlate(raw));
       });
-      filteredVehicles = filteredVehicles.filter(v => {
+      filteredVehicleDocs = filteredVehicleDocs.filter(v => {
         const raw = (v.plateNumber || '').trim().toUpperCase();
         if (!raw) return false;
         return allowedPlates.has(raw) || allowedPlates.has(normalizePlate(raw));
@@ -402,23 +406,14 @@ export class DashboardService {
     // Flatten vehicle expiry documents
     const vehicleExpiryDocs: Array<{ vehicleId: string; plateNumber: string; documentType: string; expiryDate: string; badgeType?: string }> = [];
 
-    for (const vehicle of filteredVehicles) {
-      if (vehicle.roadWorthinessExpiry) {
-        vehicleExpiryDocs.push({
-          vehicleId: vehicle.id,
-          plateNumber: vehicle.plateNumber,
-          documentType: 'registration',
-          expiryDate: vehicle.roadWorthinessExpiry,
-        });
-      }
-      if (vehicle.insuranceExpiry) {
-        vehicleExpiryDocs.push({
-          vehicleId: vehicle.id,
-          plateNumber: vehicle.plateNumber,
-          documentType: 'insurance',
-          expiryDate: vehicle.insuranceExpiry,
-        });
-      }
+    for (const doc of filteredVehicleDocs) {
+      if (!doc.expiryDate) continue;
+      vehicleExpiryDocs.push({
+        vehicleId: doc.vehicleId,
+        plateNumber: doc.plateNumber,
+        documentType: doc.documentType,
+        expiryDate: String(doc.expiryDate),
+      });
     }
 
     // Add vehicle badges expiry dates
@@ -441,7 +436,7 @@ export class DashboardService {
       }
     }
 
-    console.log(`[Dashboard] Loaded filtered data in ${Date.now() - startTime}ms (${filteredDispatch.length} dispatch, ${filteredVehicles.length} vehicles, ${driversWithExpiryData.length} drivers)`);
+    console.log(`[Dashboard] Loaded filtered data in ${Date.now() - startTime}ms (${filteredDispatch.length} dispatch, ${filteredVehicleDocs.length} vehicle docs, ${driversWithExpiryData.length} drivers)`);
 
     return {
       dispatchRecords: filteredDispatch,
@@ -465,15 +460,12 @@ export class DashboardService {
       return 0;
     }
 
-    const vehicleConditions: any[] = [
-      or(
-        and(isNotNull(vehicles.registrationExpiry), lt(vehicles.registrationExpiry, todayStr)),
-        and(isNotNull(vehicles.insuranceExpiry), lt(vehicles.insuranceExpiry, todayStr)),
-        and(isNotNull(vehicles.roadWorthinessExpiry), lt(vehicles.roadWorthinessExpiry, todayStr))
-      )
+    const documentConditions: any[] = [
+      isNotNull(vehicleDocuments.expiryDate),
+      lt(vehicleDocuments.expiryDate, todayStr),
     ];
     if (allowedPlates !== null) {
-      vehicleConditions.push(inArray(vehicles.plateNumber, Array.from(allowedPlates)));
+      documentConditions.push(inArray(vehicles.plateNumber, Array.from(allowedPlates)));
     }
 
     const badgeConditions: any[] = [
@@ -483,21 +475,21 @@ export class DashboardService {
       badgeConditions.push(inArray(vehicleBadges.plateNumber, Array.from(allowedPlates)));
     }
 
-    // Run both counts in PARALLEL (was sequential - saved 1 DB round-trip)
-    const [vehicleCount, badgeCount] = await Promise.all([
+    const [documentCount, badgeCount] = await Promise.all([
       db.select({
         count: sql<number>`COUNT(*)::int`,
       })
-      .from(vehicles)
-      .where(and(...vehicleConditions)),
+        .from(vehicleDocuments)
+        .innerJoin(vehicles, eq(vehicleDocuments.vehicleId, vehicles.id))
+        .where(and(...documentConditions)),
       db.select({
         count: sql<number>`COUNT(*)::int`,
       })
-      .from(vehicleBadges)
-      .where(and(...badgeConditions)),
+        .from(vehicleBadges)
+        .where(and(...badgeConditions)),
     ]);
 
-    return (vehicleCount[0]?.count || 0) + (badgeCount[0]?.count || 0);
+    return (documentCount[0]?.count || 0) + (badgeCount[0]?.count || 0);
   }
 
   /**

@@ -127,9 +127,9 @@ class VehicleCacheService {
       // OPTIMIZED: Select only needed columns (reduces data transfer by 60-75%)
       const data = await db.select({
         id: vehicles.id,
+        firebaseId: vehicles.firebaseId,
         plateNumber: vehicles.plateNumber,
         seatCount: vehicles.seatCount,
-        operatorName: vehicles.operatorName,
         brand: vehicles.brand,
         model: vehicles.model,
         yearOfManufacture: vehicles.yearOfManufacture,
@@ -137,9 +137,6 @@ class VehicleCacheService {
         chassisNumber: vehicles.chassisNumber,
         engineNumber: vehicles.engineNumber,
         isActive: vehicles.isActive,
-        metadata: vehicles.metadata,
-        roadWorthinessExpiry: vehicles.roadWorthinessExpiry,
-        insuranceExpiry: vehicles.insuranceExpiry,
       }).from(vehicles);
 
       const vehicleList: LegacyVehicleData[] = [];
@@ -152,8 +149,8 @@ class VehicleCacheService {
         const plateNumber = x.plateNumber || '';
         if (!plateNumber) continue;
 
-        const operatorName = (x.operatorName || '').trim().toLowerCase();
-        const vehicleCategory = (x.metadata as any)?.vehicle_category || '';
+        const operatorName = '';
+        const vehicleCategory = '';
         const seatCount = x.seatCount || 0;
         // If vehicle category contains "giường nằm", seatCount is actually bedCount
         const hasBeds = isBedVehicle(vehicleCategory);
@@ -161,8 +158,8 @@ class VehicleCacheService {
         vehicleList.push({
           id: `legacy_${x.id}`,
           plateNumber,
-          vehicleType: { id: null, name: (x.metadata as any)?.vehicle_type || '' },
-          vehicleTypeName: (x.metadata as any)?.vehicle_type || '',
+          vehicleType: { id: null, name: '' },
+          vehicleTypeName: '',
           vehicleCategory,
           seatCapacity: hasBeds ? 0 : seatCount,
           bedCapacity: hasBeds ? seatCount : 0,
@@ -173,13 +170,13 @@ class VehicleCacheService {
           chassisNumber: x.chassisNumber || '',
           engineNumber: x.engineNumber || '',
           operatorId: null,
-          operator: { id: null, name: x.operatorName || '', code: '' },
-          operatorName: x.operatorName || '',
+          operator: { id: null, name: '', code: '' },
+          operatorName: '',
           isActive: x.isActive !== false,
-          notes: (x.metadata as any)?.notes || '',
+          notes: '',
           source: 'legacy',
-          inspectionExpiryDate: x.roadWorthinessExpiry || null,
-          insuranceExpiryDate: x.insuranceExpiry || null,
+          inspectionExpiryDate: null,
+          insuranceExpiryDate: null,
           documents: {},
         });
 
@@ -242,10 +239,9 @@ class VehicleCacheService {
           expiryDate: vehicleBadges.expiryDate,
         }).from(vehicleBadges),
         db.select({
+          firebaseId: vehicles.firebaseId,
           plateNumber: vehicles.plateNumber,
-          operatorName: vehicles.operatorName,
           seatCount: vehicles.seatCount,
-          metadata: vehicles.metadata,
           brand: vehicles.brand,
           model: vehicles.model,
           yearOfManufacture: vehicles.yearOfManufacture,
@@ -295,7 +291,7 @@ class VehicleCacheService {
         let engineNumber = '';
 
         if (matchingVehicle) {
-          operatorName = matchingVehicle.operatorName || '';
+          operatorName = '';
           seatCount = matchingVehicle.seatCount || 0;
           vehicleCategory = (matchingVehicle.metadata as any)?.vehicle_category || '';
           manufacturer = matchingVehicle.brand || '';

@@ -2,9 +2,90 @@
  * Vehicle Repository - Drizzle ORM Version
  * Handles all PostgreSQL operations for vehicle records via Supabase
  */
-import { vehicles, operators, vehicleTypes } from '../../../db/schema/index.js'
+import { vehicles } from '../../../db/schema/index.js'
 import { DrizzleRepository, eq, and, desc, sql } from '../../../shared/database/drizzle-repository.js'
 import { VehicleAPI, mapVehicle } from '../../../shared/mappers/entity-mappers.js'
+import { resolveOperatorForVehicle } from '../../../utils/vehicle-operator-resolve.js'
+
+const vehicleBaseSelect = {
+  id: vehicles.id,
+  firebaseId: vehicles.firebaseId,
+  plateNumber: vehicles.plateNumber,
+  seatCount: vehicles.seatCount,
+  bedCapacity: vehicles.bedCapacity,
+  brand: vehicles.brand,
+  model: vehicles.model,
+  yearOfManufacture: vehicles.yearOfManufacture,
+  color: vehicles.color,
+  chassisNumber: vehicles.chassisNumber,
+  engineNumber: vehicles.engineNumber,
+  imageUrl: vehicles.imageUrl,
+  cargoLength: vehicles.cargoLength,
+  cargoWidth: vehicles.cargoWidth,
+  cargoHeight: vehicles.cargoHeight,
+  gpsProvider: vehicles.gpsProvider,
+  gpsUsername: vehicles.gpsUsername,
+  gpsPassword: vehicles.gpsPassword,
+  gpsUrl: vehicles.gpsUrl,
+  province: vehicles.province,
+  notes: vehicles.notes,
+  isActive: vehicles.isActive,
+  syncedAt: vehicles.syncedAt,
+  createdAt: vehicles.createdAt,
+  updatedAt: vehicles.updatedAt,
+} as const
+
+function mapVehicleRow(
+  row: {
+    id: string
+    plateNumber: string
+    seatCount: number | null
+    bedCapacity: number | null
+    chassisNumber: string | null
+    engineNumber: string | null
+    imageUrl: string | null
+    cargoLength: number | null
+    cargoWidth: number | null
+    cargoHeight: number | null
+    gpsProvider: string | null
+    gpsUsername: string | null
+    gpsPassword: string | null
+    province: string | null
+    isActive: boolean
+    notes: string | null
+    createdAt: Date
+    updatedAt: Date
+  },
+  operator?: { id: string; name: string; code: string } | null,
+): VehicleAPI {
+  return mapVehicle(
+    {
+      id: row.id,
+      plate_number: row.plateNumber,
+      seat_capacity: row.seatCount || 0,
+      bed_capacity: row.bedCapacity || 0,
+      chassis_number: row.chassisNumber ?? undefined,
+      engine_number: row.engineNumber ?? undefined,
+      image_url: row.imageUrl ?? undefined,
+      cargo_length: row.cargoLength ?? undefined,
+      cargo_width: row.cargoWidth ?? undefined,
+      cargo_height: row.cargoHeight ?? undefined,
+      gps_provider: row.gpsProvider ?? undefined,
+      gps_username: row.gpsUsername ?? undefined,
+      gps_password: row.gpsPassword ?? undefined,
+      province: row.province ?? undefined,
+      is_active: row.isActive,
+      operator_name: operator?.name,
+      notes: row.notes ?? undefined,
+      created_at: row.createdAt.toISOString(),
+      updated_at: row.updatedAt.toISOString(),
+    } as Parameters<typeof mapVehicle>[0],
+    null,
+    operator
+      ? { id: operator.id, name: operator.name, code: operator.code, is_active: true }
+      : null,
+  )
+}
 
 // Infer types from schema
 type Vehicle = typeof vehicles.$inferSelect
@@ -36,108 +117,11 @@ class DrizzleVehicleRepository extends DrizzleRepository<
     const database = this.getDb()
 
     const results = await database
-      .select({
-        // Vehicle fields
-        id: vehicles.id,
-        plateNumber: vehicles.plateNumber,
-        operatorId: vehicles.operatorId,
-        vehicleTypeId: vehicles.vehicleTypeId,
-        seatCount: vehicles.seatCount,
-        bedCapacity: vehicles.bedCapacity,
-        brand: vehicles.brand,
-        model: vehicles.model,
-        yearOfManufacture: vehicles.yearOfManufacture,
-        color: vehicles.color,
-        chassisNumber: vehicles.chassisNumber,
-        engineNumber: vehicles.engineNumber,
-        imageUrl: vehicles.imageUrl,
-        roadWorthinessExpiry: vehicles.roadWorthinessExpiry,
-        insuranceExpiry: vehicles.insuranceExpiry,
-        cargoLength: vehicles.cargoLength,
-        cargoWidth: vehicles.cargoWidth,
-        cargoHeight: vehicles.cargoHeight,
-        gpsProvider: vehicles.gpsProvider,
-        gpsUsername: vehicles.gpsUsername,
-        gpsPassword: vehicles.gpsPassword,
-        province: vehicles.province,
-        notes: vehicles.notes,
-        isActive: vehicles.isActive,
-        operationalStatus: vehicles.operationalStatus,
-        operatorName: vehicles.operatorName,
-        operatorCode: vehicles.operatorCode,
-        metadata: vehicles.metadata,
-        createdAt: vehicles.createdAt,
-        updatedAt: vehicles.updatedAt,
-        // Operator fields
-        operatorFullName: operators.name,
-        operatorCodeRel: operators.code,
-        operatorProvince: operators.province,
-        // VehicleType fields
-        vehicleTypeName: vehicleTypes.name,
-      })
+      .select(vehicleBaseSelect)
       .from(vehicles)
-      .leftJoin(operators, eq(vehicles.operatorId, operators.id))
-      .leftJoin(vehicleTypes, eq(vehicles.vehicleTypeId, vehicleTypes.id))
       .orderBy(desc(vehicles.createdAt))
 
-    return results.map((row) => {
-      const operator = row.operatorFullName
-        ? {
-            id: row.operatorId!,
-            name: row.operatorFullName,
-            code: row.operatorCodeRel || '',
-          }
-        : undefined
-
-      const vehicleType = row.vehicleTypeName
-        ? {
-            id: row.vehicleTypeId!,
-            name: row.vehicleTypeName,
-          }
-        : undefined
-
-      return mapVehicle(
-        {
-          id: row.id,
-          plate_number: row.plateNumber,
-          operator_id: row.operatorId ?? undefined,
-          vehicle_type_id: row.vehicleTypeId ?? undefined,
-          seat_capacity: row.seatCount || 0,
-          bed_capacity: row.bedCapacity || 0,
-          chassis_number: row.chassisNumber ?? undefined,
-          engine_number: row.engineNumber ?? undefined,
-          image_url: row.imageUrl ?? undefined,
-          insurance_expiry_date: row.insuranceExpiry ?? undefined,
-          inspection_expiry_date: row.roadWorthinessExpiry ?? undefined,
-          cargo_length: row.cargoLength ?? undefined,
-          cargo_width: row.cargoWidth ?? undefined,
-          cargo_height: row.cargoHeight ?? undefined,
-          gps_provider: row.gpsProvider ?? undefined,
-          gps_username: row.gpsUsername ?? undefined,
-          gps_password: row.gpsPassword ?? undefined,
-          province: row.province || row.operatorProvince || undefined,
-          is_active: row.isActive,
-          operator_name: row.operatorName ?? undefined,
-          notes: row.notes ?? undefined,
-          created_at: row.createdAt.toISOString(),
-          updated_at: row.updatedAt.toISOString(),
-        } as any,
-        vehicleType
-          ? {
-              id: vehicleType.id,
-              name: vehicleType.name,
-            }
-          : null,
-        operator
-          ? {
-              id: operator.id,
-              name: operator.name,
-              code: operator.code,
-              is_active: true,
-            }
-          : null
-      )
-    })
+    return results.map((row) => mapVehicleRow(row))
   }
 
   /**
@@ -147,110 +131,23 @@ class DrizzleVehicleRepository extends DrizzleRepository<
     const database = this.getDb()
 
     const results = await database
-      .select({
-        // Vehicle fields
-        id: vehicles.id,
-        plateNumber: vehicles.plateNumber,
-        operatorId: vehicles.operatorId,
-        vehicleTypeId: vehicles.vehicleTypeId,
-        seatCount: vehicles.seatCount,
-        bedCapacity: vehicles.bedCapacity,
-        brand: vehicles.brand,
-        model: vehicles.model,
-        yearOfManufacture: vehicles.yearOfManufacture,
-        color: vehicles.color,
-        chassisNumber: vehicles.chassisNumber,
-        engineNumber: vehicles.engineNumber,
-        imageUrl: vehicles.imageUrl,
-        roadWorthinessExpiry: vehicles.roadWorthinessExpiry,
-        insuranceExpiry: vehicles.insuranceExpiry,
-        cargoLength: vehicles.cargoLength,
-        cargoWidth: vehicles.cargoWidth,
-        cargoHeight: vehicles.cargoHeight,
-        gpsProvider: vehicles.gpsProvider,
-        gpsUsername: vehicles.gpsUsername,
-        gpsPassword: vehicles.gpsPassword,
-        province: vehicles.province,
-        notes: vehicles.notes,
-        isActive: vehicles.isActive,
-        operationalStatus: vehicles.operationalStatus,
-        operatorName: vehicles.operatorName,
-        operatorCode: vehicles.operatorCode,
-        metadata: vehicles.metadata,
-        createdAt: vehicles.createdAt,
-        updatedAt: vehicles.updatedAt,
-        // Operator fields
-        operatorFullName: operators.name,
-        operatorCodeRel: operators.code,
-        operatorProvince: operators.province,
-        // VehicleType fields
-        vehicleTypeName: vehicleTypes.name,
-      })
+      .select(vehicleBaseSelect)
       .from(vehicles)
-      .leftJoin(operators, eq(vehicles.operatorId, operators.id))
-      .leftJoin(vehicleTypes, eq(vehicles.vehicleTypeId, vehicleTypes.id))
       .where(eq(vehicles.id, id))
       .limit(1)
 
     if (results.length === 0) return null
 
     const row = results[0]
-    const operator = row.operatorFullName
-      ? {
-          id: row.operatorId!,
-          name: row.operatorFullName,
-          code: row.operatorCodeRel || '',
-        }
-      : undefined
+    const op = await resolveOperatorForVehicle({
+      firebaseId: row.firebaseId,
+      plateNumber: row.plateNumber,
+    })
+    const operator = op.operatorId
+      ? { id: op.operatorId, name: op.operatorName || '', code: op.operatorCode || '' }
+      : null
 
-    const vehicleType = row.vehicleTypeName
-      ? {
-          id: row.vehicleTypeId!,
-          name: row.vehicleTypeName,
-        }
-      : undefined
-
-    return mapVehicle(
-      {
-        id: row.id,
-        plate_number: row.plateNumber,
-        operator_id: row.operatorId ?? undefined,
-        vehicle_type_id: row.vehicleTypeId ?? undefined,
-        seat_capacity: row.seatCount || 0,
-        bed_capacity: row.bedCapacity || 0,
-        chassis_number: row.chassisNumber ?? undefined,
-        engine_number: row.engineNumber ?? undefined,
-        image_url: row.imageUrl ?? undefined,
-        insurance_expiry_date: row.insuranceExpiry ?? undefined,
-        inspection_expiry_date: row.roadWorthinessExpiry ?? undefined,
-        cargo_length: row.cargoLength ?? undefined,
-        cargo_width: row.cargoWidth ?? undefined,
-        cargo_height: row.cargoHeight ?? undefined,
-        gps_provider: row.gpsProvider ?? undefined,
-        gps_username: row.gpsUsername ?? undefined,
-        gps_password: row.gpsPassword ?? undefined,
-        province: row.province ?? undefined,
-        is_active: row.isActive,
-        operator_name: row.operatorName ?? undefined,
-        notes: row.notes ?? undefined,
-        created_at: row.createdAt.toISOString(),
-        updated_at: row.updatedAt.toISOString(),
-      } as any,
-      vehicleType
-        ? {
-            id: vehicleType.id,
-            name: vehicleType.name,
-          }
-        : null,
-      operator
-        ? {
-            id: operator.id,
-            name: operator.name,
-            code: operator.code,
-            is_active: true,
-          }
-        : null
-    )
+    return mapVehicleRow(row, operator)
   }
 
   /**
@@ -355,13 +252,19 @@ class DrizzleVehicleRepository extends DrizzleRepository<
       .insert(vehicles)
       .values({
         plateNumber: normalizedPlate,
-        vehicleTypeId: data.vehicleTypeId || null,
-        operatorId: data.operatorId || null,
         seatCount: data.seatCapacity,
+        bedCapacity: data.bedCapacity ?? null,
         chassisNumber: data.chassisNumber || null,
         engineNumber: data.engineNumber || null,
-        insuranceExpiry: data.insuranceExpiryDate || null,
-        roadWorthinessExpiry: data.inspectionExpiryDate || null,
+        imageUrl: data.imageUrl || null,
+        cargoLength: data.cargoLength ?? null,
+        cargoWidth: data.cargoWidth ?? null,
+        cargoHeight: data.cargoHeight ?? null,
+        gpsProvider: data.gpsProvider || null,
+        gpsUsername: data.gpsUsername || null,
+        gpsPassword: data.gpsPassword || null,
+        province: data.province || null,
+        notes: data.notes || null,
         isActive: data.isActive ?? true,
       })
       .returning()
@@ -407,15 +310,19 @@ class DrizzleVehicleRepository extends DrizzleRepository<
 
     // Normalize plate number when updating
     if (data.plateNumber !== undefined) updateData.plateNumber = normalizePlateNumber(data.plateNumber)
-    if (data.vehicleTypeId !== undefined) updateData.vehicleTypeId = data.vehicleTypeId || null
-    if (data.operatorId !== undefined) updateData.operatorId = data.operatorId || null
     if (data.seatCapacity !== undefined) updateData.seatCount = data.seatCapacity
+    if (data.bedCapacity !== undefined) updateData.bedCapacity = data.bedCapacity
     if (data.chassisNumber !== undefined) updateData.chassisNumber = data.chassisNumber || null
     if (data.engineNumber !== undefined) updateData.engineNumber = data.engineNumber || null
-    if (data.insuranceExpiryDate !== undefined)
-      updateData.insuranceExpiry = data.insuranceExpiryDate || null
-    if (data.inspectionExpiryDate !== undefined)
-      updateData.roadWorthinessExpiry = data.inspectionExpiryDate || null
+    if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl || null
+    if (data.cargoLength !== undefined) updateData.cargoLength = data.cargoLength ?? null
+    if (data.cargoWidth !== undefined) updateData.cargoWidth = data.cargoWidth ?? null
+    if (data.cargoHeight !== undefined) updateData.cargoHeight = data.cargoHeight ?? null
+    if (data.gpsProvider !== undefined) updateData.gpsProvider = data.gpsProvider || null
+    if (data.gpsUsername !== undefined) updateData.gpsUsername = data.gpsUsername || null
+    if (data.gpsPassword !== undefined) updateData.gpsPassword = data.gpsPassword || null
+    if (data.province !== undefined) updateData.province = data.province || null
+    if (data.notes !== undefined) updateData.notes = data.notes || null
     if (data.isActive !== undefined) updateData.isActive = data.isActive
 
     await database

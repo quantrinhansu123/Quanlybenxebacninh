@@ -12,8 +12,8 @@ import { vehicles } from '../db/schema/vehicles.js'
 import { drivers } from '../db/schema/drivers.js'
 import { routes } from '../db/schema/routes.js'
 import { users } from '../db/schema/users.js'
-import { operators } from '../db/schema/operators.js'
 import { eq } from 'drizzle-orm'
+import { resolveOperatorForVehicle } from './vehicle-operator-resolve.js'
 
 export interface DenormalizedVehicleData {
   plateNumber: string
@@ -73,26 +73,18 @@ export async function fetchDenormalizedData(params: {
     operatorCode: null,
   }
 
-  // Fetch vehicle+operator in a single LEFT JOIN, and driver/route/user in parallel
-  // This eliminates the N+1 pattern (vehicle query → operator query)
-  const [vehicleWithOperatorResult, driverResult, routeResult, userResult] = await Promise.all([
+  const [vehicleRows, driverResult, routeResult, userResult] = await Promise.all([
     (!isLegacyVehicle && !isBadgeVehicle && params.vehicleId)
-      ? db.select({
+      ? db
+          .select({
             id: vehicles.id,
             plateNumber: vehicles.plateNumber,
+            firebaseId: vehicles.firebaseId,
             seatCount: vehicles.seatCount,
-            operatorId: vehicles.operatorId,
-            operatorName: operators.name,
-            operatorCode: operators.code,
           })
           .from(vehicles)
-          .leftJoin(operators, eq(vehicles.operatorId, operators.id))
           .where(eq(vehicles.id, params.vehicleId))
           .limit(1)
-          .catch((error) => {
-            console.warn(`[fetchDenormalizedData] Failed to fetch vehicle ${params.vehicleId}:`, error)
-            return [] as { id: string; plateNumber: string | null; seatCount: number | null; operatorId: string | null; operatorName: string | null; operatorCode: string | null }[]
-          })
       : Promise.resolve([]),
     params.driverId
       ? db.select({ id: drivers.id, name: drivers.fullName })
@@ -120,14 +112,18 @@ export async function fetchDenormalizedData(params: {
       : Promise.resolve([]),
   ])
 
-  const vehicleRow = vehicleWithOperatorResult[0]
+  const vehicleRow = vehicleRows[0]
   if (vehicleRow) {
+    const op = await resolveOperatorForVehicle({
+      firebaseId: vehicleRow.firebaseId,
+      plateNumber: vehicleRow.plateNumber,
+    })
     vehicleData = {
       plateNumber: vehicleRow.plateNumber || '',
       seatCount: vehicleRow.seatCount || null,
-      operatorId: vehicleRow.operatorId || null,
-      operatorName: vehicleRow.operatorName || null,
-      operatorCode: vehicleRow.operatorCode || null,
+      operatorId: op.operatorId,
+      operatorName: op.operatorName,
+      operatorCode: op.operatorCode,
     }
   }
 

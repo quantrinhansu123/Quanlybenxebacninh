@@ -13,6 +13,7 @@ import { validateCreateVehicle, validateUpdateVehicle } from '../fleet-validatio
 import { mapVehicleToAPI, mapAuditLogToAPI } from '../fleet-mappers.js';
 import { vehicleService } from '../services/vehicle.service.js';
 import { vehicleCacheService } from '../services/vehicle-cache.service.js';
+import { resolveOperatorForVehicle } from '../../../utils/vehicle-operator-resolve.js';
 import type { VehicleDocumentDB, DocumentType } from '../fleet-types.js';
 
 const DOCUMENT_TYPES: DocumentType[] = ['registration', 'inspection', 'insurance', 'operation_permit', 'emblem'];
@@ -136,15 +137,11 @@ export const createVehicle = async (req: Request, res: Response) => {
       .insert(vehicles)
       .values({
         plateNumber: validated.plateNumber,
-        vehicleTypeId: validated.vehicleTypeId || null,
-        operatorId: validated.operatorId || null,
         seatCount: validated.seatCapacity,
         bedCapacity: validated.bedCapacity || 0,
         chassisNumber: validated.chassisNumber || null,
         engineNumber: validated.engineNumber || null,
         imageUrl: validated.imageUrl || null,
-        insuranceExpiry: validated.insuranceExpiryDate || null,
-        roadWorthinessExpiry: validated.inspectionExpiryDate || null,
         cargoLength: validated.cargoLength || null,
         cargoWidth: validated.cargoWidth || null,
         cargoHeight: validated.cargoHeight || null,
@@ -157,28 +154,26 @@ export const createVehicle = async (req: Request, res: Response) => {
       })
       .returning();
 
-    // Fetch relations in parallel
-    const [operator, vehicleType] = await Promise.all([
-      vehicle.operatorId
-        ? db.select({ id: operators.id, name: operators.name, code: operators.code })
-            .from(operators)
-            .where(eq(operators.id, vehicle.operatorId))
-            .then(r => r[0] || null)
-        : Promise.resolve(null),
-      vehicle.vehicleTypeId
-        ? db.select({ id: vehicleTypes.id, name: vehicleTypes.name })
-            .from(vehicleTypes)
-            .where(eq(vehicleTypes.id, vehicle.vehicleTypeId))
-            .then(r => r[0] || null)
-        : Promise.resolve(null)
-    ]);
-
-    if (validated.documents) {
-      await upsertDocuments(vehicle.id, validated.documents as Record<string, { number: string; issueDate: string; expiryDate: string; issuingAuthority?: string; documentUrl?: string; notes?: string }>);
+    const docsPayload = { ...(validated.documents || {}) } as Record<string, { number: string; issueDate: string; expiryDate: string; issuingAuthority?: string; documentUrl?: string; notes?: string }>
+    if (validated.insuranceExpiryDate) {
+      docsPayload.insurance = docsPayload.insurance || { number: '', issueDate: '', expiryDate: validated.insuranceExpiryDate }
+      docsPayload.insurance.expiryDate = validated.insuranceExpiryDate
+    }
+    if (validated.inspectionExpiryDate) {
+      docsPayload.inspection = docsPayload.inspection || { number: '', issueDate: '', expiryDate: validated.inspectionExpiryDate }
+      docsPayload.inspection.expiryDate = validated.inspectionExpiryDate
+    }
+    if (Object.keys(docsPayload).length > 0) {
+      await upsertDocuments(vehicle.id, docsPayload)
     }
 
+    const op = await resolveOperatorForVehicle({ firebaseId: vehicle.firebaseId, plateNumber: vehicle.plateNumber })
+    const operator = op.operatorId
+      ? { id: op.operatorId, name: op.operatorName || '', code: op.operatorCode || '' }
+      : null
+
     const documents = await fetchVehicleDocuments(vehicle.id);
-    return res.status(201).json(mapVehicleToAPI(vehicle as any, documents, operator as any, vehicleType as any));
+    return res.status(201).json(mapVehicleToAPI(vehicle as any, documents, operator as any, null));
   } catch (error: unknown) {
     const err = error as { code?: string; name?: string; errors?: Array<{ message: string }>; message?: string };
     if (err.code === '23505') return res.status(409).json({ error: 'Vehicle with this plate number already exists' });
@@ -197,19 +192,11 @@ export const updateVehicle = async (req: AuthRequest, res: Response) => {
 
     const updateData: Record<string, unknown> = {};
     if (validated.plateNumber) updateData.plateNumber = validated.plateNumber;
-    if (validated.vehicleTypeId !== undefined) updateData.vehicleTypeId = validated.vehicleTypeId || null;
-    if ('operatorId' in req.body) {
-      updateData.operatorId = req.body.operatorId?.trim() || null;
-    } else if (validated.operatorId !== undefined) {
-      updateData.operatorId = validated.operatorId || null;
-    }
     if (validated.seatCapacity) updateData.seatCount = validated.seatCapacity;
     if (validated.bedCapacity !== undefined) updateData.bedCapacity = validated.bedCapacity || 0;
     if (validated.chassisNumber !== undefined) updateData.chassisNumber = validated.chassisNumber || null;
     if (validated.engineNumber !== undefined) updateData.engineNumber = validated.engineNumber || null;
     if (validated.imageUrl !== undefined) updateData.imageUrl = validated.imageUrl || null;
-    if (validated.insuranceExpiryDate !== undefined) updateData.insuranceExpiry = validated.insuranceExpiryDate || null;
-    if (validated.inspectionExpiryDate !== undefined) updateData.roadWorthinessExpiry = validated.inspectionExpiryDate || null;
     if (validated.cargoLength !== undefined) updateData.cargoLength = validated.cargoLength || null;
     if (validated.cargoWidth !== undefined) updateData.cargoWidth = validated.cargoWidth || null;
     if (validated.cargoHeight !== undefined) updateData.cargoHeight = validated.cargoHeight || null;
@@ -223,43 +210,40 @@ export const updateVehicle = async (req: AuthRequest, res: Response) => {
       await db.update(vehicles).set(updateData).where(eq(vehicles.id, id));
     }
 
-    if (validated.documents) {
-      await upsertDocuments(id, validated.documents as Record<string, { number: string; issueDate: string; expiryDate: string; issuingAuthority?: string; documentUrl?: string; notes?: string }>, userId);
+    const docsPayload = { ...(validated.documents || {}) } as Record<string, { number: string; issueDate: string; expiryDate: string; issuingAuthority?: string; documentUrl?: string; notes?: string }>
+    if (validated.insuranceExpiryDate) {
+      docsPayload.insurance = docsPayload.insurance || { number: '', issueDate: '', expiryDate: validated.insuranceExpiryDate }
+      docsPayload.insurance.expiryDate = validated.insuranceExpiryDate
+    }
+    if (validated.inspectionExpiryDate) {
+      docsPayload.inspection = docsPayload.inspection || { number: '', issueDate: '', expiryDate: validated.inspectionExpiryDate }
+      docsPayload.inspection.expiryDate = validated.inspectionExpiryDate
+    }
+    if (Object.keys(docsPayload).length > 0) {
+      await upsertDocuments(id, docsPayload, userId)
     }
 
     const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id));
     if (!vehicle) return res.status(404).json({ error: 'Vehicle not found after update' });
 
-    // Fetch relations in parallel
-    const [operator, vehicleType] = await Promise.all([
-      vehicle.operatorId
-        ? db.select({ id: operators.id, name: operators.name, code: operators.code })
-            .from(operators)
-            .where(eq(operators.id, vehicle.operatorId))
-            .then(r => r[0] || null)
-        : Promise.resolve(null),
-      vehicle.vehicleTypeId
-        ? db.select({ id: vehicleTypes.id, name: vehicleTypes.name })
-            .from(vehicleTypes)
-            .where(eq(vehicleTypes.id, vehicle.vehicleTypeId))
-            .then(r => r[0] || null)
-        : Promise.resolve(null)
-    ]);
+    const op = await resolveOperatorForVehicle({ firebaseId: vehicle.firebaseId, plateNumber: vehicle.plateNumber })
+    const operator = op.operatorId
+      ? { id: op.operatorId, name: op.operatorName || '', code: op.operatorCode || '' }
+      : null
 
-    if (updateData.plateNumber || updateData.operatorId !== undefined) {
+    if (updateData.plateNumber) {
       syncVehicleChanges(id, {
         plateNumber: vehicle.plateNumber,
-        operatorId: vehicle.operatorId,
-        operatorName: operator?.name || null,
-        operatorCode: operator?.code || null,
+        operatorId: op.operatorId,
+        operatorName: op.operatorName,
+        operatorCode: op.operatorCode,
       }).catch((err) => console.error('[Vehicle Update] Sync failed:', err));
     }
 
-    // Clear cache to ensure fresh data
     vehicleCacheService.clearCache();
 
     const documents = await fetchVehicleDocuments(id);
-    return res.json(mapVehicleToAPI(vehicle as any, documents, operator as any, vehicleType as any));
+    return res.json(mapVehicleToAPI(vehicle as any, documents, operator as any, null));
   } catch (error: unknown) {
     const err = error as { name?: string; errors?: Array<{ message: string }>; message?: string };
     if (err.name === 'ZodError') return res.status(400).json({ error: err.errors?.[0]?.message });
