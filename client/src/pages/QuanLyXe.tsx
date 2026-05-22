@@ -31,9 +31,12 @@ import { useQuery } from "@tanstack/react-query"
 
 import type { Vehicle } from "@/types"
 import { useUIStore } from "@/store/ui.store"
-import { useAuthStore } from "@/store/auth.store"
 import { format, isValid, parseISO } from "date-fns"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
+import {
+  isQuanLyAllowedBadgeType,
+  QUANLY_ALLOWED_BADGE_TYPES_LABEL,
+} from "@/constants/quanly-badge-types"
 
 // Helper functions
 const getVehicleTypeName = (vehicle: Vehicle): string => {
@@ -47,6 +50,9 @@ const getOperatorName = (vehicle: Vehicle): string => {
   const v = vehicle as any
   return vehicle.operator?.name || v.operatorName || ""
 }
+
+const normalizeVehicleLinkKey = (value: string): string =>
+  (value || '').replace(/[.\-\s]/g, '').toUpperCase()
 
 const formatDate = (dateString: string | undefined | null): string => {
   if (!dateString) return "N/A"
@@ -105,71 +111,32 @@ export default function QuanLyXe() {
   const [displayMode, setDisplayMode] = useState<"table" | "grid">("table")
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const setTitle = useUIStore((state) => state.setTitle)
-  const currentUser = useAuthStore((state) => state.user)
-
   const { data: quanlyData, isLoading, refetch } = useQuery({
-    queryKey: ['quanly-data'],
-    queryFn: () => quanlyDataService.getAll(['vehicles', 'operators', 'badges', 'routes']),
+    queryKey: ['quanly-data', 'xe'],
+    queryFn: () => quanlyDataService.getAll(['vehicles', 'badges']),
     staleTime: 5 * 60 * 1000,
   })
 
   const vehicles = useMemo((): Vehicle[] => {
     if (!quanlyData) return []
-    const routeLocMap = new Map<string, { start: string, end: string }>()
-    const busRouteStartByFirebaseId = new Map<string, string>()
-    const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
-    if (quanlyData.routes) {
-      for (const r of quanlyData.routes) {
-        const code = (r.code || "").trim()
-        if (code) {
-          routeLocMap.set(code, {
-            start: (r.startPoint || "").trim().toLowerCase(),
-            end: (r.endPoint || "").trim().toLowerCase(),
-          })
-        }
-        const fid = ((r as { firebaseId?: string }).firebaseId || "").trim()
-        const rt = ((r as { routeType?: string }).routeType || "").toLowerCase()
-        const isBus =
-          rt === "bus" || rt.includes("buýt") || rt.includes("buyt") || rt.includes("xe buýt")
-        if (fid && isBus) {
-          busRouteStartByFirebaseId.set(fid, (r.startPoint || "").trim().toLowerCase())
-        }
-      }
-    }
-
-    const validPlates = new Set<string>()
-    const userLoc = currentUser?.benPhuTrachName?.trim().toLowerCase()
+    const validVehicleLinkKeys = new Set<string>()
 
     if (quanlyData.badges) {
       for (const b of quanlyData.badges) {
-        if (!allowedBadgeTypes.includes(b.badge_type || "")) continue
-        const plate = b.license_plate_sheet?.trim().toUpperCase()
-        if (!plate) continue
-
-        if (userLoc) {
-          if (b.badge_type === "Buýt") {
-            const tid = (b.tuyen_bus_code || "").trim()
-            const start = tid ? busRouteStartByFirebaseId.get(tid) : undefined
-            if (start === userLoc) validPlates.add(plate)
-          } else if (b.badge_type === "Tuyến cố định") {
-            const rData = routeLocMap.get(b.route_code) || { start: "", end: "" }
-            if (rData.start === userLoc) validPlates.add(plate)
-          }
-        } else {
-          validPlates.add(plate)
-        }
+        if (!isQuanLyAllowedBadgeType(b.badge_type)) continue
+        const linkKey = b.vehicle_match_key || normalizeVehicleLinkKey(b.license_plate_sheet || "")
+        if (linkKey) validVehicleLinkKeys.add(linkKey)
       }
     }
 
     return (quanlyData.vehicles || [])
       .filter(v => {
-        if (userLoc) {
-          return validPlates.has(v.plateNumber?.trim().toUpperCase())
-        }
-        return true
+        const vehicleKey = normalizeVehicleLinkKey(v.firebaseId || "")
+        return vehicleKey && validVehicleLinkKeys.has(vehicleKey)
       })
       .map(v => ({
         id: v.id,
+        firebaseId: v.firebaseId,
         plateNumber: v.plateNumber,
         seatCapacity: v.seatCapacity,
         operatorName: v.operatorName || '',
@@ -179,29 +146,6 @@ export default function QuanLyXe() {
         isActive: v.isActive,
         hasBadge: v.hasBadge,
       } as any)) as Vehicle[]
-  }, [quanlyData, currentUser?.benPhuTrachName])
-
-  const operatorCount = useMemo(() => {
-    if (!quanlyData) return 0
-    const badges = quanlyData.badges || []
-    const rawVehicles = quanlyData.vehicles || []
-    const allOperators = quanlyData.operators || []
-    const allowedTypes = ["Buýt", "Tuyến cố định"]
-    const normPlate = (p: string) => p?.replace(/[\s.\-]/g, "").toUpperCase() || ""
-    const badgePlates = new Set(
-      badges.filter(b => allowedTypes.includes(b.badge_type)).map(b => normPlate(b.license_plate_sheet)).filter(Boolean)
-    )
-    const opIds = new Set<string>()
-    const opNames = new Set<string>()
-    for (const v of rawVehicles) {
-      if (v.plateNumber && badgePlates.has(normPlate(v.plateNumber))) {
-        if (v.operatorId) opIds.add(v.operatorId)
-        if (v.operatorName) opNames.add(v.operatorName.trim().toUpperCase())
-      }
-    }
-    return allOperators.filter(
-      op => opIds.has(op.id) || opNames.has(op.name?.trim().toUpperCase())
-    ).length
   }, [quanlyData])
 
   const handleForceRefresh = useCallback(async () => {
@@ -219,6 +163,15 @@ export default function QuanLyXe() {
   const resolveOperatorName = useCallback((vehicle: Vehicle): string => {
     return getOperatorName(vehicle)
   }, [])
+
+  const operatorCount = useMemo(() => {
+    const names = new Set(
+      vehicles
+        .map((v) => resolveOperatorName(v).trim().toUpperCase())
+        .filter(Boolean),
+    )
+    return names.size
+  }, [vehicles, resolveOperatorName])
 
   // Filter base for dropdown options: only badge vehicles when badge filter is on
   const badgeBaseVehicles = useMemo(() =>
@@ -248,7 +201,7 @@ export default function QuanLyXe() {
       const vehicleTypeName = getVehicleTypeName(vehicle)
       const operatorName = resolveOperatorName(vehicle)
 
-      // Badge filter - default ON (only show vehicles with Buýt/TCĐ badges)
+      // Chỉ xe có phù hiệu «Buýt» hoặc «Tuyến cố định» (hasBadge từ backend)
       if (showOnlyBadgeVehicles && !vehicle.hasBadge) return false
 
       // Quick filter
@@ -341,7 +294,7 @@ export default function QuanLyXe() {
                 Quản lý xe
               </h1>
               <p className="text-slate-500 text-sm mt-1">
-                Quản lý thông tin phương tiện vận tải
+                Xe có phù hiệu {QUANLY_ALLOWED_BADGE_TYPES_LABEL} (khớp mã xe ↔ phù hiệu)
               </p>
             </div>
           </div>

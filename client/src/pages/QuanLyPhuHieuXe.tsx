@@ -32,6 +32,12 @@ import { useAuthStore } from "@/store/auth.store"
 import { useDialogHistory } from "@/hooks/useDialogHistory"
 import { DatePicker } from "@/components/DatePicker"
 import BadgeDetailDialog from "./badge-detail-dialog"
+import {
+  isQuanLyAllowedBadgeType,
+  QUANLY_ALLOWED_BADGE_TYPES,
+  QUANLY_BADGE_TYPE_BUS,
+  QUANLY_BADGE_TYPE_FIXED_ROUTE,
+} from "@/constants/quanly-badge-types"
 // Helper function to convert Date to ISO string (YYYY-MM-DD)
 const formatDateToISO = (date: Date | null): string => {
   if (!date) return ""
@@ -334,7 +340,7 @@ export default function QuanLyPhuHieuXe() {
   }
 
   // Get unique values for filters - only from allowed badge types
-  const allowedTypesForFilters = ["Buýt", "Tuyến cố định"]
+  const allowedTypesForFilters = [...QUANLY_ALLOWED_BADGE_TYPES]
 
   // Merge data theo nguồn đã chọn
   const mergedBadges = badges
@@ -342,23 +348,17 @@ export default function QuanLyPhuHieuXe() {
   // Loading: backend = chờ loadBadges; appsheet = chờ AppSheet hoặc fallback backend
   const effectiveLoading = isLoading
 
-  // Only show "Buýt" and "Tuyến cố định" badge types
-  const allowedBadgeTypes = ["Buýt", "Tuyến cố định"]
-
-  const filteredByTypeOnly = mergedBadges.filter(b => allowedBadgeTypes.includes(b.badge_type || ""))
+  const filteredByTypeOnly = mergedBadges.filter((b) => isQuanLyAllowedBadgeType(b.badge_type))
   const badgeStatuses = Array.from(new Set(filteredByTypeOnly.map((b) => b.status).filter(Boolean))).sort()
-  const badgeTypes = allowedBadgeTypes // Only show allowed types in dropdown
+  const badgeTypes = [...QUANLY_ALLOWED_BADGE_TYPES]
   const badgeColors = Array.from(new Set(filteredByTypeOnly.map((b) => b.badge_color).filter(Boolean))).sort()
 
   const filteredBadges = mergedBadges.filter((badge) => {
-    // Filter by allowed badge types (Buýt and Tuyến cố định only)
-    if (!allowedBadgeTypes.includes(badge.badge_type || "")) {
+    if (!isQuanLyAllowedBadgeType(badge.badge_type)) {
       return false
     }
 
-    // Với Bus: nếu đã có danh sách ID tuyến của tài khoản, chỉ hiển thị
-    // các badge có Tuyến bus code (tuyen_bus_code) thuộc danh sách đó
-    if (badge.badge_type === "Buýt" && userRouteIds.length > 0) {
+    if (badge.badge_type === QUANLY_BADGE_TYPE_BUS && userRouteIds.length > 0) {
       const id = ((badge as any).tuyen_bus_code || "").trim()
       if (!id || !userRouteIds.includes(id)) {
         return false
@@ -402,7 +402,7 @@ export default function QuanLyPhuHieuXe() {
       }
 
       // Tuyến cố định: bến phụ trách = điểm đầu tuyến (khớp backend + routeStationMap)
-      if (badge.badge_type === "Tuyến cố định" && currentUser?.benPhuTrachName) {
+      if (badge.badge_type === QUANLY_BADGE_TYPE_FIXED_ROUTE && currentUser?.benPhuTrachName) {
         const userLoc = currentUser.benPhuTrachName.trim().toLowerCase()
         const rc = routeCode.toUpperCase()
         const rr = routeRef.toUpperCase()

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table"
 import { iconStyles } from "@/lib/icon-theme"
 import type { Warning } from "@/services/dashboard.service"
+import { isQuanLyAllowedBadgeType, QUANLY_ALLOWED_BADGE_TYPES_LABEL } from "@/constants/quanly-badge-types"
 
 interface DocumentWarningsTableProps {
   warnings: Warning[]
@@ -35,15 +36,12 @@ export function DocumentWarningsTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [showOnlyBusTcd, setShowOnlyBusTcd] = useState(true)
 
-  const ALLOWED_BADGE_TYPES = ["Buýt", "Tuyến cố định"]
-
   const filteredWarnings = useMemo(() => {
     if (!showOnlyBusTcd) return warnings
     return warnings.filter((w) => {
       // Keep non-badge warnings (vehicle registration/insurance, driver license)
       if (w.document !== "Phù hiệu") return true
-      // Filter badge warnings by type
-      return w.badgeType && ALLOWED_BADGE_TYPES.includes(w.badgeType)
+      return isQuanLyAllowedBadgeType(w.badgeType)
     })
   }, [warnings, showOnlyBusTcd])
 
@@ -106,7 +104,7 @@ export function DocumentWarningsTable({
                 }}
               />
               <Label htmlFor="badge-type-filter" className="text-sm text-stone-500 whitespace-nowrap cursor-pointer">
-                Chỉ Buýt/TCĐ
+                Chỉ {QUANLY_ALLOWED_BADGE_TYPES_LABEL}
               </Label>
             </div>
             <div className="text-sm text-stone-500 font-medium">

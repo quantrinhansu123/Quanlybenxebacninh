@@ -4,6 +4,8 @@ export interface QuanLyBadge {
   id: string
   badge_number: string
   license_plate_sheet: string
+  /** normalize key: vehicles.firebase_id ↔ badge.plate_number */
+  vehicle_match_key?: string
   badge_type: string
   badge_color: string
   issue_date: string
@@ -23,6 +25,7 @@ export interface QuanLyBadge {
 
 export interface QuanLyVehicle {
   id: string
+  firebaseId?: string
   plateNumber: string
   seatCapacity: number
   bedCapacity?: number

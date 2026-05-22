@@ -1,12 +1,18 @@
 import { Request, Response } from 'express'
 import { db } from '../db/drizzle.js'
-import { vehicleBadges, vehicles as vehiclesTable, operators as operatorsTable, routes as routesTable, vehicleTypes as vehicleTypesTable } from '../db/schema/index.js'
+import { vehicleBadges, vehicles as vehiclesTable, operators as operatorsTable, routes as routesTable } from '../db/schema/index.js'
 import { users } from '../db/schema/users.js'
 import { locations } from '../db/schema/locations.js'
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray, sql } from 'drizzle-orm'
 import type { AuthRequest } from '../middleware/auth.js'
+import {
+  isQuanLyAllowedBadgeType,
+  QUANLY_ALLOWED_BADGE_TYPES,
+  QUANLY_BADGE_TYPE_BUS,
+  QUANLY_BADGE_TYPE_FIXED_ROUTE,
+} from '../constants/quanly-badge-types.js'
 
-// Unified cache for all quanly data - pre-filtered for Buýt and Tuyến cố định
+// Unified cache — chỉ phù hiệu «Buýt» hoặc «Tuyến cố định» (khớp chính xác)
 interface QuanLyCache {
   badges: any[]
   vehicles: any[]
@@ -19,11 +25,72 @@ let quanLyCache: QuanLyCache | null = null
 const CACHE_TTL = 30 * 60 * 1000 // 30 minutes - stable numbers for users
 let cacheLoading: Promise<QuanLyCache> | null = null
 
-const ALLOWED_BADGE_TYPES = ['Buýt', 'Tuyến cố định']
-
-// Normalize plate number
+// Normalize plate / firebase ref for matching
 const normalizePlate = (plate: string): string => {
   return (plate || '').replace(/[.\-\s]/g, '').toUpperCase()
+}
+
+/** vehicles.firebase_id ↔ vehicle_badges.plate_number */
+const vehicleBadgeLinkKey = (value: string): string => normalizePlate(value)
+
+const IN_CHUNK_SIZE = 500
+const STATION_BUS_ROUTE_CACHE_TTL = 10 * 60 * 1000
+const stationBusRouteCache = new Map<string, { ids: Set<string>; at: number }>()
+
+async function loadVehiclesByFirebaseRefs(refs: string[]) {
+  if (!db || refs.length === 0) return []
+  const rows: Array<{
+    id: string
+    firebaseId: string | null
+    plateNumber: string
+    seatCount: number | null
+    bedCapacity: number | null
+    isActive: boolean
+  }> = []
+  for (let i = 0; i < refs.length; i += IN_CHUNK_SIZE) {
+    const chunk = refs.slice(i, i + IN_CHUNK_SIZE)
+    const part = await db
+      .select({
+        id: vehiclesTable.id,
+        firebaseId: vehiclesTable.firebaseId,
+        plateNumber: vehiclesTable.plateNumber,
+        seatCount: vehiclesTable.seatCount,
+        bedCapacity: vehiclesTable.bedCapacity,
+        isActive: vehiclesTable.isActive,
+      })
+      .from(vehiclesTable)
+      .where(inArray(vehiclesTable.firebaseId, chunk))
+    rows.push(...part)
+  }
+  return rows
+}
+
+async function loadOperatorsByIds(ids: string[]) {
+  if (!db || ids.length === 0) return []
+  const rows: Array<Record<string, unknown>> = []
+  for (let i = 0; i < ids.length; i += IN_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + IN_CHUNK_SIZE)
+    const part = await db
+      .select({
+        id: operatorsTable.id,
+        firebaseId: operatorsTable.firebaseId,
+        code: operatorsTable.code,
+        name: operatorsTable.name,
+        province: operatorsTable.province,
+        phone: operatorsTable.phone,
+        email: operatorsTable.email,
+        address: operatorsTable.address,
+        representative: operatorsTable.representative,
+        taxCode: operatorsTable.taxCode,
+        isTicketDelegated: operatorsTable.isTicketDelegated,
+        isActive: operatorsTable.isActive,
+        source: operatorsTable.source,
+      })
+      .from(operatorsTable)
+      .where(inArray(operatorsTable.id, chunk))
+    rows.push(...part)
+  }
+  return rows
 }
 
 // Load all data in parallel and pre-filter
@@ -46,9 +113,8 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
 
       const startTime = Date.now()
 
-      // OPTIMIZED: Load only required columns (60-80% faster)
-      const [badgeData, vehicleData, operatorData, routeData, vehicleTypeData] = await Promise.all([
-        db.select({
+      const badgeData = await db
+        .select({
           id: vehicleBadges.id,
           plateNumber: vehicleBadges.plateNumber,
           badgeNumber: vehicleBadges.badgeNumber,
@@ -57,31 +123,37 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           expiryDate: vehicleBadges.expiryDate,
           issueDate: vehicleBadges.issueDate,
           operatorId: vehicleBadges.operatorId,
-          vehicleId: vehicleBadges.vehicleId,
-          routeId: vehicleBadges.routeId,
           routeCode: vehicleBadges.routeCode,
           tuyenBusCode: vehicleBadges.tuyenBusCode,
-          refGpkd: vehicleBadges.refGpkd,
-          refThongBao: vehicleBadges.refThongBao,
           refDonViCapPhuHieu: vehicleBadges.refDonViCapPhuHieu,
-          loaiCap: vehicleBadges.loaiCap,
-          lyDoCapLai: vehicleBadges.lyDoCapLai,
-          soPhuHieuCu: vehicleBadges.soPhuHieuCu,
           maHoSo: vehicleBadges.maHoSo,
-        }).from(vehicleBadges),
+        })
+        .from(vehicleBadges)
+        .where(inArray(vehicleBadges.badgeType, [...QUANLY_ALLOWED_BADGE_TYPES]))
+
+      const vehicleFirebaseRefs = [
+        ...new Set(
+          badgeData
+            .map((b) => (b.plateNumber || '').trim())
+            .filter(Boolean),
+        ),
+      ]
+
+      const [vehicleData, routeData, operatorData] = await Promise.all([
+        loadVehiclesByFirebaseRefs(vehicleFirebaseRefs),
         db.select({
-          id: vehiclesTable.id,
-          plateNumber: vehiclesTable.plateNumber,
-          seatCount: vehiclesTable.seatCount,
-          bedCapacity: vehiclesTable.bedCapacity,
-          operatorId: vehiclesTable.operatorId,
-          operatorName: vehiclesTable.operatorName,
-          vehicleTypeId: vehiclesTable.vehicleTypeId,
-          isActive: vehiclesTable.isActive,
-          roadWorthinessExpiry: vehiclesTable.roadWorthinessExpiry,
-          source: vehiclesTable.source,
-          metadata: vehiclesTable.metadata,
-        }).from(vehiclesTable),
+          id: routesTable.id,
+          routeCode: routesTable.routeCode,
+          routeCodeOld: routesTable.routeCodeOld,
+          departureStation: routesTable.departureStation,
+          departureStationRef: routesTable.departureStationRef,
+          arrivalStation: routesTable.arrivalStation,
+          arrivalStationRef: routesTable.arrivalStationRef,
+          distanceKm: routesTable.distanceKm,
+          routeType: routesTable.routeType,
+          itinerary: routesTable.itinerary,
+          firebaseId: routesTable.firebaseId,
+        }).from(routesTable),
         db.select({
           id: operatorsTable.id,
           firebaseId: operatorsTable.firebaseId,
@@ -97,33 +169,20 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           isActive: operatorsTable.isActive,
           source: operatorsTable.source,
         }).from(operatorsTable),
-        db.select({
-          id: routesTable.id,
-          routeCode: routesTable.routeCode,
-          routeCodeOld: routesTable.routeCodeOld,
-          departureStation: routesTable.departureStation,
-          departureStationRef: routesTable.departureStationRef,
-          arrivalStation: routesTable.arrivalStation,
-          arrivalStationRef: routesTable.arrivalStationRef,
-          distanceKm: routesTable.distanceKm,
-          routeType: routesTable.routeType,
-          itinerary: routesTable.itinerary,
-          firebaseId: routesTable.firebaseId,
-        }).from(routesTable),
-        db.select({
-          id: vehicleTypesTable.id,
-          name: vehicleTypesTable.name,
-        }).from(vehicleTypesTable),
       ])
 
-      // Build vehicle plate lookup (Drizzle data is array)
-      const vehiclePlateMap = new Map<string, string>()
+      // vehicles.firebase_id ↔ vehicle_badges.plate_number
+      const vehicleByLinkKey = new Map<string, { id: string; plateNumber: string; firebaseId: string }>()
       for (const vehicle of vehicleData) {
         const v = vehicle as any
-        const plate = v.plateNumber || ''
-        if (plate && v.id) {
-          vehiclePlateMap.set(v.id, plate)
-        }
+        const firebaseId = (v.firebaseId || '').trim()
+        if (!firebaseId) continue
+        const linkKey = vehicleBadgeLinkKey(firebaseId)
+        vehicleByLinkKey.set(linkKey, {
+          id: v.id,
+          plateNumber: v.plateNumber || '',
+          firebaseId,
+        })
       }
 
       // Operator lookup: uuid id + firebase_id (vehicle_badges.operator_id lưu text → khớp firebase_id)
@@ -148,15 +207,6 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         return operatorUuidByFirebaseId.get(key) ?? null
       }
 
-      // Build vehicle type name lookup
-      const vehicleTypeMap = new Map<string, string>()
-      for (const vt of vehicleTypeData) {
-        const t = vt as any
-        if (t.id) {
-          vehicleTypeMap.set(t.id, t.name || '')
-        }
-      }
-
       // Build route lookup by routeCode AND routeName (badges use routeName as ref)
       const routeItineraryByCode = new Map<string, string>()
       const routeDisplayByCode = new Map<string, string>()
@@ -178,11 +228,11 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
       }
 
       // Filter badges by allowed types (Drizzle data is array)
-      const allowedPlates = new Set<string>()
-      const platesWithValidBadge = new Set<string>() // plates with ≥1 non-expired badge
+      const linkedVehicleKeys = new Set<string>() // có phù hiệu Buýt hoặc Tuyến cố định (link firebase_id)
+      const linkedVehicleKeysValid = new Set<string>() // có phù hiệu còn hạn
       const operatorIdsWithBadges = new Set<string>() // operators.id (uuid) từ badge Buýt / Tuyến cố định
-      const vehicleOperatorMap = new Map<string, string>() // plate -> operator name
-      const vehicleBadgeExpiryMap = new Map<string, string>() // plate -> badge expiry date
+      const vehicleOperatorMap = new Map<string, string>() // linkKey (firebase_id) -> operator name
+      const vehicleBadgeExpiryMap = new Map<string, string>() // linkKey -> badge expiry date
       const badges: any[] = []
       const today = new Date()
       today.setHours(0, 0, 0, 0)
@@ -191,20 +241,17 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         const b = badge as any
         const badgeType = b.badgeType || ''
 
-        if (!ALLOWED_BADGE_TYPES.includes(badgeType)) continue
+        if (!isQuanLyAllowedBadgeType(badgeType)) continue
 
-        // Get plate number (from plateNumber field or vehicle lookup)
-        let plateNumber = b.plateNumber || ''
-        const vehicleId = b.vehicleId || ''
-        if (!plateNumber && vehicleId && vehiclePlateMap.has(vehicleId)) {
-          plateNumber = vehiclePlateMap.get(vehicleId)!
-        }
-
-        // Early exit if no plate/vehicle reference
-        if (!plateNumber && !vehicleId) {
-          console.warn(`[QuanLyData] Badge ${b.id || 'unknown'} has no plate/vehicle reference, skipping`)
+        const badgePlateRef = (b.plateNumber || '').trim()
+        if (!badgePlateRef) {
+          console.warn(`[QuanLyData] Badge ${b.id || 'unknown'} missing plate_number (vehicle ref), skipping`)
           continue
         }
+
+        const linkKey = vehicleBadgeLinkKey(badgePlateRef)
+        const matchedVehicle = vehicleByLinkKey.get(linkKey)
+        const displayPlate = matchedVehicle?.plateNumber || badgePlateRef
 
         const opRef = (b.operatorId || b.refDonViCapPhuHieu || '').trim()
         const resolvedOpId = resolveOperatorUuid(opRef)
@@ -212,33 +259,29 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
           operatorIdsWithBadges.add(resolvedOpId)
         }
 
-        if (plateNumber) {
-          const normalizedPlate = normalizePlate(plateNumber)
-          allowedPlates.add(normalizedPlate)
+        if (matchedVehicle) {
+          linkedVehicleKeys.add(linkKey)
 
           if (resolvedOpId) {
             const opName = operatorNameMap.get(resolvedOpId)
-            if (opName) vehicleOperatorMap.set(normalizedPlate, opName)
+            if (opName) vehicleOperatorMap.set(linkKey, opName)
           }
 
-          // Map vehicle plate to badge expiry date (keep latest expiry)
           const badgeExpiry = b.expiryDate || ''
           if (badgeExpiry) {
-            const existing = vehicleBadgeExpiryMap.get(normalizedPlate)
+            const existing = vehicleBadgeExpiryMap.get(linkKey)
             if (!existing || badgeExpiry > existing) {
-              vehicleBadgeExpiryMap.set(normalizedPlate, badgeExpiry)
+              vehicleBadgeExpiryMap.set(linkKey, badgeExpiry)
             }
 
-            // Check if badge is not expired → mark plate as having valid badge
             const expiryDate = new Date(badgeExpiry)
             expiryDate.setHours(0, 0, 0, 0)
             if (expiryDate >= today) {
-              platesWithValidBadge.add(normalizedPlate)
+              linkedVehicleKeysValid.add(linkKey)
             }
           }
         }
 
-        const routeId = b.routeId || ''
         const routeCode = b.routeCode || ''
         const itinerary = routeCode && routeItineraryByCode.has(routeCode)
           ? routeItineraryByCode.get(routeCode)!
@@ -247,103 +290,67 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
         badges.push({
           id: b.id,
           badge_number: b.badgeNumber || '',
-          license_plate_sheet: plateNumber,
+          license_plate_sheet: displayPlate,
+          vehicle_match_key: linkKey,
           badge_type: badgeType,
           badge_color: '',
           issue_date: b.issueDate || '',
           expiry_date: b.expiryDate || '',
           status: b.status || '',
           file_code: b.maHoSo || '',
-          issue_type: b.loaiCap || '',
+          issue_type: '',
           issuing_authority_ref: b.refDonViCapPhuHieu || b.operatorId || '',
-          business_license_ref: b.refGpkd || '',
-          route_id: routeId,
+          business_license_ref: '',
+          route_id: '',
           route_code: routeCode,
           route_name: routeDisplayByCode.get(routeCode) || '',
           tuyen_bus_code: b.tuyenBusCode || '',
-          ref_thong_bao: b.refThongBao || '',
-          ly_do_cap_lai: b.lyDoCapLai || '',
-          so_phu_hieu_cu: b.soPhuHieuCu || '',
+          ref_thong_bao: '',
+          ly_do_cap_lai: '',
+          so_phu_hieu_cu: '',
           itinerary,
           vehicle_type: '',
         })
       }
 
-      // Build set of plates that have valid badges (Buýt/Tuyến cố định)
-      // Use allowedPlates which contains ALL plates with valid badge types
-      const platesWithBadge = allowedPlates
-
-      // Include ALL vehicles (removed badge-based filtering)
-      // Previous logic was too strict - excluded vehicles without badges
-      // Vehicles created manually should also appear in the list
-      const vehiclesByPlate = new Map<string, any[]>()
-      for (const vehicle of vehicleData) {
-        const v = vehicle as any
-        const plateNumber = v.plateNumber || ''
-        const normalizedPlate = normalizePlate(plateNumber)
-
-        // Skip if no plate number
+      const vehicles: any[] = []
+      for (const v of vehicleData) {
+        const row = v as {
+          id: string
+          firebaseId: string | null
+          plateNumber: string | null
+          seatCount: number | null
+          bedCapacity: number | null
+          isActive: boolean
+        }
+        const plateNumber = row.plateNumber || ''
         if (!plateNumber) continue
 
-        if (!vehiclesByPlate.has(normalizedPlate)) {
-          vehiclesByPlate.set(normalizedPlate, [])
-        }
-        vehiclesByPlate.get(normalizedPlate)!.push({ key: v.id, v, plateNumber })
-      }
-
-      // Second pass: for each plate, pick the entry with most data
-      const vehicles: any[] = []
-      for (const [normalizedPlate, entries] of vehiclesByPlate) {
-        // Sort by data completeness: prefer entries with operatorName, seatCount, etc.
-        entries.sort((a, b) => {
-          const scoreA = (a.v.operatorName ? 2 : 0) + (a.v.seatCount ? 1 : 0)
-          const scoreB = (b.v.operatorName ? 2 : 0) + (b.v.seatCount ? 1 : 0)
-          return scoreB - scoreA // Higher score first
-        })
-
-        const { key, v, plateNumber } = entries[0]
-
-        // Get seat capacity from seatCount field
-        const seatCapacity = v.seatCount || 0
-
-        // Get operator name: prefer from badge reference, fallback to vehicle operatorName, then operators table
-        const operatorFromBadge = vehicleOperatorMap.get(normalizedPlate) || ''
-        const operatorFromRelation = v.operatorId ? (operatorNameMap.get(v.operatorId) || '') : ''
-        const operatorName = operatorFromBadge || v.operatorName || operatorFromRelation || ''
-
-        // Get vehicle type name from vehicle_types table
-        const vehicleTypeName = v.vehicleTypeId ? (vehicleTypeMap.get(v.vehicleTypeId) || '') : ''
-
-        // Get vehicle category from metadata
-        const vehicleCategory = (v.metadata as any)?.vehicle_category || ''
-
-        // Get badge expiry date for inspection display
-        const badgeExpiryDate = vehicleBadgeExpiryMap.get(normalizedPlate) || ''
-
+        const vehicleLinkKey = vehicleBadgeLinkKey((row.firebaseId || '').trim())
         vehicles.push({
-          id: key,
-          plateNumber: plateNumber,
-          seatCapacity,
-          bedCapacity: v.bedCapacity || 0,
-          operatorId: v.operatorId || null,
-          operatorName,
-          vehicleType: vehicleTypeName,
-          vehicleCategory,
-          inspectionExpiryDate: badgeExpiryDate || v.roadWorthinessExpiry || '',
-          isActive: v.isActive !== false,
-          hasBadge: platesWithBadge.has(normalizedPlate),
-          hasValidBadge: platesWithValidBadge.has(normalizedPlate),
-          source: v.source || 'drizzle',
+          id: row.id,
+          firebaseId: (row.firebaseId || '').trim(),
+          plateNumber,
+          seatCapacity: row.seatCount || 0,
+          bedCapacity: row.bedCapacity || 0,
+          operatorId: null,
+          operatorName: vehicleOperatorMap.get(vehicleLinkKey) || '',
+          vehicleType: '',
+          vehicleCategory: '',
+          inspectionExpiryDate: vehicleBadgeExpiryMap.get(vehicleLinkKey) || '',
+          isActive: row.isActive !== false,
+          hasBadge: linkedVehicleKeys.has(vehicleLinkKey),
+          hasValidBadge: linkedVehicleKeysValid.has(vehicleLinkKey),
+          source: 'drizzle',
         })
       }
 
-      // Filter operators to only those with ≥1 Buýt or Tuyến cố định badge
       const operators: any[] = []
       for (const op of operatorData) {
         const o = op as any
         const operatorId = o.id
 
-        // Chỉ đơn vị có ≥1 phù hiệu Buýt/TCD: badge.operator_id (text) khớp operators.firebase_id
+        // Chỉ đơn vị có ≥1 phù hiệu Buýt hoặc Tuyến cố định
         if (!operatorIdsWithBadges.has(operatorId)) continue
 
         operators.push({
@@ -399,13 +406,9 @@ async function loadQuanLyData(): Promise<QuanLyCache> {
 
       const loadTime = Date.now() - startTime
       console.log(`[QuanLyData] Loaded ${badges.length} badges, ${vehicles.length} vehicles, ${operators.length} operators, ${routes.length} routes in ${loadTime}ms (source: Drizzle ORM)`)
-      console.log(`[QuanLyData] Debug: ${allowedPlates.size} allowed plates from badges, ${vehicleData.length} total vehicles in database, filter=all-vehicles`)
-      console.log(`[QuanLyData] Debug: vehiclesByPlate unique plates = ${vehiclesByPlate.size}, final vehicles array = ${vehicles.length}`)
-      console.log(`[QuanLyData] Route itinerary map: ${routeItineraryByCode.size} by code`)
-
-      // Log first 5 plates for debugging
-      const samplePlates = Array.from(allowedPlates).slice(0, 5)
-      console.log(`[QuanLyData] Sample allowed plates: ${samplePlates.join(', ')}`)
+      console.log(
+        `[QuanLyData] Linked ${linkedVehicleKeys.size} keys, ${vehicles.length} vehicles (from ${vehicleFirebaseRefs.length} badge refs, ${badgeData.length} badges)`,
+      )
       
       quanLyCache = {
         badges,
@@ -500,36 +503,45 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     if (includes.includes('badges')) {
       let filteredBadges = data.badges
       if (stationCode || stationName) {
-        // ===== 1) Buýt: id_tuyen từ danh_muc_tuyen_bus hoặc fallback routes.firebase_id =====
-        const allowedBusRouteIds = new Set<string>()
-        if (stationCode) {
-          try {
-            const busRouteRows = await db.execute(
-              // eslint-disable-next-line drizzle/enforce-query-usage
-              sql`SELECT id_tuyen FROM danh_muc_tuyen_bus WHERE diem_dau = ${stationCode} OR diem_cuoi = ${stationCode} OR hanh_trinh ILIKE ${'%' + stationName + '%'}`,
-            )
-            for (const row of busRouteRows as any[]) {
-              const id = (row.id_tuyen || '').trim()
-              if (id) allowedBusRouteIds.add(id)
-            }
-          } catch (error) {
-            console.error('[QuanLyData] Failed to load Buýt route ids via danh_muc_tuyen_bus:', error)
-          }
-        }
-        if (allowedBusRouteIds.size === 0 && stationName) {
-          const stationLower = stationName.trim().toLowerCase()
-          for (const r of data.routes) {
-            const route = r as { routeType?: string; startPoint?: string; firebaseId?: string }
-            const rt = (route.routeType || '').toLowerCase()
-            const isBus =
-              rt === 'bus' || rt.includes('buýt') || rt.includes('buyt') || rt.includes('xe buýt')
-            if (!isBus) continue
-            const startPoint = (route.startPoint || '').trim().toLowerCase()
-            if (startPoint === stationLower) {
-              const fid = (route.firebaseId || '').trim()
-              if (fid) allowedBusRouteIds.add(fid)
+        const cacheKey = `${stationCode || ''}|${stationName || ''}`
+        const cachedBus = stationBusRouteCache.get(cacheKey)
+        const allowedBusRouteIds =
+          cachedBus && Date.now() - cachedBus.at < STATION_BUS_ROUTE_CACHE_TTL
+            ? cachedBus.ids
+            : new Set<string>()
+
+        if (!cachedBus || Date.now() - cachedBus.at >= STATION_BUS_ROUTE_CACHE_TTL) {
+          if (stationCode) {
+            try {
+              const busRouteRows = await db.execute(
+                sql`SELECT id_tuyen FROM danh_muc_tuyen_bus WHERE diem_dau = ${stationCode} OR diem_cuoi = ${stationCode}`,
+              )
+              for (const row of busRouteRows as { id_tuyen?: string }[]) {
+                const id = (row.id_tuyen || '').trim()
+                if (id) allowedBusRouteIds.add(id)
+              }
+            } catch (error) {
+              console.error('[QuanLyData] Failed to load Buýt route ids via danh_muc_tuyen_bus:', error)
             }
           }
+
+          if (allowedBusRouteIds.size === 0 && stationName) {
+            const stationLower = stationName.trim().toLowerCase()
+            for (const r of data.routes) {
+              const route = r as { routeType?: string; startPoint?: string; firebaseId?: string }
+              const rt = (route.routeType || '').toLowerCase()
+              const isBus =
+                rt === 'bus' || rt.includes('buýt') || rt.includes('buyt') || rt.includes('xe buýt')
+              if (!isBus) continue
+              const startPoint = (route.startPoint || '').trim().toLowerCase()
+              if (startPoint === stationLower) {
+                const fid = (route.firebaseId || '').trim()
+                if (fid) allowedBusRouteIds.add(fid)
+              }
+            }
+          }
+
+          stationBusRouteCache.set(cacheKey, { ids: allowedBusRouteIds, at: Date.now() })
         }
 
         // ===== 2) Tuyến cố định: chỉ tuyến có điểm đầu (bến đi) trùng tên bến — không lấy theo điểm cuối / hành trình =====
@@ -549,14 +561,13 @@ export const getQuanLyData = async (req: Request, res: Response) => {
         // ===== 3) Apply filters to badges =====
         filteredBadges = data.badges.filter(b => {
           // "Buýt" badges: chỉ hiển thị nếu tuyen_bus_code thuộc danh sách id_tuyen của bến
-          if (b.badge_type === 'Buýt') {
+          if (b.badge_type === QUANLY_BADGE_TYPE_BUS) {
             if (allowedBusRouteIds.size === 0) return false
             const id = (b.tuyen_bus_code || '').trim()
             return !!id && allowedBusRouteIds.has(id)
           }
 
-          // "Tuyến cố định" badges: routeCode thuộc tuyến có điểm đầu = bến (xem allowedFixedRouteCodes)
-          if (b.badge_type === 'Tuyến cố định') {
+          if (b.badge_type === QUANLY_BADGE_TYPE_FIXED_ROUTE) {
             if (!stationName || allowedFixedRouteCodes.size === 0) {
               return false
             }
@@ -564,14 +575,13 @@ export const getQuanLyData = async (req: Request, res: Response) => {
             return rc && allowedFixedRouteCodes.has(rc)
           }
 
-          // Other badge types: no filter (show all)
-          return true
+          return false
         })
 
-        const busCount = data.badges.filter(b => b.badge_type === 'Buýt').length
-        const fixedRouteCount = data.badges.filter(b => b.badge_type === 'Tuyến cố định').length
-        const filteredBusCount = filteredBadges.filter(b => b.badge_type === 'Buýt').length
-        const filteredFixedRouteCount = filteredBadges.filter(b => b.badge_type === 'Tuyến cố định').length
+        const busCount = data.badges.filter(b => b.badge_type === QUANLY_BADGE_TYPE_BUS).length
+        const fixedRouteCount = data.badges.filter(b => b.badge_type === QUANLY_BADGE_TYPE_FIXED_ROUTE).length
+        const filteredBusCount = filteredBadges.filter(b => b.badge_type === QUANLY_BADGE_TYPE_BUS).length
+        const filteredFixedRouteCount = filteredBadges.filter(b => b.badge_type === QUANLY_BADGE_TYPE_FIXED_ROUTE).length
         console.log(
           `[QuanLyData] Station filter (ma_ben: ${stationCode}, name: ${stationName}): ` +
           `${allowedBusRouteIds.size} Buýt route ids, ${allowedFixedRouteCodes.size} Tuyến cố định routes, ` +
@@ -583,19 +593,17 @@ export const getQuanLyData = async (req: Request, res: Response) => {
     }
     
     if (includes.includes('vehicles')) {
-      // Optimizaton: Only return vehicles that match the filtered badges + manually allowed plates
-      // This prevents sending 17MB of 10,000+ un-badged vehicles over the wire
-      const allowedPlatesForStation = new Set<string>()
+      const allowedLinkKeysForStation = new Set<string>()
       for (const b of finalFilteredBadges) {
-        if (b.license_plate_sheet) {
-          allowedPlatesForStation.add(normalizePlate(b.license_plate_sheet))
+        if (b.vehicle_match_key) {
+          allowedLinkKeysForStation.add(b.vehicle_match_key)
         }
       }
-      // Only include vehicles that have a matching badge for this station, or have any valid badge (fallback)
       if (stationCode || stationName) {
-        response.vehicles = data.vehicles.filter(v => 
-          allowedPlatesForStation.has(normalizePlate(v.plateNumber)) || v.hasValidBadge
-        )
+        response.vehicles = data.vehicles.filter(v => {
+          const linkKey = vehicleBadgeLinkKey((v.firebaseId || '').trim())
+          return linkKey && allowedLinkKeysForStation.has(linkKey)
+        })
       } else {
         response.vehicles = data.vehicles
       }
